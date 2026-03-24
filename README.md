@@ -59,3 +59,6 @@ Every player action is a SQL query against DuckDB-WASM running in your browser. 
 - DuckDB-WASM v1.28.0
 - Vanilla JS + HTML + CSS
 - Zero dependencies, zero build steps
+
+# Changelog
+- Adding visual graphic updates v2
