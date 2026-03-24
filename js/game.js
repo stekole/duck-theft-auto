@@ -15,7 +15,7 @@ import {
   spawnMuzzleFlash, fireProjectile,
   applyCharacterSkin,
   getNearestNPCCar, removeNPCCar,
-  updateRemoteDuck, despawnRemoteDuck
+  updateRemoteDuck, despawnRemoteDuck, getNearestRemoteDuck
 } from './renderer.js';
 import {
   conn, q, q1, qv, saveGame,
@@ -88,8 +88,31 @@ setMPCallbacks({
   onRemoteChat: (peerId, data) => {
     log(`[${data.name || 'Player'}] ${data.msg}`, 'c-yellow');
   },
-  onRemoteShoot: (peerId, data) => {
-    log(`${data.name || 'Player'} opened fire!`, 'c-red');
+  onRemoteAction: (peerId, data) => {
+    // Display remote player actions in the log
+    const name = data.name || 'Player';
+    switch (data.action) {
+      case 'crime': log(`${name} committed ${data.crime || 'a crime'}!`, 'c-red'); break;
+      case 'rob': log(`${name} robbed ${data.place || 'a location'}!`, 'c-red'); break;
+      case 'police': log(`${name} has cops on them!`, 'c-yellow'); break;
+      case 'death': log(`${name} was WASTED!`, 'c-red'); break;
+      case 'npc_kill': log(`${name} killed an NPC nearby!`, 'c-gray'); break;
+      default: log(`${name}: ${data.action}`, 'c-gray');
+    }
+  },
+  onRemoteShoot: async (peerId, data) => {
+    // Check if we are the target
+    const localId = (await import('./multiplayer.js')).getLocalPeerId();
+    if (data.target === localId) {
+      const dmg = Math.min(data.damage || 15, 50); // cap damage to prevent cheating
+      await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), armor=GREATEST(0,armor-${dmg})`);
+      spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
+      log(`${data.name || 'Player'} shot you! -${dmg} HP`, 'c-red');
+      await checkDeath();
+      await updateHUD();
+    } else {
+      log(`${data.name || 'Player'} opened fire!`, 'c-red');
+    }
   },
   onWorldSyncReceived: async (peerId, data) => {
     // Client receives world state from host
@@ -586,6 +609,7 @@ async function checkDeath() {
     log(`║  Lost $200 and ${respLoss} Respect.          ║`, 'c-red');
     log('║  Wanted level cleared.               ║', 'c-red');
     log('╚══════════════════════════════════════╝', 'c-red');
+    if (isMultiplayer()) broadcastAction({ action: 'death', name: (await q1('SELECT name FROM player')).name });
     await updateRank();
     await updateHUD();
 
@@ -760,11 +784,28 @@ async function playerShoot() {
     const loot = rand(5, 50);
     await conn.query(`UPDATE player SET cash=cash+${loot}, wanted_level=LEAST(5,wanted_level+1), respect=respect+1`);
     log(`Shot a civilian! Looted $${loot}. +1 Wanted.`, 'c-red');
+    if (isMultiplayer()) broadcastAction({ action: 'npc_kill', name: (await q1('SELECT name FROM player')).name });
     const p = await q1('SELECT district, city FROM player');
     await conn.query(`UPDATE district_heat SET heat=heat+2 WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
     await maybeSkillUp('strength');
     await updateHUD();
     return;
+  }
+
+  // PvP: check for nearby remote player ducks
+  if (isMultiplayer()) {
+    const remoteDuck = getNearestRemoteDuck(7);
+    if (remoteDuck) {
+      fireProjectile(remoteDuck.entry.group.position.x, remoteDuck.entry.group.position.z);
+      spawnParticles(remoteDuck.entry.group.position.x, remoteDuck.entry.group.position.z, 0xff4444, 10, 1.5, 1);
+      const dmg = 15 + gunBonus;
+      // Broadcast the shot to peers — host will validate
+      broadcastShoot({ target: remoteDuck.peerId, damage: dmg, name: (await q1('SELECT name FROM player')).name });
+      log(`Shot at ${getPeers().get(remoteDuck.peerId)?.name || 'player'}!`, 'c-red');
+      await maybeSkillUp('strength');
+      await updateHUD();
+      return;
+    }
   }
 
   // No target — fire bullet in facing direction
@@ -1169,6 +1210,7 @@ async function robLocation(placeName, lootMin, lootMax, lootMul, heat) {
     const safeD = p.district.replace(/'/g, "''"); const safeC = p.city.replace(/'/g, "''");
     await conn.query(`UPDATE district_heat SET heat=heat+${heat} WHERE district='${safeD}' AND city='${safeC}'`);
     log(`Robbed ${placeName}! Got $${loot}, +${respect} Respect. +1 Wanted.`, 'c-green');
+    if (isMultiplayer()) broadcastAction({ action: 'rob', place: placeName, name: p.name });
     spawnParticlesAtDuck(0xffdd00, 15, 2, 1.5);
     await maybeSkillUp('stealth'); await updateRank();
   } else {
@@ -2028,6 +2070,18 @@ document.addEventListener('keydown', async (e) => {
       e.preventDefault();
       currentSubOptions[subMenuSelection].action();
       return;
+    }
+    return;
+  }
+
+  // Multiplayer chat (T key)
+  if (e.key === 't' && isMultiplayer()) {
+    e.preventDefault();
+    const chatInput = $('mp-chat-input');
+    if (chatInput) {
+      chatInput.style.display = 'block';
+      chatInput.value = '';
+      chatInput.focus();
     }
     return;
   }

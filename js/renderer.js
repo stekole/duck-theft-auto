@@ -1290,6 +1290,21 @@ export function clearRemoteDucks() {
 
 export function getRemoteDucks() { return remoteDucks; }
 
+export function getNearestRemoteDuck(maxDist = 6) {
+  if (!duckGroup) return null;
+  let nearest = null, nearestDist = maxDist;
+  for (const [peerId, entry] of remoteDucks) {
+    const dx = entry.group.position.x - duckGroup.position.x;
+    const dz = entry.group.position.z - duckGroup.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = { peerId, entry, dist };
+    }
+  }
+  return nearest;
+}
+
 export function gameLoop() {
   requestAnimationFrame(gameLoop);
   if (!gameActive) { renderer.render(scene, camera); return; }
