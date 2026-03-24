@@ -331,9 +331,11 @@ let playerVehicleMesh = null;
 let currentGameHour = 12;
 
 // Camera settings (isometric-ish)
-const CAM_HEIGHT = 18;
-const CAM_DIST = 22;
-const CAM_ANGLE = Math.PI / 4; // 45 degrees
+let camHeight = 18;
+let camDist = 22;
+let camAngle = Math.PI / 4; // 45 degrees
+const CAM_ZOOM_MIN = 8;
+const CAM_ZOOM_MAX = 40;
 
 // Duck movement
 let duckTargetX = 0, duckTargetZ = 0;
@@ -599,7 +601,7 @@ function initThree() {
   scene.fog = new THREE.FogExp2(0x1a1a2e, 0.025);
 
   camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
-  camera.position.set(CAM_DIST, CAM_HEIGHT, CAM_DIST);
+  camera.position.set(camDist, camHeight, camDist);
   camera.lookAt(0, 0, 0);
 
   renderer = new THREE.WebGLRenderer({ canvas: $('three-canvas'), antialias: true });
@@ -1195,15 +1197,16 @@ function updateLighting(hour) {
     scene.fog.color.copy(scene.background);
     renderer.toneMappingExposure = 1.0;
   } else {
-    // Night
-    sunLight.position.set(-20, 8, 10);
-    sunLight.intensity = 0.15;
-    sunLight.color.setHex(0x4466aa);
-    ambientLight.intensity = 0.15;
-    hemiLight.intensity = 0.2;
-    scene.background.setHex(0x0a0a1e);
+    // Night — still visible, moody blue
+    const nightProgress = hour >= 19 ? (hour - 19) / 5 : hour <= 5 ? (5 - hour) / 5 : 0;
+    sunLight.position.set(-20, 10 + nightProgress * 5, 15);
+    sunLight.intensity = 0.4;
+    sunLight.color.setHex(0x6688cc);
+    ambientLight.intensity = 0.35;
+    hemiLight.intensity = 0.35;
+    scene.background.setHex(0x0f1528);
     scene.fog.color.copy(scene.background);
-    renderer.toneMappingExposure = 0.6;
+    renderer.toneMappingExposure = 0.85;
   }
 }
 
@@ -1277,10 +1280,10 @@ function gameLoop() {
 
   // Camera follow (isometric)
   if (duckGroup) {
-    const targetCamX = duckGroup.position.x + CAM_DIST * Math.cos(CAM_ANGLE);
-    const targetCamZ = duckGroup.position.z + CAM_DIST * Math.sin(CAM_ANGLE);
+    const targetCamX = duckGroup.position.x + camDist * Math.cos(camAngle);
+    const targetCamZ = duckGroup.position.z + camDist * Math.sin(camAngle);
     camera.position.x += (targetCamX - camera.position.x) * 0.08;
-    camera.position.y += (CAM_HEIGHT - camera.position.y) * 0.08;
+    camera.position.y += (camHeight - camera.position.y) * 0.08;
     camera.position.z += (targetCamZ - camera.position.z) * 0.08;
     camera.lookAt(duckGroup.position.x, 1, duckGroup.position.z);
 
@@ -1775,12 +1778,20 @@ async function movePlayer(dx, dy) {
 // --------------------------------------------------------
 //  SUB-MENU HELPERS
 // --------------------------------------------------------
+let currentSubOptions = []; // track current sub-menu options for keyboard nav
+let subMenuSelection = -1;  // highlighted index, -1 = none
+
 function showSubMenu(title, options) {
+  currentSubOptions = options;
+  subMenuSelection = -1;
   const el = $('sub-menu');
   el.style.display = 'block';
-  let html = `<h4>${title}</h4><div>`;
-  for (const opt of options) html += `<button class="btn sub-btn">${opt.label}</button> `;
-  html += `<button class="btn sub-btn" id="btn-back">Back</button></div>`;
+  let html = `<h4>${title} <span class="c-gray" style="font-size:10px">[1-${Math.min(options.length,9)} to pick, Esc=back]</span></h4><div class="sub-options">`;
+  options.forEach((opt, i) => {
+    const key = i < 9 ? (i + 1) : '';
+    html += `<button class="btn sub-btn" data-idx="${i}">${key ? `<span class="key">[${key}]</span> ` : ''}${opt.label}</button> `;
+  });
+  html += `<button class="btn sub-btn" id="btn-back"><span class="key">[Esc]</span> Back</button></div>`;
   el.innerHTML = html;
   const btns = el.querySelectorAll('.sub-btn');
   options.forEach((opt, i) => btns[i].addEventListener('click', opt.action));
@@ -1818,7 +1829,9 @@ function showMainActions() {
     { key: 'I', label: 'Inventory',      action: menuInventory },
     { key: 'N', label: 'News',           action: menuNews },
     { key: 'S', label: 'Save Game',      action: saveGame },
-    { key: 'R', label: 'Street Race',    action: menuStreetRace }
+    { key: 'R', label: 'Street Race',    action: menuStreetRace },
+    { key: 'T', label: 'Wait/Rest',     action: menuWait },
+    { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
   const el = $('actions');
   el.innerHTML = '';
@@ -2476,6 +2489,127 @@ async function menuNews() {
 }
 
 // --------------------------------------------------------
+//  WAIT / REST
+// --------------------------------------------------------
+async function menuWait() {
+  const clk = await q1('SELECT * FROM game_clock');
+  showSubMenu(`Current time: Day ${clk.day}, ${String(clk.hour).padStart(2,'0')}:00`, [
+    { label: 'Wait 1 hour', action: async () => {
+      await advanceTime(1); await processWorldEvents();
+      if (chance(15)) { await conn.query(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`); log('Laying low... wanted level decreased.', 'c-green'); }
+      log('Waited 1 hour.', 'c-gray');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'Wait until dawn (6:00)', action: async () => {
+      const h = clk.hour >= 6 ? (24 - clk.hour + 6) : (6 - clk.hour);
+      await advanceTime(h); await processWorldEvents();
+      log(`Rested ${h} hours until dawn.`, 'c-cyan');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'Wait until noon (12:00)', action: async () => {
+      const h = clk.hour >= 12 ? (24 - clk.hour + 12) : (12 - clk.hour);
+      await advanceTime(h); await processWorldEvents();
+      log(`Waited ${h} hours until noon.`, 'c-cyan');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'Wait until dusk (18:00)', action: async () => {
+      const h = clk.hour >= 18 ? (24 - clk.hour + 18) : (18 - clk.hour);
+      await advanceTime(h); await processWorldEvents();
+      log(`Waited ${h} hours until dusk.`, 'c-cyan');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'Wait until midnight (0:00)', action: async () => {
+      const h = clk.hour === 0 ? 24 : (24 - clk.hour);
+      await advanceTime(h); await processWorldEvents();
+      log(`Waited ${h} hours until midnight.`, 'c-cyan');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }}
+  ]);
+}
+
+// --------------------------------------------------------
+//  HELP / SETTINGS
+// --------------------------------------------------------
+function menuHelp() {
+  let html = `
+<div class="c-yellow" style="margin-bottom:6px">--- Controls ---</div>
+<table>
+  <tr><td class="c-cyan">WASD / Arrows</td><td>Move your duck</td></tr>
+  <tr><td class="c-cyan">Enter</td><td>Interact with POI (glowing markers)</td></tr>
+  <tr><td class="c-cyan">Scroll Wheel</td><td>Zoom in / out</td></tr>
+  <tr><td class="c-cyan">+ / -</td><td>Zoom in / out (keyboard)</td></tr>
+  <tr><td class="c-cyan">Q / E</td><td>Rotate camera left / right</td></tr>
+</table>
+
+<div class="c-yellow" style="margin:8px 0 6px">--- How to Play ---</div>
+<table>
+  <tr><td class="c-green">Walk to glowing markers</td><td>Visit shops, hospitals, dealers, etc.</td></tr>
+  <tr><td class="c-green">Work legal jobs</td><td>Earn safe cash, build skills</td></tr>
+  <tr><td class="c-green">Commit crimes</td><td>High risk, high reward, raises wanted level</td></tr>
+  <tr><td class="c-green">Join a gang</td><td>Attack territories, recruit members, buy businesses</td></tr>
+  <tr><td class="c-green">Buy weapons</td><td>Increase crime success chance</td></tr>
+  <tr><td class="c-green">Buy vehicles</td><td>Free travel between cities</td></tr>
+  <tr><td class="c-green">Visit hookers</td><td>Restore health (+HP)</td></tr>
+  <tr><td class="c-green">Drug market</td><td>Buy low, sell high, build dealing skill</td></tr>
+</table>
+
+<div class="c-yellow" style="margin:8px 0 6px">--- Tips ---</div>
+<div class="c-white">- Wanted level triggers police encounters. Work legal jobs to reduce it.</div>
+<div class="c-white">- Use Fake IDs from shops to instantly reduce wanted level.</div>
+<div class="c-white">- Gang territory generates daily income. More territory = more cash.</div>
+<div class="c-white">- Upgrade your safe house to recruit more gang members.</div>
+<div class="c-white">- Adrenaline Shots give +20% crime success for one crime.</div>
+<div class="c-white">- Earn perk points every 1000 respect. Unlock powerful bonuses.</div>
+<div class="c-white">- Enter name "test" at start for $999,999.</div>
+
+<div class="c-yellow" style="margin:8px 0 6px">--- Camera Settings ---</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+  <button class="btn cam-btn" data-dist="10" data-height="8">Close-Up</button>
+  <button class="btn cam-btn" data-dist="18" data-height="14">Medium</button>
+  <button class="btn cam-btn" data-dist="22" data-height="18">Default</button>
+  <button class="btn cam-btn" data-dist="32" data-height="26">Far</button>
+  <button class="btn cam-btn" data-dist="40" data-height="32">Overview</button>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+  <button class="btn cam-angle-btn" data-angle="0">North</button>
+  <button class="btn cam-angle-btn" data-angle="${Math.PI/4}">NE (default)</button>
+  <button class="btn cam-angle-btn" data-angle="${Math.PI/2}">East</button>
+  <button class="btn cam-angle-btn" data-angle="${Math.PI}">South</button>
+  <button class="btn cam-angle-btn" data-angle="${Math.PI*1.5}">West</button>
+</div>
+
+<div class="c-yellow" style="margin:8px 0 6px">--- Map Legend ---</div>
+<table>
+  <tr><td style="color:#ff3333">A</td><td>Ammu-Nation (buy weapons)</td></tr>
+  <tr><td style="color:#ffffff">+</td><td>Hospital (heal, armor, health packs)</td></tr>
+  <tr><td style="color:#ff44ff">K</td><td>Street Corner (hookers)</td></tr>
+  <tr><td style="color:#ffd700">B</td><td>Gambling Den (slots, dice, poker)</td></tr>
+  <tr><td style="color:#44ffff">D</td><td>Drug Dealer (buy/sell drugs)</td></tr>
+  <tr><td style="color:#4488ff">$</td><td>Convenience Store (items)</td></tr>
+  <tr><td style="color:#ff8800">V</td><td>Vehicle Dealer</td></tr>
+  <tr><td style="color:#44ff44">W</td><td>Job Center (legal work)</td></tr>
+  <tr><td style="color:#aa44ff">G</td><td>Gang HQ (join gang, territories)</td></tr>
+</table>
+
+<div class="c-gray" style="margin-top:8px;font-size:10px">All game state is stored in DuckDB-WASM. Every action is a SQL query.</div>
+`;
+  showSubMenuHTML('Help & Settings', html);
+
+  // Camera preset buttons
+  $('sub-menu').querySelectorAll('.cam-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      camDist = parseFloat(btn.dataset.dist);
+      camHeight = parseFloat(btn.dataset.height);
+    });
+  });
+  $('sub-menu').querySelectorAll('.cam-angle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      camAngle = parseFloat(btn.dataset.angle);
+    });
+  });
+}
+
+// --------------------------------------------------------
 //  SAVE / LOAD
 // --------------------------------------------------------
 async function saveGame() {
@@ -2532,17 +2666,108 @@ const menuFunctions = {
 // --------------------------------------------------------
 //  KEYBOARD CONTROLS
 // --------------------------------------------------------
+// Main action key map for keyboard shortcuts
+const mainActionKeys = {};
+function rebuildActionKeys() {
+  const actions = [
+    { key: '1', action: menuTravel }, { key: '2', action: menuJobs }, { key: '3', action: menuCrime },
+    { key: '4', action: menuGuns }, { key: '5', action: menuHospital }, { key: '6', action: menuShops },
+    { key: '7', action: menuDrugs }, { key: '8', action: menuVehicles }, { key: '9', action: menuGang },
+    { key: '0', action: menuGambling }, { key: 'h', action: menuHookers }, { key: 'p', action: menuPerks },
+    { key: 'i', action: menuInventory }, { key: 'n', action: menuNews }, { key: 's', action: saveGame },
+    { key: 'r', action: menuStreetRace }, { key: 't', action: menuWait }, { key: '/', action: menuHelp }
+  ];
+  for (const a of actions) mainActionKeys[a.key] = a.action;
+}
+rebuildActionKeys();
+
 document.addEventListener('keydown', async (e) => {
   if ($('game-ui').style.display === 'none') return;
-  if ($('sub-menu').style.display === 'block') return;
+
+  // Escape always closes any open menu
+  if (e.key === 'Escape' || e.key === 'Backspace') {
+    e.preventDefault();
+    stopSiren();
+    hideSubMenu();
+    showMainActions();
+    return;
+  }
+
+  // Camera zoom always works
+  if (e.key === '+' || e.key === '=') { e.preventDefault(); camDist = Math.max(CAM_ZOOM_MIN, camDist - 2); camHeight = camDist * 0.8; return; }
+  if (e.key === '-' || e.key === '_') { e.preventDefault(); camDist = Math.min(CAM_ZOOM_MAX, camDist + 2); camHeight = camDist * 0.8; return; }
+
+  const inSubMenu = $('sub-menu').style.display === 'block';
+
+  if (inSubMenu) {
+    // Number keys 1-9 to pick sub-menu options
+    const num = parseInt(e.key);
+    if (num >= 1 && num <= 9 && num <= currentSubOptions.length) {
+      e.preventDefault();
+      currentSubOptions[num - 1].action();
+      return;
+    }
+    // Arrow up/down to highlight, Enter to select
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      subMenuSelection = Math.max(0, subMenuSelection - 1);
+      highlightSubOption();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      subMenuSelection = Math.min(currentSubOptions.length - 1, subMenuSelection + 1);
+      highlightSubOption();
+      return;
+    }
+    if (e.key === 'Enter' && subMenuSelection >= 0 && subMenuSelection < currentSubOptions.length) {
+      e.preventDefault();
+      currentSubOptions[subMenuSelection].action();
+      return;
+    }
+    return;
+  }
+
+  // Movement (WASD + arrows)
   switch (e.key) {
-    case 'ArrowUp':    case 'w': e.preventDefault(); await movePlayer(0, -1); break;
-    case 'ArrowDown':  case 's': e.preventDefault(); await movePlayer(0, 1); break;
-    case 'ArrowLeft':  case 'a': e.preventDefault(); await movePlayer(-1, 0); break;
-    case 'ArrowRight': case 'd': e.preventDefault(); await movePlayer(1, 0); break;
-    case 'Enter': e.preventDefault(); await enterPOI(); break;
+    case 'ArrowUp':    case 'w': e.preventDefault(); await movePlayer(0, -1); return;
+    case 'ArrowDown':  case 's': e.preventDefault(); await movePlayer(0, 1); return;
+    case 'ArrowLeft':  case 'a': e.preventDefault(); await movePlayer(-1, 0); return;
+    case 'ArrowRight': case 'd': e.preventDefault(); await movePlayer(1, 0); return;
+    case 'Enter': e.preventDefault(); await enterPOI(); return;
+    case 'q': e.preventDefault(); camAngle -= 0.15; return;
+    case 'e': e.preventDefault(); camAngle += 0.15; return;
+  }
+
+  // Main screen: action hotkeys (numbers + non-WASD letters)
+  const lk = e.key.toLowerCase();
+  if (mainActionKeys[lk]) {
+    e.preventDefault();
+    mainActionKeys[lk]();
+    return;
   }
 });
+
+function highlightSubOption() {
+  const btns = $('sub-menu').querySelectorAll('.sub-btn[data-idx]');
+  btns.forEach((btn, i) => {
+    btn.style.background = i === subMenuSelection ? '#003300' : '#1a1a1a';
+    btn.style.borderColor = i === subMenuSelection ? '#44ff44' : '#00ff00';
+  });
+}
+
+// Scroll wheel zoom
+document.addEventListener('wheel', (e) => {
+  if ($('game-ui').style.display === 'none') return;
+  e.preventDefault();
+  const zoomSpeed = 1.5;
+  if (e.deltaY > 0) {
+    camDist = Math.min(CAM_ZOOM_MAX, camDist + zoomSpeed);
+  } else {
+    camDist = Math.max(CAM_ZOOM_MIN, camDist - zoomSpeed);
+  }
+  camHeight = camDist * 0.8;
+}, { passive: false });
 
 // --------------------------------------------------------
 //  GAME START
