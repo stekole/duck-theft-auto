@@ -33,15 +33,16 @@ echo '//  DUCK THEFT AUTO — Built from source files' >> dist/index.html
 echo '// ========================================================' >> dist/index.html
 echo '' >> dist/index.html
 
-# Add the two CDN imports
+# Add CDN imports
 echo "import * as THREE from 'three';" >> dist/index.html
 echo "import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';" >> dist/index.html
+echo "import { joinRoom } from 'trystero/nostr';" >> dist/index.html
 echo '' >> dist/index.html
 echo 'const $ = id => document.getElementById(id);' >> dist/index.html
 echo '' >> dist/index.html
 
 # Inline each source file, stripping imports/exports
-for f in js/constants.js js/city.js js/renderer.js js/db.js js/game.js; do
+for f in js/constants.js js/city.js js/renderer.js js/db.js js/multiplayer.js js/game.js; do
   echo "" >> dist/index.html
   echo "// === $(basename $f) ===" >> dist/index.html
   # Strip single-line imports, multi-line imports, and exports
@@ -95,6 +96,72 @@ cat >> dist/index.html << 'HTMLBOOT'
         list.appendChild(btn);
       }
     }
+    // Multiplayer handlers
+    window.hostMultiplayer = () => {
+      const card = document.querySelector('.char-card.selected');
+      const charName = card?.dataset.name || 'CJ';
+      const playerName = $('player-name-input').value.trim() || charName;
+      const code = generateRoomCode();
+      hostGame(code, playerName, charName);
+      $('mp-lobby').style.display = 'block';
+      $('mp-room-code').textContent = code;
+      $('mp-start-btn').style.display = 'inline';
+      $('mp-waiting').style.display = 'none';
+    };
+    window.showJoinUI = () => {
+      $('mp-join-ui').style.display = $('mp-join-ui').style.display === 'none' ? 'block' : 'none';
+    };
+    window.joinMultiplayer = () => {
+      const code = $('mp-room-input').value.trim().toUpperCase();
+      if (!code || code.length < 2) return;
+      const card = document.querySelector('.char-card.selected');
+      const charName = card?.dataset.name || 'CJ';
+      const playerName = $('player-name-input').value.trim() || charName;
+      joinGame(code, playerName, charName);
+      $('mp-lobby').style.display = 'block';
+      $('mp-room-code').textContent = code;
+      $('mp-join-ui').style.display = 'none';
+      $('mp-start-btn').style.display = 'none';
+      $('mp-waiting').style.display = 'inline';
+    };
+    window.leaveMultiplayer = () => {
+      leaveGame();
+      $('mp-lobby').style.display = 'none';
+    };
+    window.startMultiplayerGame = () => { window.startNewGame(); };
+
+    // Chat input handlers
+    const chatInput = $('mp-chat-input');
+    if (chatInput) {
+      chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const msg = chatInput.value.trim();
+          if (msg && isMultiplayer()) {
+            const nameEl = $('hud-name');
+            const name = nameEl ? nameEl.textContent : 'You';
+            broadcastChat(msg, name);
+            const logEl = $('event-log');
+            if (logEl) {
+              const div = document.createElement('div');
+              div.className = 'log-entry c-yellow';
+              div.textContent = '[' + name + '] ' + msg;
+              logEl.appendChild(div);
+              logEl.scrollTop = logEl.scrollHeight;
+            }
+          }
+          chatInput.style.display = 'none';
+          chatInput.value = '';
+          chatInput.blur();
+        } else if (e.key === 'Escape') {
+          chatInput.style.display = 'none';
+          chatInput.value = '';
+          chatInput.blur();
+        }
+        e.stopPropagation();
+      });
+    }
+
   } catch (e) {
     $('loading').textContent = 'Failed to load: ' + e.message;
     console.error(e);
