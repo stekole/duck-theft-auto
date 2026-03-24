@@ -14,12 +14,17 @@ import {
   getNearestNPC, getNearestPoliceNPC, killNPC, damagePoliceNPC,
   spawnMuzzleFlash, fireProjectile,
   applyCharacterSkin,
-  getNearestNPCCar, removeNPCCar
+  getNearestNPCCar, removeNPCCar,
+  updateRemoteDuck, despawnRemoteDuck
 } from './renderer.js';
 import {
   conn, q, q1, qv, saveGame,
   initSchema, initPlayer, initWorld, loadCityMap, loadGameData, getSaveIndex, setLogFn
 } from './db.js';
+import {
+  isMultiplayer, getIsHost, broadcastMove, broadcastShoot, broadcastChat,
+  broadcastAction, broadcastWorldSync, setCallbacks as setMPCallbacks, getPeers
+} from './multiplayer.js';
 
 const $ = id => document.getElementById(id);
 
@@ -43,6 +48,68 @@ export function log(msg, cls = 'c-white') {
 
 // Inject log into db.js so saveGame can use it
 setLogFn(log);
+
+// Wire up multiplayer callbacks
+setMPCallbacks({
+  logFn: (msg) => log(msg, 'c-cyan'),
+  onRemoteMove: (peerId, data) => {
+    updateRemoteDuck(peerId, data.x, data.y, data);
+  },
+  onPeerJoin: async (peerId, data) => {
+    // Host sends world state to new peer
+    if (getIsHost() && conn) {
+      try {
+        const p = await q1('SELECT * FROM player');
+        const clk = await q1('SELECT * FROM game_clock');
+        const worldData = {
+          city: p.city,
+          day: clk.day,
+          hour: clk.hour,
+          hostPlayer: { name: p.name, char: p.char_type, x: p.x, y: p.y, health: p.health, wanted: p.wanted_level }
+        };
+        // Include all currently connected peers' positions
+        const peerPositions = {};
+        for (const [pid, info] of getPeers()) {
+          if (pid !== peerId) {
+            peerPositions[pid] = { name: info.name, char: info.char, x: info.x || 0, y: info.y || 0 };
+          }
+        }
+        worldData.peers = peerPositions;
+        broadcastWorldSync(worldData);
+        log(`Sent world sync to ${data.name || peerId.slice(0, 8)}`, 'c-cyan');
+      } catch (e) {
+        console.error('World sync failed:', e);
+      }
+    }
+  },
+  onPeerLeave: (peerId) => {
+    despawnRemoteDuck(peerId);
+  },
+  onRemoteChat: (peerId, data) => {
+    log(`[${data.name || 'Player'}] ${data.msg}`, 'c-yellow');
+  },
+  onRemoteShoot: (peerId, data) => {
+    log(`${data.name || 'Player'} opened fire!`, 'c-red');
+  },
+  onWorldSyncReceived: async (peerId, data) => {
+    // Client receives world state from host
+    if (getIsHost()) return; // host doesn't apply sync from others
+    log(`Received world sync — ${data.city}, Day ${data.day}`, 'c-cyan');
+
+    // Spawn host's duck
+    if (data.hostPlayer) {
+      const hp = data.hostPlayer;
+      updateRemoteDuck(peerId, hp.x, hp.y, { name: hp.name, char: hp.char });
+    }
+
+    // Spawn other peers' ducks
+    if (data.peers) {
+      for (const [pid, info] of Object.entries(data.peers)) {
+        updateRemoteDuck(pid, info.x, info.y, info);
+      }
+    }
+  }
+});
 
 // --------------------------------------------------------
 //  ACTIVITY STATUS
@@ -734,6 +801,12 @@ async function movePlayer(dx, dy) {
     setDuckFacing(Math.atan2(dx, dy));
   }
   setDuckTarget(nx + 0.5, ny + 0.5);
+
+  // Broadcast position to peers
+  if (isMultiplayer()) {
+    const mp = await q1('SELECT name, char_type, health, wanted_level FROM player');
+    broadcastMove({ x: nx, y: ny, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level });
+  }
 
   await updateDistrict(nx, ny);
   await checkPOI();
