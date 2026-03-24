@@ -53,6 +53,22 @@ export async function initSchema() {
     CREATE TABLE IF NOT EXISTS district_heat(district VARCHAR, city VARCHAR, heat INT DEFAULT 0, PRIMARY KEY(district, city));
     CREATE TABLE IF NOT EXISTS perks(name VARCHAR PRIMARY KEY, unlocked INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS world_events(id INT DEFAULT nextval('event_id_seq'), day INT, hour INT, description VARCHAR);
+    CREATE TABLE IF NOT EXISTS remote_players(
+      peer_id VARCHAR PRIMARY KEY,
+      name VARCHAR,
+      char_type VARCHAR,
+      x INT DEFAULT 0,
+      y INT DEFAULT 0,
+      health INT DEFAULT 100,
+      wanted_level INT DEFAULT 0,
+      last_update BIGINT DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS connection_log(
+      ts TIMESTAMP DEFAULT now(),
+      peer_id VARCHAR,
+      remote_ip VARCHAR DEFAULT 'unknown',
+      event VARCHAR
+    );
   `);
   for (const p of PERKS) await conn.query(`INSERT INTO perks VALUES ('${p.name}', 0) ON CONFLICT DO NOTHING`);
 }
@@ -210,6 +226,39 @@ export async function loadGameData(callbacks, slotName) {
     _dbLog('Game loaded!', 'c-green');
     return true;
   } catch (e) { _dbLog('Load failed: ' + e.message, 'c-red'); return false; }
+}
+
+// Multiplayer: log connection events
+export async function logConnection(peerId, remoteIp, event) {
+  const safePeer = peerId.replace(/'/g, "''");
+  const safeIp = (remoteIp || 'unknown').replace(/'/g, "''");
+  const safeEvent = event.replace(/'/g, "''");
+  await conn.query(`INSERT INTO connection_log(peer_id, remote_ip, event) VALUES ('${safePeer}','${safeIp}','${safeEvent}')`);
+}
+
+// Multiplayer: update remote player position
+export async function upsertRemotePlayer(peerId, data) {
+  const safePeer = peerId.replace(/'/g, "''");
+  const safeName = (data.name || 'Unknown').replace(/'/g, "''");
+  const safeChar = (data.char || '').replace(/'/g, "''");
+  const x = data.x ?? 0;
+  const y = data.y ?? 0;
+  const health = data.health ?? 100;
+  const wanted = data.wanted ?? 0;
+  // Delete + insert since DuckDB WASM doesn't support ON CONFLICT UPDATE well
+  await conn.query(`DELETE FROM remote_players WHERE peer_id='${safePeer}'`);
+  await conn.query(`INSERT INTO remote_players VALUES ('${safePeer}','${safeName}','${safeChar}',${x},${y},${health},${wanted},${Date.now()})`);
+}
+
+// Multiplayer: remove remote player
+export async function removeRemotePlayer(peerId) {
+  const safePeer = peerId.replace(/'/g, "''");
+  await conn.query(`DELETE FROM remote_players WHERE peer_id='${safePeer}'`);
+}
+
+// Multiplayer: get all remote players
+export async function getRemotePlayers() {
+  return await q('SELECT * FROM remote_players');
 }
 
 // log is injected after game.js loads

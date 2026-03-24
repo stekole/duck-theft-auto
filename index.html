@@ -420,6 +420,24 @@ body {
     <button onclick="startNewGame()">New Game</button>
     <button onclick="loadGame()">Load Game</button>
   </div>
+  <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
+    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
+    <button onclick="hostMultiplayer()">Host Game</button>
+    <button onclick="showJoinUI()">Join Game</button>
+    <div id="mp-join-ui" style="display:none;margin-top:6px">
+      <input type="text" id="mp-room-input" maxlength="4" placeholder="Room code" style="width:80px;text-transform:uppercase;text-align:center">
+      <button onclick="joinMultiplayer()">Connect</button>
+    </div>
+  </div>
+  <div id="mp-lobby" style="display:none;margin-top:8px;border:1px solid #333;padding:8px;text-align:left;max-width:300px">
+    <div style="color:#00ff00;font-size:12px">Room: <span id="mp-room-code" style="color:#ff6600;font-weight:bold"></span> &mdash; Players: <span id="mp-peer-count">1</span></div>
+    <div id="mp-player-list" style="margin-top:4px"></div>
+    <div style="margin-top:6px">
+      <button id="mp-start-btn" onclick="startMultiplayerGame()" style="display:none">Start Game</button>
+      <button onclick="leaveMultiplayer()">Leave</button>
+      <span id="mp-waiting" style="color:#888;font-size:10px;margin-left:6px">Waiting for host to start...</span>
+    </div>
+  </div>
 </div>
 
 <div id="game-ui">
@@ -462,7 +480,8 @@ body {
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "trystero/nostr": "https://esm.run/trystero/nostr"
   }
 }
 </script>
@@ -471,6 +490,10 @@ body {
 import { initThree, createDuck, gameLoop } from './js/renderer.js';
 import { initDB, getSaveIndex } from './js/db.js';
 import './js/game.js';
+import {
+  hostGame, joinGame, leaveGame, generateRoomCode,
+  isMultiplayer, getIsHost
+} from './js/multiplayer.js';
 
 const $ = id => document.getElementById(id);
 
@@ -514,6 +537,48 @@ const $ = id => document.getElementById(id);
         list.appendChild(btn);
       }
     }
+    // Multiplayer handlers
+    window.hostMultiplayer = () => {
+      const card = document.querySelector('.char-card.selected');
+      const charName = card?.dataset.name || 'CJ';
+      const charCity = card?.dataset.city || 'Los Santos';
+      const playerName = $('player-name-input').value.trim() || charName;
+      const code = generateRoomCode();
+      hostGame(code, playerName, charName);
+      $('mp-lobby').style.display = 'block';
+      $('mp-room-code').textContent = code;
+      $('mp-start-btn').style.display = 'inline';
+      $('mp-waiting').style.display = 'none';
+    };
+
+    window.showJoinUI = () => {
+      $('mp-join-ui').style.display = $('mp-join-ui').style.display === 'none' ? 'block' : 'none';
+    };
+
+    window.joinMultiplayer = () => {
+      const code = $('mp-room-input').value.trim().toUpperCase();
+      if (!code || code.length < 2) return;
+      const card = document.querySelector('.char-card.selected');
+      const charName = card?.dataset.name || 'CJ';
+      const playerName = $('player-name-input').value.trim() || charName;
+      joinGame(code, playerName, charName);
+      $('mp-lobby').style.display = 'block';
+      $('mp-room-code').textContent = code;
+      $('mp-join-ui').style.display = 'none';
+      $('mp-start-btn').style.display = 'none';
+      $('mp-waiting').style.display = 'inline';
+    };
+
+    window.leaveMultiplayer = () => {
+      leaveGame();
+      $('mp-lobby').style.display = 'none';
+    };
+
+    window.startMultiplayerGame = () => {
+      // Host starts the game - same as new game but with multiplayer active
+      window.startNewGame();
+    };
+
   } catch (e) {
     $('loading').textContent = 'Failed to load: ' + e.message;
     console.error(e);
