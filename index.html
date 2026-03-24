@@ -469,6 +469,7 @@ body {
   <div id="sub-menu"></div>
 
   <div id="poi-indicator"></div>
+  <input type="text" id="mp-chat-input" maxlength="100" placeholder="Type message... (Enter to send, Esc to cancel)" style="display:none;position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:400px;z-index:50;background:#111;border:1px solid #00ff00;color:#00ff00;font-family:'Courier New',monospace;font-size:13px;padding:6px 10px;outline:none">
 
   <div id="minimap-container">
     <canvas id="minimap" width="180" height="180"></canvas>
@@ -492,7 +493,7 @@ import { initDB, getSaveIndex } from './js/db.js';
 import './js/game.js';
 import {
   hostGame, joinGame, leaveGame, generateRoomCode,
-  isMultiplayer, getIsHost
+  isMultiplayer, getIsHost, broadcastChat
 } from './js/multiplayer.js';
 
 const $ = id => document.getElementById(id);
@@ -578,6 +579,37 @@ const $ = id => document.getElementById(id);
       // Host starts the game - same as new game but with multiplayer active
       window.startNewGame();
     };
+
+    // Chat input handlers
+    const chatInput = $('mp-chat-input');
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const msg = chatInput.value.trim();
+        if (msg && isMultiplayer()) {
+          const nameEl = document.getElementById('hud-name');
+          const name = nameEl ? nameEl.textContent : 'You';
+          broadcastChat(msg, name);
+          // Show own message in log
+          const logEl = document.getElementById('event-log');
+          if (logEl) {
+            const div = document.createElement('div');
+            div.className = 'log-entry c-yellow';
+            div.textContent = `[${name}] ${msg}`;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        }
+        chatInput.style.display = 'none';
+        chatInput.value = '';
+        chatInput.blur();
+      } else if (e.key === 'Escape') {
+        chatInput.style.display = 'none';
+        chatInput.value = '';
+        chatInput.blur();
+      }
+      e.stopPropagation(); // prevent game keys while typing
+    });
 
   } catch (e) {
     $('loading').textContent = 'Failed to load: ' + e.message;
