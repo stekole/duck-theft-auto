@@ -191,6 +191,25 @@ export function getSaveIndex() {
   return raw ? JSON.parse(raw) : {};
 }
 
+const VALID_TABLES = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events'];
+const VALID_COLUMNS = {
+  player: ['name','city','district','x','y','cash','health','armor','wanted_level','gang','gang_rank','respect','perk_points','adrenaline','char_type'],
+  game_clock: ['day','hour'],
+  skills: ['name','level'],
+  guns: ['name','category','bonus'],
+  inventory: ['item','qty'],
+  drugs: ['name','qty','avg_price'],
+  vehicles: ['name','stored'],
+  territories: ['district','city','owner'],
+  businesses: ['name','city','type','daily_income'],
+  recruits: ['id','name','strength','upkeep'],
+  gang_upgrades: ['name','level'],
+  gang_relations: ['gang','relation'],
+  district_heat: ['district','city','heat'],
+  perks: ['name','unlocked'],
+  world_events: ['id','day','hour','description']
+};
+
 export async function loadGameData(callbacks, slotName) {
   const raw = slotName
     ? localStorage.getItem('dta_save_' + slotName)
@@ -200,9 +219,12 @@ export async function loadGameData(callbacks, slotName) {
     const saveData = JSON.parse(raw);
     await initSchema();
     for (const [table, rows] of Object.entries(saveData)) {
+      if (!VALID_TABLES.includes(table)) continue;
       await conn.query(`DELETE FROM ${table}`);
+      const validCols = VALID_COLUMNS[table] || [];
       for (const row of rows) {
-        const cols = Object.keys(row);
+        const cols = Object.keys(row).filter(c => validCols.includes(c));
+        if (cols.length === 0) continue;
         const vals = cols.map(c => {
           const v = row[c];
           if (v === null || v === undefined) return 'NULL';
@@ -239,12 +261,19 @@ export async function logConnection(peerId, remoteIp, event) {
 // Multiplayer: update remote player position
 export async function upsertRemotePlayer(peerId, data) {
   const safePeer = peerId.replace(/'/g, "''");
-  const safeName = (data.name || 'Unknown').replace(/'/g, "''");
-  const safeChar = (data.char || '').replace(/'/g, "''");
-  const x = data.x ?? 0;
-  const y = data.y ?? 0;
-  const health = data.health ?? 100;
-  const wanted = data.wanted ?? 0;
+  const safeName = String(data.name || 'Unknown').slice(0, 32).replace(/'/g, "''");
+  const safeChar = String(data.char || '').slice(0, 20).replace(/'/g, "''");
+
+  // Validate numeric fields to prevent SQL injection via non-numeric values
+  let x = Number(data.x);
+  x = Number.isFinite(x) ? Math.floor(x) : 0;
+  let y = Number(data.y);
+  y = Number.isFinite(y) ? Math.floor(y) : 0;
+  let health = Number(data.health);
+  health = Number.isFinite(health) ? Math.max(0, Math.min(100, Math.floor(health))) : 100;
+  let wanted = Number(data.wanted);
+  wanted = Number.isFinite(wanted) ? Math.max(0, Math.min(5, Math.floor(wanted))) : 0;
+
   // Delete + insert since DuckDB WASM doesn't support ON CONFLICT UPDATE well
   await conn.query(`DELETE FROM remote_players WHERE peer_id='${safePeer}'`);
   await conn.query(`INSERT INTO remote_players VALUES ('${safePeer}','${safeName}','${safeChar}',${x},${y},${health},${wanted},${Date.now()})`);

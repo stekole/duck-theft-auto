@@ -7,8 +7,10 @@ import { logConnection, upsertRemotePlayer, removeRemotePlayer as dbRemoveRemote
 let room = null;
 let isHost = false;
 let localPeerId = null;
+let hostPeerId = null; // H3: track who the host peer is (for clients)
 let peers = new Map(); // peerId -> { name, char, ready }
 let tick = 0;
+const kickedPeers = new Set(); // H4: track kicked peers
 
 // Action senders (set when room is joined)
 let sendMove = null, onMove = null;
@@ -68,6 +70,8 @@ export function leaveGame() {
     room = null;
   }
   peers.clear();
+  kickedPeers.clear();
+  hostPeerId = null;
   isHost = false;
   sendMove = null;
   onMove = null;
@@ -133,6 +137,7 @@ function _joinRoom(roomCode, playerName, charType) {
 
   // Wire up receive handlers (with security checks)
   onMove((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
     if (!_checkRateLimit(peerId)) return;
     if (!_validateTick(peerId, data.tick)) return;
     if (isHost && !_validateMove(peerId, data)) return;
@@ -142,22 +147,32 @@ function _joinRoom(roomCode, playerName, charType) {
   });
 
   onShoot((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
     if (!_checkRateLimit(peerId)) return;
     if (!_validateTick(peerId, data.tick)) return;
     if (_onRemoteShoot) _onRemoteShoot(peerId, data);
   });
 
   onChat((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
     if (!_checkRateLimit(peerId)) return;
     if (!_validateTick(peerId, data.tick)) return;
     if (_onRemoteChat) _onRemoteChat(peerId, data);
   });
 
   onWorldSync((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    if (!_checkRateLimit(peerId)) return;
+    // Only clients accept worldSync, and only from the known host
+    if (isHost) return;
+    if (hostPeerId && peerId !== hostPeerId) return;
+    // Accept first worldSync sender as the host
+    if (!hostPeerId) hostPeerId = peerId;
     if (_onWorldSyncReceived) _onWorldSyncReceived(peerId, data);
   });
 
   onPlayerJoin((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
     peers.set(peerId, { name: data.name, char: data.char, ready: false });
     _logFn(`[MP] ${data.name} joined the room`);
     _updateLobbyUI();
@@ -165,6 +180,7 @@ function _joinRoom(roomCode, playerName, charType) {
   });
 
   onPlayerLeave((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
     _logFn(`[MP] ${peers.get(peerId)?.name || peerId} left`);
     peers.delete(peerId);
     _updateLobbyUI();
@@ -172,6 +188,7 @@ function _joinRoom(roomCode, playerName, charType) {
   });
 
   onAction((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
     if (!_checkRateLimit(peerId)) return;
     // Handle kick votes
     if (data.action === 'vote_kick' && data.target) {
@@ -190,6 +207,8 @@ function _joinRoom(roomCode, playerName, charType) {
   // Peer lifecycle
   room.onPeerJoin(peerId => {
     _logFn(`[MP] Peer connected: ${peerId.slice(0, 8)}...`);
+    // For clients, track the first peer as the host
+    if (!isHost && !hostPeerId) hostPeerId = peerId;
     // Send our info to the new peer
     if (sendPlayerJoin) {
       sendPlayerJoin({ name: playerName, char: charType });
@@ -199,6 +218,7 @@ function _joinRoom(roomCode, playerName, charType) {
   });
 
   room.onPeerLeave(peerId => {
+    if (!peers.has(peerId)) return; // M8: guard against double-firing
     const peerInfo = peers.get(peerId);
     _logFn(`[MP] Peer disconnected: ${peerInfo?.name || peerId.slice(0, 8)}`);
     peers.delete(peerId);
@@ -349,8 +369,14 @@ export function kickPeer(peerId) {
   const peerInfo = peers.get(peerId);
   _logFn(`[MP] Kicked ${peerInfo?.name || peerId.slice(0, 8)}`);
   _logConnectionEvent(peerId, 'kicked');
-  // Trystero doesn't have a direct kick, but we can stop relaying to them
-  // and notify other peers
+  // Track kicked peer so their messages are ignored
+  kickedPeers.add(peerId);
+  // Try to close the WebRTC connection
+  try {
+    const peerConnections = room?.getPeers?.() || {};
+    const pc = peerConnections[peerId];
+    if (pc && pc.close) pc.close();
+  } catch (_) { /* best-effort close */ }
   peers.delete(peerId);
   dbRemoveRemotePlayer(peerId).catch(() => {});
   if (sendAction) sendAction({ action: 'peer_kicked', peerId, name: peerInfo?.name });

@@ -23,10 +23,14 @@ import {
 } from './db.js';
 import {
   isMultiplayer, getIsHost, broadcastMove, broadcastShoot, broadcastChat,
-  broadcastAction, broadcastWorldSync, setCallbacks as setMPCallbacks, getPeers
+  broadcastAction, broadcastWorldSync, setCallbacks as setMPCallbacks, getPeers,
+  getLocalPeerId
 } from './multiplayer.js';
 
 const $ = id => document.getElementById(id);
+
+// Per-peer cooldown map for incoming PvP shots (H2 security fix)
+const peerShootTimestamps = new Map();
 
 // --------------------------------------------------------
 //  EVENT LOG
@@ -102,9 +106,24 @@ setMPCallbacks({
   },
   onRemoteShoot: async (peerId, data) => {
     // Check if we are the target
-    const localId = (await import('./multiplayer.js')).getLocalPeerId();
+    const localId = getLocalPeerId();
     if (data.target === localId) {
-      const dmg = Math.min(data.damage || 15, 50); // cap damage to prevent cheating
+      // H2: Per-peer cooldown — reject shots faster than 200ms
+      const now = Date.now();
+      const lastShot = peerShootTimestamps.get(peerId) || 0;
+      if (now - lastShot < 200) return;
+      peerShootTimestamps.set(peerId, now);
+
+      // H2: Range check — reject if Manhattan distance > 8
+      const peerInfo = getPeers().get(peerId);
+      if (peerInfo) {
+        const p = await q1('SELECT x, y FROM player');
+        const dist = Math.abs((peerInfo.x || 0) - p.x) + Math.abs((peerInfo.y || 0) - p.y);
+        if (dist > 8) return;
+      }
+
+      // H1: Sanitize damage — must be positive integer, clamped 1–50
+      const dmg = Math.max(1, Math.min(Math.floor(Number(data.damage)) || 15, 50));
       await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), armor=GREATEST(0,armor-${dmg})`);
       spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
       log(`${data.name || 'Player'} shot you! -${dmg} HP`, 'c-red');
