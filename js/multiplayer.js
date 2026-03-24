@@ -131,18 +131,25 @@ function _joinRoom(roomCode, playerName, charType) {
   [sendPlayerLeave, onPlayerLeave] = room.makeAction('playerLeave');
   [sendAction, onAction] = room.makeAction('action');
 
-  // Wire up receive handlers
+  // Wire up receive handlers (with security checks)
   onMove((data, peerId) => {
+    if (!_checkRateLimit(peerId)) return;
+    if (!_validateTick(peerId, data.tick)) return;
+    if (isHost && !_validateMove(peerId, data)) return;
     _updatePeerData(peerId, data);
     upsertRemotePlayer(peerId, data).catch(() => {});
     if (_onRemoteMove) _onRemoteMove(peerId, data);
   });
 
   onShoot((data, peerId) => {
+    if (!_checkRateLimit(peerId)) return;
+    if (!_validateTick(peerId, data.tick)) return;
     if (_onRemoteShoot) _onRemoteShoot(peerId, data);
   });
 
   onChat((data, peerId) => {
+    if (!_checkRateLimit(peerId)) return;
+    if (!_validateTick(peerId, data.tick)) return;
     if (_onRemoteChat) _onRemoteChat(peerId, data);
   });
 
@@ -165,6 +172,18 @@ function _joinRoom(roomCode, playerName, charType) {
   });
 
   onAction((data, peerId) => {
+    if (!_checkRateLimit(peerId)) return;
+    // Handle kick votes
+    if (data.action === 'vote_kick' && data.target) {
+      if (!kickVotes.has(data.target)) kickVotes.set(data.target, new Set());
+      kickVotes.get(data.target).add(peerId);
+      const totalPeers = peers.size + 1;
+      const votes = kickVotes.get(data.target).size;
+      if (isHost && votes >= Math.ceil(totalPeers / 2)) {
+        kickPeer(data.target);
+        kickVotes.delete(data.target);
+      }
+    }
     if (_onRemoteAction) _onRemoteAction(peerId, data);
   });
 
@@ -278,4 +297,94 @@ export function generateRoomCode() {
   let code = '';
   for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
+}
+
+// --------------------------------------------------------
+//  SECURITY: Rate Limiting
+// --------------------------------------------------------
+
+const peerRateLimits = new Map(); // peerId -> { count, resetTime }
+const RATE_LIMIT_WINDOW = 1000; // 1 second
+const RATE_LIMIT_MAX = 30; // max events per second per peer
+
+function _checkRateLimit(peerId) {
+  const now = Date.now();
+  let rl = peerRateLimits.get(peerId);
+  if (!rl || now > rl.resetTime) {
+    rl = { count: 0, resetTime: now + RATE_LIMIT_WINDOW };
+    peerRateLimits.set(peerId, rl);
+  }
+  rl.count++;
+  if (rl.count > RATE_LIMIT_MAX) {
+    _logFn(`[SEC] Rate limit exceeded by ${peers.get(peerId)?.name || peerId.slice(0, 8)}`);
+    return false;
+  }
+  return true;
+}
+
+// --------------------------------------------------------
+//  SECURITY: Tick Validation (reject old/duplicate events)
+// --------------------------------------------------------
+
+const peerTicks = new Map(); // peerId -> lastTick
+
+function _validateTick(peerId, eventTick) {
+  if (!eventTick) return true; // allow events without ticks (worldSync)
+  const lastTick = peerTicks.get(peerId) || 0;
+  if (eventTick <= lastTick) {
+    return false; // stale or duplicate
+  }
+  peerTicks.set(peerId, eventTick);
+  return true;
+}
+
+// --------------------------------------------------------
+//  SECURITY: Peer Kick (host only)
+// --------------------------------------------------------
+
+const kickVotes = new Map(); // peerId -> Set of voter peerIds
+
+export function kickPeer(peerId) {
+  if (!isHost || !room) return;
+  const peerInfo = peers.get(peerId);
+  _logFn(`[MP] Kicked ${peerInfo?.name || peerId.slice(0, 8)}`);
+  _logConnectionEvent(peerId, 'kicked');
+  // Trystero doesn't have a direct kick, but we can stop relaying to them
+  // and notify other peers
+  peers.delete(peerId);
+  dbRemoveRemotePlayer(peerId).catch(() => {});
+  if (sendAction) sendAction({ action: 'peer_kicked', peerId, name: peerInfo?.name });
+  _updateLobbyUI();
+}
+
+export function voteKick(targetPeerId) {
+  if (!room) return;
+  if (!kickVotes.has(targetPeerId)) kickVotes.set(targetPeerId, new Set());
+  kickVotes.get(targetPeerId).add(localPeerId);
+  if (sendAction) sendAction({ action: 'vote_kick', target: targetPeerId });
+  // Check if majority voted
+  const totalPeers = peers.size + 1;
+  const votes = kickVotes.get(targetPeerId).size;
+  if (votes >= Math.ceil(totalPeers / 2)) {
+    if (isHost) kickPeer(targetPeerId);
+    _logFn(`[MP] Kick vote passed for ${peers.get(targetPeerId)?.name || targetPeerId.slice(0, 8)}`);
+    kickVotes.delete(targetPeerId);
+  }
+}
+
+// --------------------------------------------------------
+//  SECURITY: Movement Validation (host-side)
+// --------------------------------------------------------
+
+function _validateMove(peerId, data) {
+  const peer = peers.get(peerId);
+  if (!peer || peer.x === undefined) return true; // first move, allow
+  const dx = Math.abs((data.x || 0) - (peer.x || 0));
+  const dy = Math.abs((data.y || 0) - (peer.y || 0));
+  // Reject teleporting (more than 3 tiles per move)
+  if (dx > 3 || dy > 3) {
+    _logFn(`[SEC] Suspicious move from ${peer.name || peerId.slice(0, 8)}: dx=${dx} dy=${dy}`);
+    return false;
+  }
+  return true;
 }
