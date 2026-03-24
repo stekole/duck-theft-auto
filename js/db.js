@@ -1,5 +1,5 @@
 import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';
-import { T, CITIES, GANGS, MAP_SIZE, PERKS } from './constants.js';
+import { T, CITIES, GANGS, MAP_SIZE, PERKS, GUNS } from './constants.js';
 import { generateCityMap, buildGridCache } from './city.js';
 import { buildCity3D, spawnNPCs, duckGroup, setDuckTarget } from './renderer.js';
 
@@ -33,7 +33,8 @@ export async function initSchema() {
       armor INT DEFAULT 0, wanted_level INT DEFAULT 0,
       gang VARCHAR DEFAULT '', gang_rank VARCHAR DEFAULT '',
       respect INT DEFAULT 0, perk_points INT DEFAULT 0,
-      adrenaline INT DEFAULT 0
+      adrenaline INT DEFAULT 0,
+      char_type VARCHAR DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS game_clock(day INT DEFAULT 1, hour INT DEFAULT 8);
     CREATE TABLE IF NOT EXISTS map(x INT, y INT, tile VARCHAR);
@@ -42,7 +43,7 @@ export async function initSchema() {
     CREATE TABLE IF NOT EXISTS guns(name VARCHAR PRIMARY KEY, category VARCHAR, bonus INT);
     CREATE TABLE IF NOT EXISTS inventory(item VARCHAR PRIMARY KEY, qty INT DEFAULT 1);
     CREATE TABLE IF NOT EXISTS drugs(name VARCHAR PRIMARY KEY, qty INT DEFAULT 0, avg_price INT DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS vehicles(name VARCHAR PRIMARY KEY);
+    CREATE TABLE IF NOT EXISTS vehicles(name VARCHAR PRIMARY KEY, stored INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS territories(district VARCHAR, city VARCHAR, owner VARCHAR DEFAULT 'Unaffiliated', PRIMARY KEY(district, city));
     CREATE TABLE IF NOT EXISTS businesses(name VARCHAR, city VARCHAR, type VARCHAR, daily_income INT, PRIMARY KEY(name, city));
     CREATE TABLE IF NOT EXISTS recruits(id INT DEFAULT nextval('recruit_id_seq'), name VARCHAR, strength INT, upkeep INT);
@@ -88,17 +89,32 @@ export async function loadCityMap(cityName) {
   spawnNPCs();
 }
 
-export async function initPlayer(name) {
-  const cash = name.toLowerCase() === 'test' ? 999999 : 500;
+export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none', charType = '') {
+  const isOz = (charType || name).toLowerCase() === 'oz';
+  let cash = isOz ? 1000000 : bonus === 'cash' ? 750 : 500;
   const safeName = name.replace(/'/g, "''");
-  const tiles = generateCityMap('Los Santos');
+  const safeCity = startCity.replace(/'/g, "''");
+  const district = (CITIES[startCity]?.districts[0] || 'Grove Street').replace(/'/g, "''");
+  const tiles = generateCityMap(startCity);
   let startX = 5, startY = 5;
   for (const t of tiles) {
     if ((t.tile === T.ROAD_MAIN || t.tile === T.ROAD_SIDE) && t.x > 3 && t.y > 3) { startX = t.x; startY = t.y; break; }
   }
-  await conn.query(`INSERT INTO player VALUES ('${safeName}','Los Santos','Grove Street',${startX},${startY},${cash},100,0,0,'','',0,0,0)`);
+  const safeCharType = (charType || name).replace(/'/g, "''");
+  await conn.query(`INSERT INTO player VALUES ('${safeName}','${safeCity}','${district}',${startX},${startY},${cash},100,0,0,'','',0,0,0,'${safeCharType}')`);
   await conn.query(`INSERT INTO game_clock VALUES (1,8)`);
-  await loadCityMap('Los Santos');
+  if (bonus !== 'none' && bonus !== 'cash') {
+    await conn.query(`UPDATE skills SET level = level + 2 WHERE name='${bonus}'`);
+  }
+  // Oz hacker: all weapons, max skills, armor
+  if (isOz) {
+    for (const gun of GUNS) {
+      await conn.query(`INSERT INTO guns VALUES ('${gun.name.replace(/'/g,"''")}','${gun.cat}',${gun.bonus}) ON CONFLICT DO NOTHING`);
+    }
+    await conn.query(`UPDATE skills SET level = 10`);
+    await conn.query(`UPDATE player SET armor = 100, respect = 5000`);
+  }
+  await loadCityMap(startCity);
 
   // Position duck
   setDuckTarget(startX + 0.5, startY + 0.5);
@@ -134,13 +150,35 @@ export async function saveGame() {
     const tables = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events'];
     const saveData = {};
     for (const t of tables) saveData[t] = await q(`SELECT * FROM ${t}`);
+    // Save to named slot and legacy key
+    const player = saveData.player?.[0];
+    const slotName = player ? player.name : 'Unknown';
     localStorage.setItem('duck_theft_auto_save', JSON.stringify(saveData));
+    // Save index of all sessions
+    const indexRaw = localStorage.getItem('dta_save_index');
+    const index = indexRaw ? JSON.parse(indexRaw) : {};
+    index[slotName] = {
+      name: slotName,
+      city: player?.city || '?',
+      cash: player?.cash || 0,
+      day: saveData.game_clock?.[0]?.day || 1,
+      timestamp: Date.now()
+    };
+    localStorage.setItem('dta_save_index', JSON.stringify(index));
+    localStorage.setItem('dta_save_' + slotName, JSON.stringify(saveData));
     _dbLog('Game saved!', 'c-green');
   } catch (e) { _dbLog('Save failed: ' + e.message, 'c-red'); }
 }
 
-export async function loadGameData(callbacks) {
-  const raw = localStorage.getItem('duck_theft_auto_save');
+export function getSaveIndex() {
+  const raw = localStorage.getItem('dta_save_index');
+  return raw ? JSON.parse(raw) : {};
+}
+
+export async function loadGameData(callbacks, slotName) {
+  const raw = slotName
+    ? localStorage.getItem('dta_save_' + slotName)
+    : localStorage.getItem('duck_theft_auto_save');
   if (!raw) { _dbLog('No save found!', 'c-red'); return false; }
   try {
     const saveData = JSON.parse(raw);

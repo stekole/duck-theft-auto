@@ -52,6 +52,25 @@ Every player action is a SQL query against DuckDB-WASM running in your browser. 
 - **Save/Load** — persists to localStorage with auto-save every 5 minutes
 - **AI gang wars** — rival gangs fight over territory in the background
 
+## Data Persistence
+
+All game state lives in **DuckDB-WASM**, an in-memory SQL database running entirely in your browser. There is no server — everything happens client-side.
+
+**How saving works:**
+
+1. During gameplay, all data (player stats, inventory, territories, etc.) exists as rows in DuckDB tables in memory
+2. When you save (F5 or auto-save), every table is serialized to JSON and written to `localStorage`
+3. When you load, the JSON is read back from `localStorage` and re-inserted into fresh DuckDB tables
+
+**What this means:**
+
+- Saves persist across page refreshes and browser restarts
+- Auto-save runs every 5 minutes during gameplay
+- Clearing your browser data / localStorage will delete your save
+- Each browser profile has its own independent save
+- Save data is stored under the key `duck_theft_auto_save` in localStorage
+- There is one save slot — saving overwrites the previous save
+
 ## Controls
 
 | Key | Action |

@@ -131,26 +131,33 @@ body {
   flex-direction: column;
   gap: 6px;
 }
+#event-log {
+  background: rgba(0,0,0,0.8);
+  border: 1px solid #333;
+  padding: 8px;
+  height: 150px;
+  min-height: 100px;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 4px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 52;
+}
 #action-panel {
   background: rgba(0,0,0,0.8);
   border: 1px solid #333;
   padding: 8px;
   border-radius: 4px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 #action-panel h3 { color: #ffcc00; margin-bottom: 6px; font-size: 13px; }
 #actions { display: flex; flex-wrap: wrap; gap: 3px; }
 #actions .btn { font-size: 11px; padding: 4px 8px; }
 #actions .btn .key { color: #ffcc00; font-weight: bold; }
-#event-log {
-  background: rgba(0,0,0,0.8);
-  border: 1px solid #333;
-  padding: 8px;
-  flex: 1;
-  overflow-y: auto;
-  font-size: 11px;
-  line-height: 1.4;
-  border-radius: 4px;
-}
 #event-log .log-entry { margin-bottom: 1px; }
 .c-red { color: #ff4444; }
 .c-green { color: #44ff44; }
@@ -162,16 +169,30 @@ body {
 .c-gray { color: #666666; }
 .c-gold { color: #ffd700; }
 
-/* Sub-menus */
-#sub-menu {
-  background: rgba(0,0,0,0.85);
-  border: 1px solid #555;
-  padding: 10px;
-  margin-top: 6px;
+/* Sub-menu modal overlay */
+#sub-menu-backdrop {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.6);
+  z-index: 50;
   display: none;
-  border-radius: 4px;
-  max-height: 400px;
+}
+#sub-menu {
+  position: fixed;
+  top: 50%; left: calc(50% - 180px);
+  transform: translate(-50%, -50%);
+  background: rgba(10,10,10,0.95);
+  border: 1px solid #555;
+  padding: 16px;
+  display: none;
+  border-radius: 6px;
+  max-height: 80vh;
+  max-width: 520px;
+  width: 90vw;
   overflow-y: auto;
+  z-index: 51;
+  box-shadow: 0 0 30px rgba(0,0,0,0.8);
 }
 #sub-menu h4 { color: #ff8800; margin-bottom: 8px; }
 #sub-menu .btn { font-size: 11px; padding: 4px 8px; }
@@ -224,6 +245,26 @@ body {
   z-index: 30;
 }
 
+/* Character selection cards */
+.char-card {
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 6px;
+  padding: 6px 8px;
+  width: 90px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  text-align: center;
+}
+.char-card:hover { border-color: #00ff00; background: #112211; }
+.char-card.selected { border-color: #00ff00; background: #0a2a0a; box-shadow: 0 0 10px #00ff0033; }
+.char-card .char-avatar { width: 48px; height: 48px; margin: 0 auto 2px; }
+.char-card .char-name { color: #ff6600; font-size: 12px; font-weight: bold; }
+.char-card .char-city { color: #888; font-size: 9px; margin: 1px 0; }
+.char-card .char-desc { color: #aaa; font-size: 9px; }
+
+#saved-list .btn { text-align: left; }
+#saved-list .btn:hover { background: #002200; }
 @keyframes wanted-flash {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: inset 0 0 40px #ff000044; }
@@ -236,7 +277,7 @@ body {
 <div id="loading">Loading DuckDB + Three.js...</div>
 
 <div id="title-screen" style="display:none">
-  <pre>
+  <pre style="font-size:8px;line-height:1.0">
  ____             _      _____ _          __ _
 |  _ \ _   _  ___| | __ |_   _| |__   ___/ _| |_
 | | | | | | |/ __| |/ /   | | | '_ \ / _ \ |_| __|
@@ -247,14 +288,138 @@ body {
   / ___ \ |_| | || (_) |
  /_/   \_\__,_|\__\___/
   </pre>
-  <div class="subtitle">All game state powered by DuckDB</div>
-  <div class="prompt">Enter your name, criminal:</div>
-  <div><input type="text" id="player-name-input" value="CJ" maxlength="20"></div>
-  <div style="margin-top:16px">
+  <div class="subtitle" style="margin:6px 0;font-size:14px">All game state powered by DuckDB</div>
+  <div style="color:#aaa;font-size:11px;max-width:500px;margin:4px auto;line-height:1.3;text-align:center;padding:0 16px">
+    Build a criminal empire across 5 cities. WASD to move, 1-9 for actions, ENTER at markers, Space/F to shoot.
+  </div>
+  <div class="prompt" style="margin:8px 0 4px">Choose your character:</div>
+  <div id="char-select" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:4px 0;max-width:620px">
+    <div class="char-card selected" data-name="CJ" data-city="Los Santos" data-bonus="none">
+      <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <!-- CJ: Grove Street duck with green bandana, tank top, gold chain -->
+        <ellipse cx="32" cy="40" rx="16" ry="14" fill="#ffdd00"/><!-- body -->
+        <circle cx="32" cy="22" r="12" fill="#ffee33"/><!-- head -->
+        <polygon points="32,28 38,32 26,32" fill="#ff8800"/><!-- beak -->
+        <circle cx="28" cy="19" r="2" fill="#111"/><!-- eye L -->
+        <circle cx="36" cy="19" r="2" fill="#111"/><!-- eye R -->
+        <rect x="22" y="12" width="20" height="5" rx="2" fill="#44ff44"/><!-- green bandana -->
+        <rect x="26" y="34" width="12" height="16" rx="2" fill="#222"/><!-- tank top -->
+        <path d="M28,30 Q32,34 36,30" stroke="#ffd700" stroke-width="1.5" fill="none"/><!-- gold chain -->
+        <circle cx="32" cy="33" r="1.5" fill="#ffd700"/><!-- chain pendant -->
+      </svg></div>
+      <div class="char-name">CJ</div>
+      <div class="char-city">Los Santos</div>
+      <div class="char-desc">Balanced start. $500 cash.</div>
+    </div>
+    <div class="char-card" data-name="Tommy" data-city="Vice City" data-bonus="cash">
+      <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <!-- Tommy: Vice City duck with Hawaiian shirt, slicked back look, sunglasses -->
+        <ellipse cx="32" cy="40" rx="16" ry="14" fill="#ffdd00"/><!-- body -->
+        <circle cx="32" cy="22" r="12" fill="#ffee33"/><!-- head -->
+        <polygon points="32,28 38,32 26,32" fill="#ff8800"/><!-- beak -->
+        <rect x="24" y="17" width="16" height="4" rx="2" fill="#222"/><!-- sunglasses -->
+        <rect x="25" y="17" width="5" height="4" rx="1" fill="#333"/>
+        <rect x="34" y="17" width="5" height="4" rx="1" fill="#333"/>
+        <rect x="26" y="34" width="12" height="16" rx="2" fill="#ff4488"/><!-- Hawaiian shirt -->
+        <rect x="28" y="37" width="2" height="2" rx="1" fill="#44ddff"/><!-- flower -->
+        <rect x="34" y="39" width="2" height="2" rx="1" fill="#ffff44"/><!-- flower -->
+        <rect x="30" y="42" width="2" height="2" rx="1" fill="#44ff88"/><!-- flower -->
+        <path d="M26,12 Q32,8 38,12" stroke="#ffee33" stroke-width="2" fill="none"/><!-- slicked hair -->
+      </svg></div>
+      <div class="char-name">Tommy</div>
+      <div class="char-city">Vice City</div>
+      <div class="char-desc">Street smart. $750 cash.</div>
+    </div>
+    <div class="char-card" data-name="Claude" data-city="Liberty City" data-bonus="stealth">
+      <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <!-- Claude: Silent duck with leather jacket, dark look, no expression -->
+        <ellipse cx="32" cy="40" rx="16" ry="14" fill="#ffdd00"/><!-- body -->
+        <circle cx="32" cy="22" r="12" fill="#ffee33"/><!-- head -->
+        <polygon points="32,28 38,32 26,32" fill="#ff8800"/><!-- beak -->
+        <circle cx="28" cy="19" r="2" fill="#111"/><!-- eye L -->
+        <circle cx="36" cy="19" r="2" fill="#111"/><!-- eye R -->
+        <line x1="26" y1="17" x2="30" y2="18" stroke="#111" stroke-width="1.5"/><!-- angry brow L -->
+        <line x1="38" y1="17" x2="34" y2="18" stroke="#111" stroke-width="1.5"/><!-- angry brow R -->
+        <rect x="24" y="34" width="16" height="18" rx="2" fill="#1a1a1a"/><!-- leather jacket -->
+        <line x1="32" y1="34" x2="32" y2="52" stroke="#333" stroke-width="1"/><!-- jacket zip -->
+        <rect x="24" y="34" width="3" height="18" rx="1" fill="#222"/><!-- jacket collar L -->
+        <rect x="37" y="34" width="3" height="18" rx="1" fill="#222"/><!-- jacket collar R -->
+      </svg></div>
+      <div class="char-name">Claude</div>
+      <div class="char-city">Liberty City</div>
+      <div class="char-desc">Silent type. +2 stealth.</div>
+    </div>
+    <div class="char-card" data-name="Niko" data-city="San Fierro" data-bonus="strength">
+      <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <!-- Niko: Tough duck with military jacket, scars, stubble -->
+        <ellipse cx="32" cy="40" rx="16" ry="14" fill="#ffdd00"/><!-- body -->
+        <circle cx="32" cy="22" r="12" fill="#ffee33"/><!-- head -->
+        <polygon points="32,28 38,32 26,32" fill="#ff8800"/><!-- beak -->
+        <circle cx="28" cy="19" r="2" fill="#111"/><!-- eye L -->
+        <circle cx="36" cy="19" r="2" fill="#111"/><!-- eye R -->
+        <line x1="38" y1="16" x2="42" y2="20" stroke="#cc6644" stroke-width="1"/><!-- scar -->
+        <line x1="39" y1="17" x2="43" y2="21" stroke="#cc6644" stroke-width="0.5"/>
+        <rect x="25" y="34" width="14" height="18" rx="2" fill="#556644"/><!-- military jacket -->
+        <rect x="25" y="34" width="14" height="3" rx="1" fill="#445533"/><!-- collar -->
+        <rect x="28" y="40" width="2" height="2" fill="#333"/><!-- pocket -->
+        <rect x="34" y="40" width="2" height="2" fill="#333"/><!-- pocket -->
+      </svg></div>
+      <div class="char-name">Niko</div>
+      <div class="char-city">San Fierro</div>
+      <div class="char-desc">Tough immigrant. +2 strength.</div>
+    </div>
+    <div class="char-card" data-name="Catalina" data-city="Las Venturas" data-bonus="driving">
+      <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <!-- Catalina: Wild duck with red lipstick, hoop earrings, leather -->
+        <ellipse cx="32" cy="40" rx="16" ry="14" fill="#ffdd00"/><!-- body -->
+        <circle cx="32" cy="22" r="12" fill="#ffee33"/><!-- head -->
+        <polygon points="32,28 38,32 26,32" fill="#ff4444"/><!-- red lipstick beak -->
+        <circle cx="28" cy="19" r="2" fill="#111"/><!-- eye L -->
+        <circle cx="36" cy="19" r="2" fill="#111"/><!-- eye R -->
+        <path d="M26,18 Q28,16 30,18" stroke="#111" stroke-width="1" fill="none"/><!-- eyelash L -->
+        <path d="M34,18 Q36,16 38,18" stroke="#111" stroke-width="1" fill="none"/><!-- eyelash R -->
+        <circle cx="20" cy="24" r="3" stroke="#ffd700" stroke-width="1.5" fill="none"/><!-- earring L -->
+        <circle cx="44" cy="24" r="3" stroke="#ffd700" stroke-width="1.5" fill="none"/><!-- earring R -->
+        <rect x="26" y="34" width="12" height="16" rx="2" fill="#cc2222"/><!-- red top -->
+        <path d="M24,10 Q28,6 32,10 Q36,6 40,10" stroke="#ffee33" stroke-width="2" fill="none"/><!-- wild hair -->
+        <path d="M22,12 Q26,8 30,12" stroke="#ffee33" stroke-width="2" fill="none"/>
+        <path d="M34,12 Q38,8 42,12" stroke="#ffee33" stroke-width="2" fill="none"/>
+      </svg></div>
+      <div class="char-name">Catalina</div>
+      <div class="char-city">Las Venturas</div>
+      <div class="char-desc">Wild card. +2 driving.</div>
+    </div>
+    <div class="char-card" data-name="Oz" data-city="Liberty City" data-bonus="none" style="border-color:#ff00ff">
+      <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <!-- Oz: Hacker duck with hoodie, glowing glasses, matrix vibes -->
+        <ellipse cx="32" cy="40" rx="16" ry="14" fill="#ffdd00"/><!-- body -->
+        <circle cx="32" cy="22" r="12" fill="#ffee33"/><!-- head -->
+        <polygon points="32,28 38,32 26,32" fill="#ff8800"/><!-- beak -->
+        <rect x="25" y="17" width="5" height="4" rx="1" fill="#00ff00" opacity="0.8"/><!-- cyber glasses L -->
+        <rect x="34" y="17" width="5" height="4" rx="1" fill="#00ff00" opacity="0.8"/><!-- cyber glasses R -->
+        <rect x="24" y="17" width="16" height="4" rx="2" fill="none" stroke="#00ff00" stroke-width="1"/><!-- glasses frame -->
+        <path d="M22,10 L22,30 Q22,36 26,34" stroke="#222" stroke-width="3" fill="none"/><!-- hoodie L -->
+        <path d="M42,10 L42,30 Q42,36 38,34" stroke="#222" stroke-width="3" fill="none"/><!-- hoodie R -->
+        <path d="M22,10 Q32,4 42,10" fill="#222" stroke="#222" stroke-width="2"/><!-- hoodie top -->
+        <rect x="24" y="34" width="16" height="18" rx="2" fill="#1a1a2e"/><!-- hoodie body -->
+        <text x="32" y="46" text-anchor="middle" fill="#00ff00" font-size="7" font-family="monospace">0x1337</text>
+        <circle cx="28" cy="50" r="1" fill="#ff00ff"/><!-- LED -->
+        <circle cx="36" cy="50" r="1" fill="#00ffff"/><!-- LED -->
+      </svg></div>
+      <div class="char-name" style="color:#ff00ff">Oz</div>
+      <div class="char-city">Liberty City</div>
+      <div class="char-desc">Hacker. $1M, all guns, max skills.</div>
+    </div>
+  </div>
+  <div style="margin-top:6px"><input type="text" id="player-name-input" value="" maxlength="20" placeholder="Enter your name (optional)"></div>
+  <div id="saved-sessions" style="margin-top:8px;display:none">
+    <div style="color:#ffcc00;font-size:12px;margin-bottom:6px">Saved Sessions:</div>
+    <div id="saved-list" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center"></div>
+  </div>
+  <div style="margin-top:8px">
     <button onclick="startNewGame()">New Game</button>
     <button onclick="loadGame()">Load Game</button>
   </div>
-  <div style="margin-top:12px;color:#666;font-size:11px">Tip: Enter name "test" for $999,999 starting cash</div>
 </div>
 
 <div id="game-ui">
@@ -271,17 +436,19 @@ body {
     <div class="hud-item">Rank: <span id="hud-rank">-</span></div>
     <div class="hud-item">Respect: <span id="hud-respect">0</span></div>
     <div class="hud-item">Heat: <span id="hud-heat">0</span></div>
-    <div class="hud-item"></div>
+    <div class="hud-item">Status: <span id="hud-status" class="c-cyan">Idle</span></div>
   </div>
 
   <div id="right-panel">
+    <div id="event-log"></div>
     <div id="action-panel">
       <h3 id="action-title">What do you want to do?</h3>
       <div id="actions"></div>
-      <div id="sub-menu"></div>
     </div>
-    <div id="event-log"></div>
   </div>
+
+  <div id="sub-menu-backdrop"></div>
+  <div id="sub-menu"></div>
 
   <div id="poi-indicator"></div>
 
@@ -317,7 +484,8 @@ const $ = id => document.getElementById(id);
 const T = {
   WALL: '#', ROAD_MAIN: '=', ROAD_SIDE: '-', GROUND: '.', WATER: '~', TREE: 'T', PARK: 'P', SAND: 's',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
-  POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G'
+  POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
+  POI_STRIP: 'X'
 };
 
 const POI_DEFS = {
@@ -329,7 +497,8 @@ const POI_DEFS = {
   [T.POI_SHOP]:     { name: 'Convenience Store',color: '#4488ff', colorHex: 0x4488ff, icon: '$', menu: 'menuShops' },
   [T.POI_VEHICLE]:  { name: 'Vehicle Dealer',  color: '#ff8800', colorHex: 0xff8800, icon: 'V', menu: 'menuVehicles' },
   [T.POI_WORK]:     { name: 'Job Center',      color: '#44ff44', colorHex: 0x44ff44, icon: 'W', menu: 'menuJobs' },
-  [T.POI_GANG]:     { name: 'Gang HQ',         color: '#aa44ff', colorHex: 0xaa44ff, icon: 'G', menu: 'menuGang' }
+  [T.POI_GANG]:     { name: 'Gang HQ',         color: '#aa44ff', colorHex: 0xaa44ff, icon: 'G', menu: 'menuGang' },
+  [T.POI_STRIP]:    { name: 'Strip Club',      color: '#ff66aa', colorHex: 0xff66aa, icon: 'X', menu: 'menuStripClub' }
 };
 
 const TILE_COLORS = {
@@ -358,29 +527,32 @@ const CITIES = {
 };
 
 const JOBS = [
-  { name: 'Taxi Driver',     skill: 'driving',  min: 20, max: 70,  hours: 4 },
-  { name: 'Delivery Driver', skill: 'driving',  min: 25, max: 80,  hours: 5 },
-  { name: 'Mechanic',        skill: 'strength', min: 30, max: 75,  hours: 6 },
-  { name: 'Security Guard',  skill: 'strength', min: 35, max: 85,  hours: 6 },
-  { name: 'Street Performer',skill: 'charisma', min: 25, max: 80,  hours: 4 },
-  { name: 'Bus Driver',      skill: 'driving',  min: 20, max: 70,  hours: 8 },
-  { name: 'Bartender',       skill: 'charisma', min: 30, max: 85,  hours: 6 },
-  { name: 'Dock Worker',     skill: 'strength', min: 25, max: 75,  hours: 8 },
-  { name: 'Construction',    skill: 'strength', min: 35, max: 90,  hours: 8 },
-  { name: 'Chef',            skill: 'charisma', min: 40, max: 100, hours: 6 },
-  { name: 'Pizza Delivery',  skill: 'driving',  min: 25, max: 70,  hours: 4 },
-  { name: 'Street Vendor',   skill: 'charisma', min: 30, max: 75,  hours: 5 }
+  { name: 'Taxi Driver',     skill: 'driving',  min: 20, max: 70,  hours: 2 },
+  { name: 'Delivery Driver', skill: 'driving',  min: 25, max: 80,  hours: 3 },
+  { name: 'Mechanic',        skill: 'strength', min: 30, max: 75,  hours: 3 },
+  { name: 'Security Guard',  skill: 'strength', min: 35, max: 85,  hours: 4 },
+  { name: 'Street Performer',skill: 'charisma', min: 25, max: 80,  hours: 2 },
+  { name: 'Bus Driver',      skill: 'driving',  min: 20, max: 70,  hours: 4 },
+  { name: 'Bartender',       skill: 'charisma', min: 30, max: 85,  hours: 3 },
+  { name: 'Dock Worker',     skill: 'strength', min: 25, max: 75,  hours: 4 },
+  { name: 'Construction',    skill: 'strength', min: 35, max: 90,  hours: 4 },
+  { name: 'Chef',            skill: 'charisma', min: 40, max: 100, hours: 3 },
+  { name: 'Pizza Delivery',  skill: 'driving',  min: 25, max: 70,  hours: 2 },
+  { name: 'Street Vendor',   skill: 'charisma', min: 30, max: 75,  hours: 3 }
 ];
 
 const CRIMES = [
   { name: 'Rob Store',         skill: 'stealth',  baseMin: 15, baseMax: 35, lootMin: 50,  lootMax: 250,  lootMul: 10, dmgMin: 5,  dmgMax: 20, respectMin: 5,   respectMax: 15,  heat: 2,  hours: 2, failWanted: 1, failFineMin: 50,  failFineMax: 225, failDmgMin: 10, failDmgMax: 45 },
-  { name: 'Burglary',          skill: 'stealth',  baseMin: 5,  baseMax: 55, lootMin: 75,  lootMax: 400,  lootMul: 15, dmgMin: 0,  dmgMax: 10, respectMin: 10,  respectMax: 30,  heat: 5,  hours: 4, failWanted: 1, failFineMin: 75,  failFineMax: 350, failDmgMin: 15, failDmgMax: 55 },
-  { name: 'Heist',             skill: 'stealth',  baseMin: 10, baseMax: 55, lootMin: 250, lootMax: 1000, lootMul: 25, dmgMin: 15, dmgMax: 45, respectMin: 50,  respectMax: 150, heat: 15, hours: 8, failWanted: 2, failFineMin: 100, failFineMax: 500, failDmgMin: 20, failDmgMax: 75 },
+  { name: 'Burglary',          skill: 'stealth',  baseMin: 5,  baseMax: 55, lootMin: 75,  lootMax: 400,  lootMul: 15, dmgMin: 0,  dmgMax: 10, respectMin: 10,  respectMax: 30,  heat: 5,  hours: 3, failWanted: 1, failFineMin: 75,  failFineMax: 350, failDmgMin: 15, failDmgMax: 55 },
+  { name: 'Heist',             skill: 'stealth',  baseMin: 10, baseMax: 55, lootMin: 250, lootMax: 1000, lootMul: 25, dmgMin: 15, dmgMax: 45, respectMin: 50,  respectMax: 150, heat: 15, hours: 5, failWanted: 2, failFineMin: 100, failFineMax: 500, failDmgMin: 20, failDmgMax: 75 },
   { name: 'Carjack',           skill: 'driving',  baseMin: 20, baseMax: 35, lootMin: 20,  lootMax: 70,   lootMul: 5,  dmgMin: 0,  dmgMax: 15, respectMin: 1,   respectMax: 6,   heat: 1,  hours: 1, failWanted: 1, failFineMin: 25,  failFineMax: 150, failDmgMin: 10, failDmgMax: 45 },
   { name: 'Pickpocket',        skill: 'stealth',  baseMin: 30, baseMax: 90, lootMin: 20,  lootMax: 100,  lootMul: 5,  dmgMin: 0,  dmgMax: 0,  respectMin: 1,   respectMax: 3,   heat: 0,  hours: 1, failWanted: 1, failFineMin: 25,  failFineMax: 100, failDmgMin: 5,  failDmgMax: 15 },
   { name: 'Mug Someone',       skill: 'strength', baseMin: 35, baseMax: 65, lootMin: 30,  lootMax: 200,  lootMul: 8,  dmgMin: 10, dmgMax: 30, respectMin: 3,   respectMax: 10,  heat: 2,  hours: 2, failWanted: 1, failFineMin: 50,  failFineMax: 200, failDmgMin: 15, failDmgMax: 50 },
   { name: 'Arson',             skill: 'stealth',  baseMin: 25, baseMax: 60, lootMin: 100, lootMax: 300,  lootMul: 0,  dmgMin: 20, dmgMax: 40, respectMin: 20,  respectMax: 40,  heat: 8,  hours: 3, failWanted: 1, failFineMin: 100, failFineMax: 400, failDmgMin: 25, failDmgMax: 60 },
-  { name: 'Kidnap for Ransom', skill: 'charisma', baseMin: 10, baseMax: 50, lootMin: 200, lootMax: 700,  lootMul: 20, dmgMin: 15, dmgMax: 35, respectMin: 30,  respectMax: 75,  heat: 10, hours: 5, failWanted: 1, failFineMin: 200, failFineMax: 600, failDmgMin: 25, failDmgMax: 65 }
+  { name: 'Kidnap for Ransom', skill: 'charisma', baseMin: 10, baseMax: 50, lootMin: 200, lootMax: 700,  lootMul: 20, dmgMin: 15, dmgMax: 35, respectMin: 30,  respectMax: 75,  heat: 10, hours: 3, failWanted: 1, failFineMin: 200, failFineMax: 600, failDmgMin: 25, failDmgMax: 65 },
+  { name: 'Bank Robbery',     skill: 'stealth',  baseMin: 5,  baseMax: 35, lootMin: 500, lootMax: 2000, lootMul: 30, dmgMin: 20, dmgMax: 50, respectMin: 80,  respectMax: 200, heat: 20, hours: 4, failWanted: 3, failFineMin: 500, failFineMax: 1500, failDmgMin: 30, failDmgMax: 80 },
+  { name: 'Cop Car Ambush',   skill: 'strength', baseMin: 5,  baseMax: 30, lootMin: 300, lootMax: 900,  lootMul: 20, dmgMin: 25, dmgMax: 55, respectMin: 60,  respectMax: 120, heat: 25, hours: 2, failWanted: 3, failFineMin: 400, failFineMax: 1000, failDmgMin: 35, failDmgMax: 70 },
+  { name: 'Armored Truck Hit', skill: 'driving', baseMin: 8,  baseMax: 40, lootMin: 800, lootMax: 3000, lootMul: 40, dmgMin: 15, dmgMax: 45, respectMin: 100, respectMax: 250, heat: 30, hours: 5, failWanted: 3, failFineMin: 600, failFineMax: 2000, failDmgMin: 40, failDmgMax: 90 }
 ];
 
 const GUNS = [
@@ -450,6 +622,7 @@ const ITEMS = {
 };
 
 // === city.js ===
+
 
 // --------------------------------------------------------
 //  CITY MAP GENERATORS
@@ -530,7 +703,7 @@ function generateCityMap(cityName) {
     }
   }
 
-  const poiTypes = [T.POI_AMMO, T.POI_HOSPITAL, T.POI_HOOKER, T.POI_GAMBLING, T.POI_DRUG, T.POI_SHOP, T.POI_VEHICLE, T.POI_WORK, T.POI_GANG];
+  const poiTypes = [T.POI_AMMO, T.POI_HOSPITAL, T.POI_HOOKER, T.POI_GAMBLING, T.POI_DRUG, T.POI_SHOP, T.POI_VEHICLE, T.POI_WORK, T.POI_GANG, T.POI_STRIP];
   const roadAdjacentSpots = [];
   for (let y = 2; y < S-2; y++) {
     for (let x = 2; x < S-2; x++) {
@@ -566,6 +739,8 @@ function buildGridCache(mapData) {
 // === renderer.js ===
 
 
+
+
 // --------------------------------------------------------
 //  THREE.JS GLOBALS
 // --------------------------------------------------------
@@ -579,6 +754,7 @@ let gameActive = false;
 // Phase 2: City life
 let npcs = [];
 let parkedCars = [];
+let npcCars = [];
 let streetLamps = [];
 let neonSigns = [];
 let particles = [];
@@ -738,6 +914,138 @@ function createDuck() {
   duckGroup.add(hatTop);
 
   scene.add(duckGroup);
+}
+
+// Character-specific accessories for the 3D duck
+let characterAccessories = [];
+function applyCharacterSkin(charName) {
+  // Remove old accessories
+  for (const obj of characterAccessories) {
+    if (obj.parent) obj.parent.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  }
+  characterAccessories = [];
+  if (!duckGroup) return;
+
+  // Remove default hat for characters that have their own headgear
+  const defaultHat = duckGroup.children.filter(c =>
+    c.geometry && c.geometry.type === 'CylinderGeometry' &&
+    c.position.y > 0.7
+  );
+
+  const name = (charName || '').toLowerCase();
+
+  if (name === 'cj') {
+    // Green bandana replacing hat
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const bandanaGeo = new THREE.BoxGeometry(0.36, 0.06, 0.28);
+    const bandanaMat = new THREE.MeshStandardMaterial({ color: 0x44ff44 });
+    const bandana = new THREE.Mesh(bandanaGeo, bandanaMat);
+    bandana.position.set(0, 0.7, 0.1);
+    duckGroup.add(bandana);
+    characterAccessories.push(bandana);
+    // Gold chain
+    const chainGeo = new THREE.TorusGeometry(0.12, 0.015, 8, 16);
+    const chainMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 });
+    const chain = new THREE.Mesh(chainGeo, chainMat);
+    chain.rotation.x = Math.PI / 2;
+    chain.position.set(0, 0.35, 0.2);
+    duckGroup.add(chain);
+    characterAccessories.push(chain);
+
+  } else if (name === 'tommy') {
+    // Sunglasses
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const glassGeo = new THREE.BoxGeometry(0.28, 0.05, 0.04);
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.5 });
+    const glasses = new THREE.Mesh(glassGeo, glassMat);
+    glasses.position.set(0, 0.6, 0.32);
+    duckGroup.add(glasses);
+    characterAccessories.push(glasses);
+    // Hawaiian shirt color on body
+    const shirtGeo = new THREE.BoxGeometry(0.35, 0.15, 0.25);
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff4488 });
+    const shirt = new THREE.Mesh(shirtGeo, shirtMat);
+    shirt.position.set(0, 0.2, 0.05);
+    duckGroup.add(shirt);
+    characterAccessories.push(shirt);
+
+  } else if (name === 'claude') {
+    // Leather jacket collar
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const collarGeo = new THREE.BoxGeometry(0.38, 0.08, 0.3);
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3 });
+    const collar = new THREE.Mesh(collarGeo, collarMat);
+    collar.position.set(0, 0.42, 0.05);
+    duckGroup.add(collar);
+    characterAccessories.push(collar);
+
+  } else if (name === 'niko') {
+    // Military cap (olive) replacing default hat
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const capBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x556644 });
+    const capBrim = new THREE.Mesh(capBrimGeo, capMat);
+    capBrim.position.set(0, 0.72, 0.1);
+    duckGroup.add(capBrim);
+    characterAccessories.push(capBrim);
+    const capTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
+    const capTop = new THREE.Mesh(capTopGeo, capMat);
+    capTop.position.set(0, 0.78, 0.1);
+    duckGroup.add(capTop);
+    characterAccessories.push(capTop);
+    // Scar on face
+    const scarGeo = new THREE.BoxGeometry(0.01, 0.12, 0.01);
+    const scarMat = new THREE.MeshStandardMaterial({ color: 0xcc6644 });
+    const scar = new THREE.Mesh(scarGeo, scarMat);
+    scar.position.set(0.15, 0.58, 0.3);
+    scar.rotation.z = 0.3;
+    duckGroup.add(scar);
+    characterAccessories.push(scar);
+
+  } else if (name === 'catalina') {
+    // Red beret replacing hat
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const beretGeo = new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    const beretMat = new THREE.MeshStandardMaterial({ color: 0xcc2222 });
+    const beret = new THREE.Mesh(beretGeo, beretMat);
+    beret.position.set(0, 0.72, 0.1);
+    duckGroup.add(beret);
+    characterAccessories.push(beret);
+    // Hoop earrings
+    const earGeo = new THREE.TorusGeometry(0.06, 0.01, 8, 12);
+    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1 });
+    for (const sx of [-0.2, 0.2]) {
+      const earring = new THREE.Mesh(earGeo, earMat);
+      earring.position.set(sx, 0.5, 0.2);
+      duckGroup.add(earring);
+      characterAccessories.push(earring);
+    }
+
+  } else if (name === 'oz') {
+    // Hoodie over head
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const hoodGeo = new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.6);
+    const hoodMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+    const hood = new THREE.Mesh(hoodGeo, hoodMat);
+    hood.position.set(0, 0.6, 0.08);
+    duckGroup.add(hood);
+    characterAccessories.push(hood);
+    // Glowing green glasses
+    const cyberGeo = new THREE.BoxGeometry(0.28, 0.04, 0.04);
+    const cyberMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.8 });
+    const cyber = new THREE.Mesh(cyberGeo, cyberMat);
+    cyber.position.set(0, 0.6, 0.33);
+    duckGroup.add(cyber);
+    characterAccessories.push(cyber);
+    // Glow light
+    const glow = new THREE.PointLight(0x00ff00, 0.5, 2);
+    glow.position.set(0, 0.6, 0.4);
+    duckGroup.add(glow);
+    characterAccessories.push(glow);
+  }
+  // Default (unknown names) keep the standard hat — no changes
 }
 
 // --------------------------------------------------------
@@ -962,6 +1270,91 @@ function buildCity3D() {
     }
   }
 
+  // NPC cars on main roads (stealable)
+  npcCars = [];
+  const npcCarColors = [
+    0xff00ff, 0x00ffff, 0xff4400, 0x44ff00, 0xffff00, 0xff0066,
+    0x6600ff, 0x00ff88, 0xff8800, 0x0088ff, 0xcc00cc, 0x00cccc
+  ];
+  const npcCarNames = [
+    'Neon Blaze', 'Midnight Cruiser', 'Flame Runner', 'Volt Racer',
+    'Gold Rush', 'Pink Panther', 'Shadow Drift', 'Jade Fury',
+    'Sunset Rider', 'Ice Storm', 'Purple Haze', 'Aqua Bullet'
+  ];
+  const mainRoadTiles = [];
+  for (let y = 4; y < MAP_SIZE - 4; y++) {
+    for (let x = 4; x < MAP_SIZE - 4; x++) {
+      if (currentMapGrid[y][x] === T.ROAD_MAIN) mainRoadTiles.push({x, y});
+    }
+  }
+  const npcCarCount = Math.min(8, Math.floor(mainRoadTiles.length / 30));
+  for (let i = 0; i < npcCarCount; i++) {
+    const rt = mainRoadTiles[Math.floor(Math.random() * mainRoadTiles.length)];
+    const colorIdx = Math.floor(Math.random() * npcCarColors.length);
+    const color = npcCarColors[colorIdx];
+    const vName = npcCarNames[colorIdx];
+    const wx = rt.x + 0.5, wz = rt.y + 0.5;
+    const carGroup = new THREE.Group();
+    // Wider/sportier body
+    const bodyW = 0.3 + Math.random() * 0.15;
+    const bodyL = 0.6 + Math.random() * 0.2;
+    const cBodyGeo = new THREE.BoxGeometry(bodyW, 0.2, bodyL);
+    const cBodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0.5 });
+    const cBody = new THREE.Mesh(cBodyGeo, cBodyMat);
+    cBody.position.y = 0.12;
+    cBody.castShadow = true;
+    carGroup.add(cBody);
+    const cTopGeo = new THREE.BoxGeometry(bodyW * 0.75, 0.14, bodyL * 0.5);
+    const cTop = new THREE.Mesh(cTopGeo, cBodyMat);
+    cTop.position.set(0, 0.26, -0.02);
+    carGroup.add(cTop);
+    // Glowing trim
+    const trimGeo = new THREE.BoxGeometry(bodyW + 0.04, 0.02, bodyL + 0.04);
+    const trimMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4 });
+    const trim = new THREE.Mesh(trimGeo, trimMat);
+    trim.position.y = 0.03;
+    carGroup.add(trim);
+    // Wheels
+    const cwGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.08, 8);
+    const cwMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const hw = bodyW / 2 + 0.02;
+    const hl = bodyL / 2 - 0.08;
+    for (const [sx, sz] of [[-hw, -hl], [hw, -hl], [-hw, hl], [hw, hl]]) {
+      const w = new THREE.Mesh(cwGeo, cwMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(sx, 0.06, sz);
+      carGroup.add(w);
+    }
+    // Headlights
+    const hlGeo = new THREE.SphereGeometry(0.03, 6, 6);
+    const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffffaa, emissiveIntensity: 0.6 });
+    for (const sx of [-bodyW * 0.3, bodyW * 0.3]) {
+      const hl = new THREE.Mesh(hlGeo, hlMat);
+      hl.position.set(sx, 0.12, bodyL / 2);
+      carGroup.add(hl);
+    }
+    carGroup.position.set(wx, 0, wz);
+    const driveAxis = Math.random() < 0.5 ? 'x' : 'z';
+    const driveDir = Math.random() < 0.5 ? 1 : -1;
+    // Align car rotation with drive direction
+    if (driveAxis === 'x') {
+      carGroup.rotation.y = driveDir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    } else {
+      carGroup.rotation.y = driveDir > 0 ? 0 : Math.PI;
+    }
+    scene.add(carGroup);
+    npcCars.push({
+      group: carGroup, x: wx, z: wz, name: vName,
+      color: '#' + color.toString(16).padStart(6, '0'),
+      dir: driveDir,
+      speed: 0.5 + Math.random() * 0.8,
+      startX: wx, startZ: wz,
+      driveAxis,
+      driveDist: 4 + Math.random() * 8,
+      driven: 0
+    });
+  }
+
   // Neon signs above POIs
   neonSigns = [];
   for (let y = 0; y < MAP_SIZE; y++) {
@@ -999,7 +1392,7 @@ function buildCity3D() {
 function spawnNPCs() {
   for (const npc of npcs) { scene.remove(npc.group); }
   npcs = [];
-  if (!currentMapGrid) return;
+  if (!currentMapGrid) { console.warn('spawnNPCs: no map grid'); return; }
 
   const npcColors = [0xcc4444, 0x4444cc, 0x44cc44, 0xcccc44, 0xcc44cc, 0x44cccc, 0xff8844, 0x884422, 0xffffff, 0x888888];
   const roadTiles = [];
@@ -1009,36 +1402,50 @@ function spawnNPCs() {
     }
   }
 
-  const count = Math.min(30, Math.floor(roadTiles.length / 20));
+  const count = Math.max(10, Math.min(20, Math.floor(roadTiles.length / 25)));
+  console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs`);
   for (let i = 0; i < count; i++) {
     const rt = roadTiles[Math.floor(Math.random() * roadTiles.length)];
     const color = npcColors[Math.floor(Math.random() * npcColors.length)];
     const group = new THREE.Group();
 
-    const bodyGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.35, 8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
+    // Body - bigger and more visible
+    const bodyGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.45, 8);
+    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, emissive: color, emissiveIntensity: 0.15 });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.3;
+    body.position.y = 0.35;
     body.castShadow = true;
+    body.name = 'npcBody';
     group.add(body);
 
-    const headGeo = new THREE.SphereGeometry(0.07, 8, 6);
+    // Head - bigger
+    const headGeo = new THREE.SphereGeometry(0.1, 8, 6);
     const skinColor = Math.random() < 0.5 ? 0xddaa77 : 0x885533;
-    const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6 });
+    const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6, emissive: 0xffddaa, emissiveIntensity: 0.1 });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 0.55;
+    head.position.y = 0.65;
+    head.name = 'npcHead';
     group.add(head);
 
-    const legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6);
+    const legGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.25, 6);
     const legMat = new THREE.MeshStandardMaterial({ color: 0x222244 });
     const legL = new THREE.Mesh(legGeo, legMat);
-    legL.position.set(-0.04, 0.1, 0);
+    legL.position.set(-0.06, 0.12, 0);
     legL.name = 'legL';
     group.add(legL);
     const legR = new THREE.Mesh(legGeo, legMat);
-    legR.position.set(0.04, 0.1, 0);
+    legR.position.set(0.06, 0.12, 0);
     legR.name = 'legR';
     group.add(legR);
+
+    // Small marker light above NPC head so they're always visible
+    const markerGeo = new THREE.SphereGeometry(0.04, 6, 6);
+    const isHostile = Math.random() < 0.25;
+    const markerColor = isHostile ? 0xff4444 : 0x44ff44;
+    const markerMat = new THREE.MeshStandardMaterial({ color: markerColor, emissive: markerColor, emissiveIntensity: 1.0 });
+    const marker = new THREE.Mesh(markerGeo, markerMat);
+    marker.position.y = 0.85;
+    group.add(marker);
 
     group.position.set(rt.x + 0.5, 0, rt.y + 0.5);
     scene.add(group);
@@ -1052,8 +1459,181 @@ function spawnNPCs() {
       group, dir, speed, facing,
       startX: rt.x + 0.5, startZ: rt.y + 0.5,
       walkDist: 3 + Math.random() * 6,
-      walked: 0, phase: Math.random() * Math.PI * 2
+      walked: 0, phase: Math.random() * Math.PI * 2,
+      hostile: isHostile
     });
+  }
+}
+
+// --------------------------------------------------------
+//  NPC INTERACTION (shooting)
+// --------------------------------------------------------
+function getNearestNPC(maxDist = 4) {
+  if (!duckGroup) return null;
+  let best = null, bestDist = maxDist;
+  for (const npc of npcs) {
+    const dx = npc.group.position.x - duckGroup.position.x;
+    const dz = npc.group.position.z - duckGroup.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < bestDist) { best = npc; bestDist = dist; }
+  }
+  return best;
+}
+
+function getNearestPoliceNPC(maxDist = 5) {
+  if (!duckGroup) return null;
+  let best = null, bestDist = maxDist;
+  for (const cop of policeNPCs) {
+    if (!cop.alive) continue;
+    const dx = cop.group.position.x - duckGroup.position.x;
+    const dz = cop.group.position.z - duckGroup.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < bestDist) { best = cop; bestDist = dist; }
+  }
+  return best;
+}
+
+function killNPC(npc) {
+  const pos = { x: npc.group.position.x, z: npc.group.position.z };
+  scene.remove(npc.group);
+  npc.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
+  const idx = npcs.indexOf(npc);
+  if (idx >= 0) npcs.splice(idx, 1);
+  return pos;
+}
+
+function damagePoliceNPC(cop, dmg) {
+  cop.health -= dmg;
+  if (cop.health <= 0) {
+    cop.alive = false;
+    const pos = { x: cop.group.position.x, z: cop.group.position.z };
+    removePoliceNPC(cop);
+    return pos;
+  }
+  return null;
+}
+
+// NPC car interaction
+function getNearestNPCCar(maxDist = 2) {
+  if (!duckGroup) return null;
+  let best = null, bestDist = maxDist;
+  for (const car of npcCars) {
+    const dx = car.group.position.x - duckGroup.position.x;
+    const dz = car.group.position.z - duckGroup.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < bestDist) { best = car; bestDist = dist; }
+  }
+  return best;
+}
+
+function removeNPCCar(car) {
+  scene.remove(car.group);
+  car.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
+  const idx = npcCars.indexOf(car);
+  if (idx >= 0) npcCars.splice(idx, 1);
+}
+
+// Projectile system
+let projectiles = [];
+
+function spawnMuzzleFlash() {
+  if (!duckGroup) return;
+  // Big muzzle flash
+  const flashGeo = new THREE.SphereGeometry(0.2, 8, 6);
+  const flashMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 1 });
+  const flash = new THREE.Mesh(flashGeo, flashMat);
+  flash.position.set(0, 0.45, 0.4);
+  duckGroup.add(flash);
+  // Flash light
+  const flashLight = new THREE.PointLight(0xffaa00, 3, 5);
+  flashLight.position.set(0, 0.5, 0.5);
+  duckGroup.add(flashLight);
+  setTimeout(() => {
+    duckGroup.remove(flash);
+    duckGroup.remove(flashLight);
+    flashGeo.dispose();
+    flashMat.dispose();
+    flashLight.dispose();
+  }, 100);
+}
+
+function fireProjectile(targetX, targetZ) {
+  if (!duckGroup) return;
+  const startX = duckGroup.position.x;
+  const startZ = duckGroup.position.z;
+  const startY = 0.45;
+
+  const dx = targetX - startX;
+  const dz = targetZ - startZ;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  if (dist < 0.1) return;
+  const nx = dx / dist;
+  const nz = dz / dist;
+  const speed = 18;
+
+  // Main bullet — bright glowing orb
+  const bulletGeo = new THREE.SphereGeometry(0.08, 6, 6);
+  const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 1 });
+  const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+  bullet.position.set(startX + nx * 0.5, startY, startZ + nz * 0.5);
+  scene.add(bullet);
+
+  // Bullet glow light
+  const bulletLight = new THREE.PointLight(0xffaa00, 2, 3);
+  bulletLight.position.copy(bullet.position);
+  scene.add(bulletLight);
+
+  projectiles.push({
+    mesh: bullet,
+    light: bulletLight,
+    vx: nx * speed,
+    vz: nz * speed,
+    life: dist / speed + 0.1,
+    maxLife: dist / speed + 0.1,
+    targetX, targetZ,
+    trailTimer: 0
+  });
+}
+
+function updateProjectiles(dt) {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      scene.remove(p.light);
+      p.mesh.geometry.dispose();
+      p.mesh.material.dispose();
+      p.light.dispose();
+      projectiles.splice(i, 1);
+      continue;
+    }
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.z += p.vz * dt;
+    p.light.position.copy(p.mesh.position);
+
+    // Spawn trail particles behind bullet
+    p.trailTimer += dt;
+    if (p.trailTimer > 0.02) {
+      p.trailTimer = 0;
+      const trailGeo = new THREE.SphereGeometry(0.04, 4, 4);
+      const trailMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8 });
+      const trail = new THREE.Mesh(trailGeo, trailMat);
+      trail.position.copy(p.mesh.position);
+      scene.add(trail);
+      particles.push({
+        mesh: trail,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: Math.random() * 0.5,
+        vz: (Math.random() - 0.5) * 0.3,
+        life: 0.3,
+        maxLife: 0.3,
+        gravity: 1
+      });
+    }
+
+    // Fade bullet slightly as it travels
+    p.mesh.material.opacity = Math.max(0.4, p.life / p.maxLife);
   }
 }
 
@@ -1106,6 +1686,92 @@ function updateParticles(dt) {
     p.mesh.material.opacity = p.life / p.maxLife;
     if (p.mesh.position.y < 0) p.mesh.position.y = 0;
   }
+}
+
+// Police NPCs
+let policeNPCs = [];
+
+function spawnPoliceNPC(nearX, nearZ) {
+  const group = new THREE.Group();
+
+  // Body (blue uniform)
+  const bodyGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.38, 8);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2233aa, roughness: 0.7 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.3;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeo = new THREE.SphereGeometry(0.08, 8, 6);
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xddaa77, roughness: 0.6 });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.y = 0.57;
+  group.add(head);
+
+  // Police cap
+  const capGeo = new THREE.CylinderGeometry(0.09, 0.1, 0.04, 8);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x111155 });
+  const cap = new THREE.Mesh(capGeo, capMat);
+  cap.position.y = 0.65;
+  group.add(cap);
+
+  // Badge glow
+  const badgeGeo = new THREE.SphereGeometry(0.02, 6, 6);
+  const badgeMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.8 });
+  const badge = new THREE.Mesh(badgeGeo, badgeMat);
+  badge.position.set(0, 0.4, 0.1);
+  group.add(badge);
+
+  // Legs
+  const legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6);
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x111133 });
+  const legL = new THREE.Mesh(legGeo, legMat);
+  legL.position.set(-0.04, 0.1, 0);
+  legL.name = 'legL';
+  group.add(legL);
+  const legR = new THREE.Mesh(legGeo, legMat);
+  legR.position.set(0.04, 0.1, 0);
+  legR.name = 'legR';
+  group.add(legR);
+
+  // Siren light on top
+  const sirenGeo = new THREE.SphereGeometry(0.04, 6, 6);
+  const sirenMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.0 });
+  const siren = new THREE.Mesh(sirenGeo, sirenMat);
+  siren.position.y = 0.7;
+  siren.name = 'siren';
+  group.add(siren);
+
+  // Spawn offset from player
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 3 + Math.random() * 3;
+  group.position.set(nearX + Math.cos(angle) * dist, 0, nearZ + Math.sin(angle) * dist);
+
+  scene.add(group);
+  policeNPCs.push({
+    group, phase: Math.random() * Math.PI * 2,
+    speed: 1.2 + Math.random() * 0.6,
+    health: 100, alive: true
+  });
+  return policeNPCs[policeNPCs.length - 1];
+}
+
+function clearPoliceNPCs() {
+  for (const cop of policeNPCs) {
+    scene.remove(cop.group);
+    cop.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
+  }
+  policeNPCs = [];
+}
+
+function getPoliceNPCs() { return policeNPCs; }
+
+function removePoliceNPC(cop) {
+  scene.remove(cop.group);
+  cop.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
+  const idx = policeNPCs.indexOf(cop);
+  if (idx >= 0) policeNPCs.splice(idx, 1);
 }
 
 // Police siren effect
@@ -1180,27 +1846,27 @@ function updatePlayerVehicle(hasVehicle) {
 // --------------------------------------------------------
 function updateLighting(hour) {
   if (!sunLight) return;
-  if (hour >= 6 && hour <= 18) {
-    const progress = (hour - 6) / 12;
+  // Shorter night: day is 5-21, night is 21-5
+  if (hour >= 5 && hour <= 21) {
+    const progress = (hour - 5) / 16;
     const sunAngle = progress * Math.PI;
     sunLight.position.set(Math.cos(sunAngle) * 30, Math.sin(sunAngle) * 25 + 5, 20);
     sunLight.intensity = 1.2 + Math.sin(sunAngle) * 0.5;
-    sunLight.color.setHex(hour <= 7 || hour >= 17 ? 0xffaa55 : 0xffeedd);
+    sunLight.color.setHex(hour <= 6 || hour >= 20 ? 0xffaa55 : 0xffeedd);
     ambientLight.intensity = 0.4;
     hemiLight.intensity = 0.6;
-    scene.background.setHex(hour <= 7 || hour >= 17 ? 0x2a2040 : 0x4477aa);
+    scene.background.setHex(hour <= 6 || hour >= 20 ? 0x2a2040 : 0x4477aa);
     scene.fog.color.copy(scene.background);
     renderer.toneMappingExposure = 1.0;
   } else {
-    const nightProgress = hour >= 19 ? (hour - 19) / 5 : hour <= 5 ? (5 - hour) / 5 : 0;
-    sunLight.position.set(-20, 10 + nightProgress * 5, 15);
-    sunLight.intensity = 0.4;
+    sunLight.position.set(-20, 12, 15);
+    sunLight.intensity = 0.3;
     sunLight.color.setHex(0x6688cc);
-    ambientLight.intensity = 0.35;
-    hemiLight.intensity = 0.35;
+    ambientLight.intensity = 0.3;
+    hemiLight.intensity = 0.3;
     scene.background.setHex(0x0f1528);
     scene.fog.color.copy(scene.background);
-    renderer.toneMappingExposure = 0.85;
+    renderer.toneMappingExposure = 0.8;
   }
 }
 
@@ -1289,6 +1955,9 @@ function gameLoop() {
     }
   }
 
+  // Night check (used by multiple sections)
+  const isNight = currentGameHour < 5 || currentGameHour > 21;
+
   // NPC walking
   for (const npc of npcs) {
     const step = npc.speed * dt;
@@ -1318,21 +1987,65 @@ function gameLoop() {
       npc.walked = 0;
       npc.group.rotation.y += Math.PI;
     }
+
+    // Night glow — make NPCs visible in the dark
+    const npcBody = npc.group.getObjectByName('npcBody');
+    const npcHead = npc.group.getObjectByName('npcHead');
+    const nightGlow = isNight ? 0.4 : 0;
+    if (npcBody) npcBody.material.emissiveIntensity = nightGlow;
+    if (npcHead) npcHead.material.emissiveIntensity = nightGlow;
   }
 
-  // Street lamp glow
-  const isNight = currentGameHour < 6 || currentGameHour > 18;
+  // NPC car driving
+  for (const car of npcCars) {
+    const step = car.speed * dt;
+    if (car.driveAxis === 'x') {
+      car.group.position.x += car.dir * step;
+    } else {
+      car.group.position.z += car.dir * step;
+    }
+    car.driven += step;
+    if (car.driven >= car.driveDist) {
+      car.dir *= -1;
+      car.driven = 0;
+      car.group.rotation.y += Math.PI;
+    }
+    const gx = Math.floor(car.group.position.x);
+    const gz = Math.floor(car.group.position.z);
+    if (gx < 2 || gx >= MAP_SIZE - 2 || gz < 2 || gz >= MAP_SIZE - 2) {
+      car.dir *= -1;
+      car.driven = 0;
+      car.group.rotation.y += Math.PI;
+    }
+  }
+
+  // Street lamp glow — brighter at night
   for (const lamp of streetLamps) {
-    lamp.light.intensity = isNight ? 1.2 : 0;
-    lamp.head.material.emissiveIntensity = isNight ? 1.5 : 0.3;
+    lamp.light.intensity = isNight ? 2.5 : 0;
+    lamp.light.distance = isNight ? 8 : 5;
+    lamp.head.material.emissiveIntensity = isNight ? 2.0 : 0.3;
   }
 
-  // Neon sign pulse
+  // Neon sign pulse — brighter at night
   for (const ns of neonSigns) {
     const pulse = 0.3 + Math.sin(elapsed * 3 + ns.x * 2) * 0.2;
-    const nightBoost = isNight ? 1.5 : 1.0;
+    const nightBoost = isNight ? 2.0 : 1.0;
     ns.sign.material.emissiveIntensity = pulse * nightBoost;
     ns.border.material.emissiveIntensity = (pulse * 0.5) * nightBoost;
+  }
+
+  // Parked car headlights at night
+  for (const car of parkedCars) {
+    if (!car.headlight && isNight) {
+      const hl = new THREE.PointLight(0xffffcc, 1.5, 4);
+      hl.position.set(car.x, 0.3, car.z);
+      scene.add(hl);
+      car.headlight = hl;
+    } else if (car.headlight && !isNight) {
+      scene.remove(car.headlight);
+      car.headlight.dispose();
+      car.headlight = null;
+    }
   }
 
   // Police siren flash
@@ -1341,23 +2054,51 @@ function gameLoop() {
     sirenLights[1].intensity = Math.sin(elapsed * 12) > 0 ? 0 : 3;
   }
 
-  // Player vehicle follows duck
+  // Police NPC chase + siren flash
+  for (const cop of policeNPCs) {
+    if (!cop.alive || !duckGroup) continue;
+    const dx = duckGroup.position.x - cop.group.position.x;
+    const dz = duckGroup.position.z - cop.group.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist > 0.5) {
+      const nx = dx / dist, nz = dz / dist;
+      cop.group.position.x += nx * cop.speed * dt;
+      cop.group.position.z += nz * cop.speed * dt;
+      cop.group.rotation.y = Math.atan2(nx, nz);
+    }
+    cop.phase += dt * 8;
+    const legL = cop.group.getObjectByName('legL');
+    const legR = cop.group.getObjectByName('legR');
+    if (legL) legL.rotation.x = Math.sin(cop.phase) * 0.5;
+    if (legR) legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
+    const siren = cop.group.getObjectByName('siren');
+    if (siren) {
+      siren.material.color.setHex(Math.sin(elapsed * 10 + cop.phase) > 0 ? 0xff0000 : 0x0044ff);
+      siren.material.emissive.setHex(siren.material.color.getHex());
+    }
+  }
+
+  // Player vehicle follows duck (duck rides on top)
   if (playerVehicleMesh && duckGroup) {
     playerVehicleMesh.position.set(
-      duckGroup.position.x + 1.2,
+      duckGroup.position.x,
       0,
-      duckGroup.position.z + 0.5
+      duckGroup.position.z
     );
     playerVehicleMesh.rotation.y = duckGroup.rotation.y;
   }
 
   // Particles
   updateParticles(dt);
+  updateProjectiles(dt);
 
   renderer.render(scene, camera);
 }
 
 // === db.js ===
+
+
+
 
 let db, conn;
 
@@ -1389,7 +2130,8 @@ async function initSchema() {
       armor INT DEFAULT 0, wanted_level INT DEFAULT 0,
       gang VARCHAR DEFAULT '', gang_rank VARCHAR DEFAULT '',
       respect INT DEFAULT 0, perk_points INT DEFAULT 0,
-      adrenaline INT DEFAULT 0
+      adrenaline INT DEFAULT 0,
+      char_type VARCHAR DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS game_clock(day INT DEFAULT 1, hour INT DEFAULT 8);
     CREATE TABLE IF NOT EXISTS map(x INT, y INT, tile VARCHAR);
@@ -1398,7 +2140,7 @@ async function initSchema() {
     CREATE TABLE IF NOT EXISTS guns(name VARCHAR PRIMARY KEY, category VARCHAR, bonus INT);
     CREATE TABLE IF NOT EXISTS inventory(item VARCHAR PRIMARY KEY, qty INT DEFAULT 1);
     CREATE TABLE IF NOT EXISTS drugs(name VARCHAR PRIMARY KEY, qty INT DEFAULT 0, avg_price INT DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS vehicles(name VARCHAR PRIMARY KEY);
+    CREATE TABLE IF NOT EXISTS vehicles(name VARCHAR PRIMARY KEY, stored INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS territories(district VARCHAR, city VARCHAR, owner VARCHAR DEFAULT 'Unaffiliated', PRIMARY KEY(district, city));
     CREATE TABLE IF NOT EXISTS businesses(name VARCHAR, city VARCHAR, type VARCHAR, daily_income INT, PRIMARY KEY(name, city));
     CREATE TABLE IF NOT EXISTS recruits(id INT DEFAULT nextval('recruit_id_seq'), name VARCHAR, strength INT, upkeep INT);
@@ -1444,17 +2186,32 @@ async function loadCityMap(cityName) {
   spawnNPCs();
 }
 
-async function initPlayer(name) {
-  const cash = name.toLowerCase() === 'test' ? 999999 : 500;
+async function initPlayer(name, startCity = 'Los Santos', bonus = 'none', charType = '') {
+  const isOz = (charType || name).toLowerCase() === 'oz';
+  let cash = isOz ? 1000000 : bonus === 'cash' ? 750 : 500;
   const safeName = name.replace(/'/g, "''");
-  const tiles = generateCityMap('Los Santos');
+  const safeCity = startCity.replace(/'/g, "''");
+  const district = (CITIES[startCity]?.districts[0] || 'Grove Street').replace(/'/g, "''");
+  const tiles = generateCityMap(startCity);
   let startX = 5, startY = 5;
   for (const t of tiles) {
     if ((t.tile === T.ROAD_MAIN || t.tile === T.ROAD_SIDE) && t.x > 3 && t.y > 3) { startX = t.x; startY = t.y; break; }
   }
-  await conn.query(`INSERT INTO player VALUES ('${safeName}','Los Santos','Grove Street',${startX},${startY},${cash},100,0,0,'','',0,0,0)`);
+  const safeCharType = (charType || name).replace(/'/g, "''");
+  await conn.query(`INSERT INTO player VALUES ('${safeName}','${safeCity}','${district}',${startX},${startY},${cash},100,0,0,'','',0,0,0,'${safeCharType}')`);
   await conn.query(`INSERT INTO game_clock VALUES (1,8)`);
-  await loadCityMap('Los Santos');
+  if (bonus !== 'none' && bonus !== 'cash') {
+    await conn.query(`UPDATE skills SET level = level + 2 WHERE name='${bonus}'`);
+  }
+  // Oz hacker: all weapons, max skills, armor
+  if (isOz) {
+    for (const gun of GUNS) {
+      await conn.query(`INSERT INTO guns VALUES ('${gun.name.replace(/'/g,"''")}','${gun.cat}',${gun.bonus}) ON CONFLICT DO NOTHING`);
+    }
+    await conn.query(`UPDATE skills SET level = 10`);
+    await conn.query(`UPDATE player SET armor = 100, respect = 5000`);
+  }
+  await loadCityMap(startCity);
 
   // Position duck
   setDuckTarget(startX + 0.5, startY + 0.5);
@@ -1490,13 +2247,35 @@ async function saveGame() {
     const tables = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events'];
     const saveData = {};
     for (const t of tables) saveData[t] = await q(`SELECT * FROM ${t}`);
+    // Save to named slot and legacy key
+    const player = saveData.player?.[0];
+    const slotName = player ? player.name : 'Unknown';
     localStorage.setItem('duck_theft_auto_save', JSON.stringify(saveData));
+    // Save index of all sessions
+    const indexRaw = localStorage.getItem('dta_save_index');
+    const index = indexRaw ? JSON.parse(indexRaw) : {};
+    index[slotName] = {
+      name: slotName,
+      city: player?.city || '?',
+      cash: player?.cash || 0,
+      day: saveData.game_clock?.[0]?.day || 1,
+      timestamp: Date.now()
+    };
+    localStorage.setItem('dta_save_index', JSON.stringify(index));
+    localStorage.setItem('dta_save_' + slotName, JSON.stringify(saveData));
     _dbLog('Game saved!', 'c-green');
   } catch (e) { _dbLog('Save failed: ' + e.message, 'c-red'); }
 }
 
-async function loadGameData(callbacks) {
-  const raw = localStorage.getItem('duck_theft_auto_save');
+function getSaveIndex() {
+  const raw = localStorage.getItem('dta_save_index');
+  return raw ? JSON.parse(raw) : {};
+}
+
+async function loadGameData(callbacks, slotName) {
+  const raw = slotName
+    ? localStorage.getItem('dta_save_' + slotName)
+    : localStorage.getItem('duck_theft_auto_save');
   if (!raw) { _dbLog('No save found!', 'c-red'); return false; }
   try {
     const saveData = JSON.parse(raw);
@@ -1535,19 +2314,10 @@ let _dbLog = () => {};
 function setLogFn(fn) { _dbLog = fn; }
 
 // === game.js ===
-  T, POI_DEFS, CITIES, GANGS, JOBS, CRIMES, GUNS as GUN_LIST, VEHICLES as VEHICLE_LIST,
-  DRUGS, RANK_THRESHOLDS, PERKS, ITEMS, MAP_SIZE
-} from './constants.js';
-  duckGroup, gameActive, setGameActive, setDuckTarget, setDuckFacing,
-  camDist, camHeight, camAngle, setCamDist, setCamHeight, setCamAngle,
-  CAM_ZOOM_MIN, CAM_ZOOM_MAX, setCurrentGameHour,
-  updateLighting, updatePlayerVehicle, renderMinimap,
-  spawnParticlesAtDuck, startSiren, stopSiren,
-  buildCity3D, spawnNPCs
-} from './renderer.js';
-  conn, q, q1, qv, saveGame,
-  initSchema, initPlayer, initWorld, loadCityMap, loadGameData, setLogFn
-} from './db.js';
+
+
+
+
 
 
 // --------------------------------------------------------
@@ -1572,30 +2342,87 @@ function log(msg, cls = 'c-white') {
 setLogFn(log);
 
 // --------------------------------------------------------
+//  ACTIVITY STATUS
+// --------------------------------------------------------
+let statusTimer = null;
+function setStatus(msg, duration = 0) {
+  $('hud-status').textContent = msg;
+  $('hud-status').className = 'c-yellow';
+  if (statusTimer) clearTimeout(statusTimer);
+  if (duration > 0) {
+    statusTimer = setTimeout(() => {
+      $('hud-status').textContent = 'Idle';
+      $('hud-status').className = 'c-cyan';
+      statusTimer = null;
+    }, duration);
+  }
+}
+function clearStatus() {
+  if (statusTimer) clearTimeout(statusTimer);
+  $('hud-status').textContent = 'Idle';
+  $('hud-status').className = 'c-cyan';
+  statusTimer = null;
+}
+
+// --------------------------------------------------------
 //  GAME CLOCK
 // --------------------------------------------------------
 async function advanceTime(hours) {
-  const clk = await q1('SELECT * FROM game_clock');
-  let h = clk.hour + hours;
-  let d = clk.day;
-  while (h >= 24) { h -= 24; d++; await dailyPayout(); await decayHeat(); }
-  await conn.query(`UPDATE game_clock SET day=${d}, hour=${h}`);
+  try {
+    const clk = await q1('SELECT * FROM game_clock');
+    if (!clk) { log('ERROR: No game clock found!', 'c-red'); return; }
+    const oldDay = clk.day;
+    const oldHour = clk.hour;
+    let h = clk.hour + hours;
+    let d = clk.day;
+    const daysAdvanced = [];
+    while (h >= 24) {
+      h -= 24;
+      d++;
+      daysAdvanced.push(d);
+      try { await dailyPayout(); } catch (e) { log('Daily payout error: ' + e.message, 'c-red'); }
+      try { await decayHeat(); } catch (e) { /* ignore */ }
+    }
+    await conn.query(`UPDATE game_clock SET day=${d}, hour=${h}`);
+    if (daysAdvanced.length > 0) {
+      log(`════════════ DAY ${d} ════════════`, 'c-gold');
+      log(`[Day ${oldDay} ${String(oldHour).padStart(2,'0')}:00 → Day ${d} ${String(h).padStart(2,'0')}:00] (${hours}h passed)`, 'c-gray');
+    } else if (hours > 0) {
+      log(`[${String(oldHour).padStart(2,'0')}:00 → ${String(h).padStart(2,'0')}:00] (${hours}h passed)`, 'c-gray');
+    }
+  } catch (e) {
+    log('Time advance error: ' + e.message, 'c-red');
+    console.error('advanceTime error:', e);
+  }
 }
 
 async function dailyPayout() {
-  const p = await q1('SELECT * FROM player');
+  const p = await q1('SELECT name, health, wanted_level, gang FROM player');
+  if (!p) return;
+  // Passive heal overnight
+  if (p.health < 100) {
+    const heal = Math.min(10, 100 - p.health);
+    await conn.query(`UPDATE player SET health = LEAST(100, health + ${heal})`);
+    log(`Rested overnight: +${heal} HP`, 'c-green');
+  }
+  // Wanted level decays slightly each day
+  if (p.wanted_level > 0) {
+    await conn.query(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`);
+    log('Heat dies down overnight. -1 Wanted.', 'c-green');
+  }
   if (!p.gang) return;
-  const tCount = await qv(`SELECT COUNT(*) FROM territories WHERE owner='${p.gang.replace(/'/g,"''")}'`);
-  const tIncome = (tCount || 0) * 150;
-  const bIncome = (await qv(`SELECT COALESCE(SUM(daily_income),0) FROM businesses`)) || 0;
-  const smugLevel = await qv(`SELECT level FROM gang_upgrades WHERE name='smuggling_routes'`);
-  const smugBonus = (smugLevel || 0) * 100;
-  const upkeep = (await qv(`SELECT COALESCE(SUM(upkeep),0) FROM recruits`)) || 0;
+  const safeGang = p.gang.replace(/'/g, "''");
+  const tCount = (await qv(`SELECT COUNT(*) FROM territories WHERE owner='${safeGang}'`)) || 0;
+  const tIncome = tCount * 150;
+  const bIncome = Number((await qv(`SELECT COALESCE(SUM(daily_income),0) FROM businesses`)) || 0);
+  const smugLevel = Number((await qv(`SELECT level FROM gang_upgrades WHERE name='smuggling_routes'`)) || 0);
+  const smugBonus = smugLevel * 100;
+  const upkeep = Number((await qv(`SELECT COALESCE(SUM(upkeep),0) FROM recruits`)) || 0);
   const net = tIncome + bIncome + smugBonus - upkeep;
   if (net !== 0) {
     await conn.query(`UPDATE player SET cash = cash + ${net}`);
-    log(`Daily report: Territory $${tIncome} + Business $${bIncome} + Smuggling $${smugBonus} - Upkeep $${upkeep} = Net $${net}`, net >= 0 ? 'c-gold' : 'c-red');
   }
+  log(`Daily income: Territory $${tIncome} + Business $${bIncome} + Smuggling $${smugBonus} - Upkeep $${upkeep} = Net $${net}`, net >= 0 ? 'c-gold' : 'c-red');
 }
 
 async function decayHeat() { await conn.query(`UPDATE district_heat SET heat = GREATEST(0, heat - 1)`); }
@@ -1648,7 +2475,7 @@ async function updateHUD() {
   setCurrentGameHour(clk.hour);
   updateLighting(clk.hour);
 
-  const hasVehicle = await qv('SELECT COUNT(*) FROM vehicles');
+  const hasVehicle = await qv(`SELECT COUNT(*) FROM vehicles WHERE stored=0`);
   updatePlayerVehicle(hasVehicle > 0);
 
   renderMinimap(p.x, p.y);
@@ -1676,24 +2503,193 @@ async function enterPOI() {
   if (!currentMapGrid) return;
   const tile = currentMapGrid[p.y][p.x];
   const poi = POI_DEFS[tile];
-  if (!poi) return;
-  const menuFn = menuFunctions[poi.menu];
-  if (menuFn) menuFn();
+  if (poi) {
+    const menuFn = menuFunctions[poi.menu];
+    if (menuFn) menuFn();
+    return;
+  }
+  // No POI — try NPC interaction
+  const npc = getNearestNPC(2);
+  if (npc) {
+    await interactNPC(npc);
+    return;
+  }
+  // Try NPC car interaction
+  const npcCar = getNearestNPCCar(2);
+  if (npcCar) {
+    await carjackNPCCar(npcCar);
+  }
+}
+
+async function carjackNPCCar(car) {
+  const p = await q1('SELECT * FROM player');
+  const drivingSkill = await getSkill('driving');
+  const stealthSkill = await getSkill('stealth');
+  let successChance = 40 + drivingSkill * 4 + stealthSkill * 3;
+  successChance = Math.min(successChance, 90);
+  showSubMenu(`Steal ${car.name}?`, [
+    { label: `Jack it! (${successChance}% chance)`, action: async () => {
+      setStatus(`Carjacking ${car.name}...`);
+      if (chance(successChance)) {
+        // Check if already owned
+        const exists = await qv(`SELECT COUNT(*) FROM vehicles WHERE name='${car.name.replace(/'/g,"''")}'`);
+        if (!exists) {
+          await conn.query(`INSERT INTO vehicles VALUES ('${car.name.replace(/'/g,"''")}',0)`);
+        }
+        removeNPCCar(car);
+        await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+        log(`Jacked a ${car.name}! +1 Wanted.`, 'c-green');
+        spawnParticlesAtDuck(0x44ff44, 12, 2, 1.5);
+        await maybeSkillUp('driving');
+      } else {
+        const dmg = rand(10, 30);
+        await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+1)`);
+        log(`Failed to steal ${car.name}! The owner fought back. -${dmg} HP, +1 Wanted.`, 'c-red');
+        spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
+        await checkDeath();
+      }
+      clearStatus();
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'Walk away', action: () => { hideSubMenu(); showMainActions(); }}
+  ]);
+}
+
+async function interactNPC(npc) {
+  const clk = await q1('SELECT hour FROM game_clock');
+  const isNight = clk.hour < 5 || clk.hour > 21;
+  const drugs = await q('SELECT * FROM drugs WHERE qty > 0');
+  const options = [];
+
+  // Sell drugs to NPC
+  if (drugs.length > 0) {
+    for (const d of drugs) {
+      const sellPrice = rand(Math.floor(d.avg_price * 0.8), Math.floor(d.avg_price * 2.5));
+      options.push({
+        label: `Sell ${d.name} ($${sellPrice}) [${d.qty} owned]`,
+        action: async () => {
+          // NPC may fight you instead of buying
+          if (chance(isNight ? 30 : 10)) {
+            const dmg = rand(10, 25);
+            await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+            log(`The buyer turned on you! -${dmg} HP`, 'c-red');
+            spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
+            await checkDeath();
+          } else {
+            await conn.query(`UPDATE player SET cash=cash+${sellPrice}`);
+            await conn.query(`UPDATE drugs SET qty=qty-1 WHERE name='${d.name}'`);
+            await conn.query(`DELETE FROM drugs WHERE qty <= 0`);
+            log(`Sold ${d.name} to a stranger for $${sellPrice}.`, 'c-green');
+            if (chance(20)) {
+              await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+              log('A narc spotted the deal! Cops are coming!', 'c-red');
+              await checkPolice();
+            }
+            await maybeSkillUp('dealing');
+          }
+          hideSubMenu(); await updateHUD(); showMainActions();
+        }
+      });
+    }
+  }
+
+  // Night hostile NPC may fight
+  if (isNight && npc.hostile) {
+    options.push({
+      label: 'This person looks aggressive...',
+      action: async () => {
+        const dmg = rand(15, 35);
+        await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+        const pos = killNPC(npc);
+        spawnParticles(pos.x, pos.z, 0xff4444, 8, 1.5, 1);
+        log(`Jumped by a thug! -${dmg} HP`, 'c-red');
+        await checkDeath();
+        hideSubMenu(); await updateHUD(); showMainActions();
+      }
+    });
+  }
+
+  if (options.length === 0) {
+    log('Nothing to do with this person.', 'c-gray');
+    return;
+  }
+  showSubMenu(isNight ? 'Shady Encounter' : 'Street Deal', options);
 }
 
 // --------------------------------------------------------
 //  POLICE ENCOUNTER
 // --------------------------------------------------------
+let policeEncounterActive = false;
+
 async function checkPolice() {
+  if (policeEncounterActive) return;
+  const p = await q1('SELECT * FROM player');
+  if (p.wanted_level <= 0) { clearPoliceNPCs(); return; }
+  if (!chance(p.wanted_level * 20)) return;
+  await triggerPoliceEncounter(p);
+}
+
+async function checkPoliceOnMove() {
   const p = await q1('SELECT * FROM player');
   if (p.wanted_level <= 0) return;
-  if (!chance(p.wanted_level * 15)) return;
-  log('>>> POLICE ENCOUNTER! <<<', 'c-red');
+  if (policeEncounterActive) return;
+  const moveChance = p.wanted_level * p.wanted_level * 1.5 + 3;
+  if (!chance(moveChance)) return;
+  await triggerPoliceEncounter(p);
+}
+
+async function checkNightAttack() {
+  const clk = await q1('SELECT hour FROM game_clock');
+  const isNight = clk.hour < 5 || clk.hour > 21;
+  if (!isNight) return;
+  if (policeEncounterActive) return;
+  const npc = getNearestNPC(3);
+  if (!npc || !npc.hostile) return;
+  if (!chance(8)) return; // 8% chance per move at night near hostile NPC
+  const dmg = rand(5, 20);
+  await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+  const pos = killNPC(npc);
+  spawnParticles(pos.x, pos.z, 0xff4444, 8, 1.5, 1);
+  log(`A thug attacked you in the dark! -${dmg} HP`, 'c-red');
+  await checkDeath();
+  await updateHUD();
+}
+
+async function triggerPoliceEncounter(p) {
+  policeEncounterActive = true;
+  setStatus('Police encounter!');
+
+  // Close any open menus first
+  hideSubMenu();
+
+  // Spawn cops visually
+  const copCount = Math.max(1, Math.min(3, Math.ceil(p.wanted_level / 2)));
+  for (let i = 0; i < copCount; i++) {
+    spawnPoliceNPC(duckGroup.position.x, duckGroup.position.z);
+  }
+
   startSiren();
   spawnParticlesAtDuck(0x4444ff, 10, 2, 2);
-  showSubMenu('Police!', [
+
+  // Flash the screen blue/red briefly
+  const policeFlash = document.createElement('div');
+  policeFlash.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:49;pointer-events:none;animation:police-flash 0.3s ease 3;';
+  policeFlash.innerHTML = '<style>@keyframes police-flash{0%{background:rgba(255,0,0,0.3)}50%{background:rgba(0,0,255,0.3)}100%{background:transparent}}</style>';
+  document.body.appendChild(policeFlash);
+  setTimeout(() => policeFlash.remove(), 1000);
+
+  log('>>> POLICE ENCOUNTER! <<<', 'c-red');
+  if (p.wanted_level >= 3) log('Heavy resistance expected!', 'c-red');
+  if (p.wanted_level >= 4) log('Shoot to kill orders!', 'c-red');
+  if (p.wanted_level === 5) log('SWAT deployed!', 'c-red');
+
+  // Brief delay so player sees the cops before menu appears
+  await new Promise(r => setTimeout(r, 800));
+
+  showSubMenu(`Police! (${copCount} officer${copCount > 1 ? 's' : ''})`, [
     { label: 'Run', action: () => policeRun(p) },
     { label: 'Bribe', action: () => policeBribe(p) },
+    { label: 'Fight Back (if armed)', action: () => policeFight(p) },
     { label: 'Surrender', action: () => policeSurrender(p) }
   ]);
 }
@@ -1715,7 +2711,42 @@ async function policeRun(p) {
     spawnParticlesAtDuck(0xff2222, 15, 1.5, 1);
     await checkDeath();
   }
-  stopSiren();
+  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
+  hideSubMenu(); await updateHUD();
+}
+
+async function policeFight(p) {
+  const gunBonus = await getGunBonus();
+  if (gunBonus <= 0) {
+    log("You don't have any weapons to fight with!", 'c-red');
+    return;
+  }
+  const strengthSkill = await getSkill('strength');
+  const cops = getPoliceNPCs();
+  const copCount = cops.length;
+  let winChance = 20 + gunBonus + strengthSkill * 3 - copCount * 10 - p.wanted_level * 5;
+  winChance = Math.max(5, Math.min(70, winChance));
+
+  log(`Fighting ${copCount} cop${copCount > 1 ? 's' : ''}... (${winChance}% win chance)`, 'c-yellow');
+  spawnParticlesAtDuck(0xff8800, 15, 2, 1);
+
+  if (chance(winChance)) {
+    const loot = rand(50, 200) * copCount;
+    const respect = rand(10, 30);
+    const dmg = rand(10, 30);
+    await conn.query(`UPDATE player SET cash=cash+${loot}, health=GREATEST(0,health-${dmg}), respect=respect+${respect}, wanted_level=LEAST(5,wanted_level+1)`);
+    log(`Took down the cops! Looted $${loot}, +${respect} Respect, -${dmg} HP. Wanted level increased!`, 'c-green');
+    spawnParticlesAtDuck(0x44ff44, 20, 2, 2);
+    await maybeSkillUp('strength');
+  } else {
+    const fine = rand(200, 800);
+    const dmg = rand(25, 60) + p.wanted_level * 5;
+    await conn.query(`UPDATE player SET cash=GREATEST(0,cash-${fine}), health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+1)`);
+    log(`Overpowered! Fined $${fine}, took ${dmg} damage. Wanted level increased!`, 'c-red');
+    spawnParticlesAtDuck(0xff2222, 20, 2, 1);
+    await checkDeath();
+  }
+  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
   hideSubMenu(); await updateHUD();
 }
 
@@ -1730,16 +2761,16 @@ async function policeBribe(p) {
     log(`Not enough cash to bribe ($${cost} needed). They arrest you!`, 'c-red');
     await conn.query(`UPDATE player SET wanted_level = 0, cash = GREATEST(0, cash - 200), health = GREATEST(0, health - 15)`);
   }
-  stopSiren();
+  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
   hideSubMenu(); await updateHUD();
 }
 
 async function policeSurrender(p) {
   const fine = rand(200, 800);
   await conn.query(`UPDATE player SET wanted_level = 0, cash = GREATEST(0, cash - ${fine})`);
-  await advanceTime(4);
+  await advanceTime(2);
   log(`Surrendered. Spent time in jail, fined $${fine}. Wanted level cleared.`, 'c-yellow');
-  stopSiren();
+  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
   hideSubMenu(); await updateHUD();
 }
 
@@ -1750,11 +2781,47 @@ async function checkDeath() {
   const health = await qv('SELECT health FROM player');
   if (health <= 0) {
     const respLoss = rand(25, 50);
+    // Stop any active encounters
+    stopSiren(); clearPoliceNPCs(); policeEncounterActive = false; clearStatus();
+
+    // Dramatic WASTED screen flash
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(255,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:opacity 2s;';
+    overlay.innerHTML = '<div style="color:#fff;font-size:64px;font-weight:bold;text-shadow:0 0 30px #ff0000,0 0 60px #ff0000;font-family:Impact,sans-serif;letter-spacing:12px">WASTED</div>';
+    document.body.appendChild(overlay);
+
     await conn.query(`UPDATE player SET health = 100, cash = GREATEST(0, cash - 200), respect = GREATEST(0, respect - ${respLoss}), wanted_level = 0, armor = 0`);
-    await advanceTime(6);
-    log('*** WASTED *** You wake up at the hospital. -$200, -' + respLoss + ' Respect.', 'c-red');
-    spawnParticlesAtDuck(0xff0000, 25, 3, 2);
+    spawnParticlesAtDuck(0xff0000, 30, 3, 2);
+
+    // Relocate to a road tile (hospital spawn)
+    const p = await q1('SELECT city FROM player');
+    if (p && currentMapGrid) {
+      for (let y = 5; y < MAP_SIZE - 5; y++) {
+        for (let x = 5; x < MAP_SIZE - 5; x++) {
+          if (currentMapGrid[y][x] === T.POI_HOSPITAL) {
+            await conn.query(`UPDATE player SET x=${x}, y=${y}`);
+            setDuckTarget(x + 0.5, y + 0.5);
+            if (duckGroup) { duckGroup.position.x = x + 0.5; duckGroup.position.z = y + 0.5; }
+            y = MAP_SIZE; break;
+          }
+        }
+      }
+    }
+
+    await advanceTime(3);
+    log('', 'c-white');
+    log('╔══════════════════════════════════════╗', 'c-red');
+    log('║          *** WASTED ***              ║', 'c-red');
+    log('║  You wake up at the hospital.        ║', 'c-red');
+    log(`║  Lost $200 and ${respLoss} Respect.          ║`, 'c-red');
+    log('║  Wanted level cleared.               ║', 'c-red');
+    log('╚══════════════════════════════════════╝', 'c-red');
     await updateRank();
+    await updateHUD();
+
+    // Fade out the wasted overlay
+    setTimeout(() => { overlay.style.opacity = '0'; }, 1500);
+    setTimeout(() => { overlay.remove(); }, 3500);
   }
 }
 
@@ -1783,18 +2850,76 @@ async function updateRank() {
 // --------------------------------------------------------
 async function processWorldEvents() {
   const clk = await q1('SELECT * FROM game_clock');
-  if (clk.hour % 4 !== 0) return;
-  if (!chance(25)) return;
+  if (clk.hour % 3 !== 0) return;
+  if (!chance(40)) return;
+
   const allGangs = Object.values(GANGS).flat();
-  const attacker = allGangs[rand(0, allGangs.length - 1)].replace(/'/g, "''");
-  const targets = await q(`SELECT district, city, owner FROM territories WHERE owner != '${attacker}' AND owner != 'Unaffiliated' ORDER BY random() LIMIT 1`);
-  if (targets.length === 0) return;
-  const t = targets[0];
-  if (chance(40)) {
-    await conn.query(`UPDATE territories SET owner='${attacker}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${t.city.replace(/'/g,"''")}'`);
-    const desc = `${attacker} seized ${t.district} from ${t.owner}!`;
-    await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
-    log(`NEWS: ${desc}`, 'c-orange');
+  const allCities = Object.keys(CITIES);
+  const eventType = rand(1, 8);
+
+  try {
+    if (eventType <= 3) {
+      // Gang territory war
+      const attacker = allGangs[rand(0, allGangs.length - 1)].replace(/'/g, "''");
+      const targets = await q(`SELECT district, city, owner FROM territories WHERE owner != '${attacker}' AND owner != 'Unaffiliated' ORDER BY random() LIMIT 1`);
+      if (targets.length > 0) {
+        const t = targets[0];
+        if (chance(40)) {
+          await conn.query(`UPDATE territories SET owner='${attacker}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${t.city.replace(/'/g,"''")}'`);
+          const desc = `${attacker} seized ${t.district} from ${t.owner}!`;
+          await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+          log(`NEWS: ${desc}`, 'c-orange');
+        }
+      }
+    } else if (eventType === 4) {
+      // Drug bust
+      const city = allCities[rand(0, allCities.length - 1)];
+      const districts = CITIES[city].districts;
+      const district = districts[rand(0, districts.length - 1)];
+      const desc = `Major drug bust in ${district}, ${city}! Several dealers arrested.`;
+      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      log(`NEWS: ${desc}`, 'c-orange');
+    } else if (eventType === 5) {
+      // Police raid
+      const city = allCities[rand(0, allCities.length - 1)];
+      const gang = allGangs[rand(0, allGangs.length - 1)];
+      const desc = `Police raided ${gang} hideout in ${city}. Weapons seized.`;
+      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      log(`NEWS: ${desc}`, 'c-orange');
+    } else if (eventType === 6) {
+      // Celebrity sighting
+      const celebs = ['Madd Dogg', 'OG Loc', 'Kent Paul', 'Maccer', 'Lazlow', 'Love Fist', 'Fernando Martinez'];
+      const celeb = celebs[rand(0, celebs.length - 1)];
+      const city = allCities[rand(0, allCities.length - 1)];
+      const desc = `${celeb} spotted partying in ${city}!`;
+      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      log(`NEWS: ${desc}`, 'c-orange');
+    } else if (eventType === 7) {
+      // Market crash / boom
+      const isBoom = chance(50);
+      const desc = isBoom
+        ? `Drug prices surging! Street dealers reporting record profits.`
+        : `Market crash! Drug prices plummeting across all cities.`;
+      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      log(`NEWS: ${desc}`, 'c-orange');
+    } else {
+      // Random crime wave / peace
+      const city = allCities[rand(0, allCities.length - 1)];
+      const events = [
+        `Shooting spree reported in downtown ${city}. Stay indoors.`,
+        `${city} mayor announces crackdown on street crime.`,
+        `Armored truck heist in ${city} — suspects still at large.`,
+        `Car bombing rocks ${city} — gang rivalry suspected.`,
+        `Underground street racing circuit busted in ${city}.`,
+        `${city} police chief fired amid corruption scandal.`
+      ];
+      const desc = events[rand(0, events.length - 1)];
+      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      log(`NEWS: ${desc}`, 'c-orange');
+    }
+  } catch (e) {
+    // Don't let news errors block gameplay
+    console.error('World event error:', e);
   }
 }
 
@@ -1810,6 +2935,79 @@ async function maybeSkillUp(name) {
   }
 }
 async function getGunBonus() { return (await qv(`SELECT COALESCE(MAX(bonus),0) FROM guns`)) || 0; }
+
+// --------------------------------------------------------
+//  SHOOTING
+// --------------------------------------------------------
+let shootCooldown = false;
+async function getShootCooldown() {
+  // Better guns shoot faster: check best gun category owned
+  const bestGun = await q1(`SELECT category, bonus FROM guns ORDER BY bonus DESC LIMIT 1`);
+  if (!bestGun) return 400;
+  const cooldowns = { 'Pistol': 400, 'Shotgun': 500, 'SMG': 200, 'Rifle': 300, 'Heavy': 150, 'Sniper': 600 };
+  return cooldowns[bestGun.category] || 400;
+}
+async function playerShoot() {
+  if (shootCooldown) return;
+  const gunCount = await qv('SELECT COUNT(*) FROM guns');
+  if (!gunCount || gunCount <= 0) { log('No weapon! Visit Ammu-Nation [4].', 'c-red'); return; }
+  const gunBonus = await getGunBonus();
+
+  const cooldown = await getShootCooldown();
+  shootCooldown = true;
+  setTimeout(() => shootCooldown = false, cooldown);
+
+  spawnMuzzleFlash();
+
+  // Priority: police NPCs first, then civilian NPCs
+  const cop = getNearestPoliceNPC(7);
+  if (cop) {
+    // Fire visible projectile toward the cop
+    fireProjectile(cop.group.position.x, cop.group.position.z);
+    const dmg = 20 + gunBonus;
+    const killPos = damagePoliceNPC(cop, dmg);
+    if (killPos) {
+      spawnParticles(killPos.x, killPos.z, 0xff2222, 15, 2, 1.2);
+      const loot = rand(50, 150);
+      await conn.query(`UPDATE player SET cash=cash+${loot}`);
+      log(`Killed a cop! Looted $${loot}. Heat is rising!`, 'c-red');
+      await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+    } else {
+      spawnParticles(cop.group.position.x, cop.group.position.z, 0xff4444, 8, 1.5, 0.8);
+      log(`Hit police officer! (${cop.health} HP left)`, 'c-yellow');
+    }
+    await maybeSkillUp('strength');
+    await updateHUD();
+    return;
+  }
+
+  const npc = getNearestNPC(6);
+  if (npc) {
+    // Fire visible projectile toward the NPC
+    fireProjectile(npc.group.position.x, npc.group.position.z);
+    const pos = killNPC(npc);
+    spawnParticles(pos.x, pos.z, 0xff2222, 15, 2, 1.2);
+    const loot = rand(5, 50);
+    await conn.query(`UPDATE player SET cash=cash+${loot}, wanted_level=LEAST(5,wanted_level+1), respect=respect+1`);
+    log(`Shot a civilian! Looted $${loot}. +1 Wanted.`, 'c-red');
+    const p = await q1('SELECT district, city FROM player');
+    await conn.query(`UPDATE district_heat SET heat=heat+2 WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
+    await maybeSkillUp('strength');
+    await updateHUD();
+    return;
+  }
+
+  // No target — fire bullet in facing direction
+  if (duckGroup) {
+    const facingAngle = duckGroup.rotation.y;
+    const shotDist = 8;
+    fireProjectile(
+      duckGroup.position.x + Math.sin(facingAngle) * shotDist,
+      duckGroup.position.z + Math.cos(facingAngle) * shotDist
+    );
+  }
+  log('No target in range.', 'c-gray');
+}
 
 // --------------------------------------------------------
 //  MOVEMENT
@@ -1836,6 +3034,8 @@ async function movePlayer(dx, dy) {
 
   await updateDistrict(nx, ny);
   await checkPOI();
+  await checkPoliceOnMove();
+  await checkNightAttack();
   await updateHUD();
 }
 
@@ -1864,7 +3064,9 @@ function showSubMenu(title, options) {
   currentSubOptions = options;
   subMenuSelection = -1;
   const el = $('sub-menu');
+  const backdrop = $('sub-menu-backdrop');
   el.style.display = 'block';
+  backdrop.style.display = 'block';
   let html = `<h4>${title} <span class="c-gray" style="font-size:10px">[1-${Math.min(options.length,9)} to pick, Esc=back]</span></h4><div class="sub-options">`;
   options.forEach((opt, i) => {
     const key = i < 9 ? (i + 1) : '';
@@ -1875,16 +3077,20 @@ function showSubMenu(title, options) {
   const btns = el.querySelectorAll('.sub-btn');
   options.forEach((opt, i) => btns[i].addEventListener('click', opt.action));
   el.querySelector('#btn-back').addEventListener('click', () => { hideSubMenu(); showMainActions(); });
+  backdrop.addEventListener('click', () => { hideSubMenu(); showMainActions(); }, { once: true });
 }
 
 function showSubMenuHTML(title, html) {
   const el = $('sub-menu');
+  const backdrop = $('sub-menu-backdrop');
   el.style.display = 'block';
+  backdrop.style.display = 'block';
   el.innerHTML = `<h4>${title}</h4>${html}<div style="margin-top:8px"><button class="btn" id="btn-back">Back</button></div>`;
   el.querySelector('#btn-back').addEventListener('click', () => { hideSubMenu(); showMainActions(); });
+  backdrop.addEventListener('click', () => { hideSubMenu(); showMainActions(); }, { once: true });
 }
 
-function hideSubMenu() { $('sub-menu').style.display = 'none'; $('sub-menu').innerHTML = ''; currentSubOptions = []; subMenuSelection = -1; }
+function hideSubMenu() { $('sub-menu').style.display = 'none'; $('sub-menu').innerHTML = ''; $('sub-menu-backdrop').style.display = 'none'; currentSubOptions = []; subMenuSelection = -1; }
 
 // --------------------------------------------------------
 //  MAIN ACTIONS
@@ -1907,7 +3113,8 @@ function showMainActions() {
     { key: 'P', label: 'Perks',          action: menuPerks },
     { key: 'I', label: 'Inventory',      action: menuInventory },
     { key: 'N', label: 'News',           action: menuNews },
-    { key: 'S', label: 'Save Game',      action: saveGame },
+    { key: 'G', label: 'Garage',         action: menuGarage },
+    { key: 'F5', label: 'Save Game',     action: saveGame },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
     { key: 'T', label: 'Wait/Rest',     action: menuWait },
     { key: '?', label: 'Help/Settings',  action: menuHelp }
@@ -1928,7 +3135,7 @@ function showMainActions() {
 // --------------------------------------------------------
 async function menuTravel() {
   const p = await q1('SELECT city, cash FROM player');
-  const hasVehicle = await qv('SELECT COUNT(*) FROM vehicles');
+  const hasVehicle = await qv(`SELECT COUNT(*) FROM vehicles WHERE stored=0`);
   const options = [];
   for (const city of Object.keys(CITIES)) {
     if (city === p.city) continue;
@@ -1937,6 +3144,7 @@ async function menuTravel() {
       label: `${city} ${cost > 0 ? '($' + cost + ')' : '(Free - own vehicle)'}`,
       action: async () => {
         if (p.cash < cost) { log('Not enough cash to travel!', 'c-red'); return; }
+        setStatus(`Traveling to ${city}...`);
         await conn.query(`UPDATE player SET city='${city}', cash=cash-${cost}, district='${CITIES[city].districts[0].replace(/'/g,"''")}'`);
         await loadCityMap(city);
         let sx = 5, sy = 5;
@@ -1946,8 +3154,9 @@ async function menuTravel() {
         await conn.query(`UPDATE player SET x=${sx}, y=${sy}`);
         setDuckTarget(sx + 0.5, sy + 0.5);
         if (duckGroup) { duckGroup.position.x = sx + 0.5; duckGroup.position.z = sy + 0.5; }
-        await advanceTime(4); await processWorldEvents(); await checkPolice();
+        await advanceTime(2); await processWorldEvents(); await checkPolice();
         log(`Traveled to ${city}!`, 'c-cyan');
+        clearStatus();
         hideSubMenu(); await updateHUD(); await checkPOI(); showMainActions();
       }
     });
@@ -1971,9 +3180,15 @@ async function menuTravel() {
 //  LEGAL JOBS
 // --------------------------------------------------------
 async function menuJobs() {
-  const options = JOBS.map(job => ({
-    label: `${job.name} (${job.hours}h, $${job.min}-${job.max})`,
+  const options = [];
+  for (const job of JOBS) {
+    const skill = await getSkill(job.skill);
+    const bonus = skill * 5;
+    const maxEarn = job.max + bonus;
+    options.push({
+    label: `${job.name} (${job.hours}h, $${job.min + bonus}-${maxEarn}, ${job.skill} skill)`,
     action: async () => {
+      setStatus(`Working as ${job.name}...`);
       const skill = await getSkill(job.skill);
       const base = rand(job.min, job.max);
       const bonus = skill * 5;
@@ -1982,25 +3197,54 @@ async function menuJobs() {
       await advanceTime(job.hours); await maybeSkillUp(job.skill);
       if (chance(25)) { await conn.query(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`); log('Keeping a low profile... wanted level decreased.', 'c-green'); }
       log(`Worked as ${job.name}: earned $${earnings} (base $${base} + skill $${bonus})`, 'c-green');
+      clearStatus();
       await processWorldEvents(); await checkPolice();
       hideSubMenu(); await updateHUD(); showMainActions();
     }
-  }));
-  showSubMenu('Legal Jobs', options);
+  });
+  }
+  showSubMenu('Legal Jobs (safe income, builds skills, may reduce wanted level)', options);
 }
 
 // --------------------------------------------------------
 //  CRIME
 // --------------------------------------------------------
 async function menuCrime() {
-  const options = CRIMES.map(crime => ({
-    label: `${crime.name} (${crime.hours}h)`,
-    action: async () => { await commitCrime(crime); }
-  }));
-  showSubMenu('Criminal Activities', options);
+  const p = await q1('SELECT * FROM player');
+  const gunBonus = await getGunBonus();
+  let html = '<div class="c-gray" style="margin-bottom:6px;font-size:10px">Success depends on your skills, weapons, and luck. Higher risk = higher reward.</div>';
+  html += '<table><tr><th>Crime</th><th>Chance</th><th>Reward</th><th>Risk</th><th>Time</th><th></th></tr>';
+  for (const crime of CRIMES) {
+    const skill = await getSkill(crime.skill);
+    const minChance = Math.min(95, crime.baseMin + skill * 3 + gunBonus);
+    const maxChance = Math.min(95, crime.baseMax + skill * 3 + gunBonus);
+    const avgChance = Math.floor((minChance + maxChance) / 2);
+    const chanceColor = avgChance >= 60 ? 'c-green' : avgChance >= 35 ? 'c-yellow' : 'c-red';
+    const maxLoot = crime.lootMax + skill * crime.lootMul;
+    const riskLevel = crime.failWanted >= 2 ? 'HIGH' : crime.heat >= 5 ? 'MED' : 'LOW';
+    const riskColor = riskLevel === 'HIGH' ? 'c-red' : riskLevel === 'MED' ? 'c-yellow' : 'c-green';
+    html += `<tr>`;
+    html += `<td>${crime.name}<br><span class="c-gray" style="font-size:9px">${crime.skill}</span></td>`;
+    html += `<td class="${chanceColor}">${avgChance}%</td>`;
+    html += `<td class="c-gold">$${crime.lootMin}-${maxLoot}</td>`;
+    html += `<td class="${riskColor}">${riskLevel}</td>`;
+    html += `<td>${crime.hours}h</td>`;
+    html += `<td><button class="btn do-crime" data-idx="${CRIMES.indexOf(crime)}">Go</button></td>`;
+    html += `</tr>`;
+  }
+  html += '</table>';
+  if (p.adrenaline > 0) html += '<div class="c-cyan" style="margin-top:4px">Adrenaline active: +20% success on next crime!</div>';
+  showSubMenuHTML('Criminal Activities', html);
+  $('sub-menu').querySelectorAll('.do-crime').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const crime = CRIMES[parseInt(btn.dataset.idx)];
+      await commitCrime(crime);
+    });
+  });
 }
 
 async function commitCrime(crime) {
+  setStatus(`Committing ${crime.name}...`);
   const p = await q1('SELECT * FROM player');
   const skill = await getSkill(crime.skill);
   const gunBonus = await getGunBonus();
@@ -2015,13 +3259,14 @@ async function commitCrime(crime) {
     const dmg = rand(crime.dmgMin, crime.dmgMax);
     const respect = rand(crime.respectMin, crime.respectMax);
     const actualDmg = p.armor > 0 ? Math.floor(dmg / 2) : dmg;
-    await conn.query(`UPDATE player SET cash=cash+${loot}, health=GREATEST(0,health-${actualDmg}), respect=respect+${respect}, armor=GREATEST(0,armor-${dmg})`);
+    const crimeWanted = crime.heat >= 15 ? 2 : crime.heat >= 5 ? 1 : 0;
+    await conn.query(`UPDATE player SET cash=cash+${loot}, health=GREATEST(0,health-${actualDmg}), respect=respect+${respect}, armor=GREATEST(0,armor-${dmg}), wanted_level=LEAST(5,wanted_level+${crimeWanted})`);
     const safeD = p.district.replace(/'/g, "''"); const safeC = p.city.replace(/'/g, "''");
     await conn.query(`UPDATE district_heat SET heat=heat+${crime.heat} WHERE district='${safeD}' AND city='${safeC}'`);
     if (crime.name === 'Carjack') {
       const v = VEHICLE_LIST[rand(0, VEHICLE_LIST.length - 1)];
       const exists = await qv(`SELECT COUNT(*) FROM vehicles WHERE name='${v.name}'`);
-      if (!exists) { await conn.query(`INSERT INTO vehicles VALUES ('${v.name}')`); log(`Jacked a ${v.name}!`, 'c-cyan'); }
+      if (!exists) { await conn.query(`INSERT INTO vehicles VALUES ('${v.name}',0)`); log(`Jacked a ${v.name}!`, 'c-cyan'); }
     }
     log(`SUCCESS: ${crime.name} - Earned $${loot}, +${respect} Respect${actualDmg > 0 ? ', -' + actualDmg + '% HP' : ''}`, 'c-green');
     spawnParticlesAtDuck(0xffdd00, 15, 2, 1.5);
@@ -2036,7 +3281,19 @@ async function commitCrime(crime) {
     log(`FAILED: ${crime.name} - Fined $${fine}, -${actualDmg}% HP, +${wantedGain} Wanted`, 'c-red');
     spawnParticlesAtDuck(0xff2222, 12, 1.5, 1);
   }
-  await checkDeath(); await processWorldEvents(); await checkPolice();
+  clearStatus();
+  await checkDeath(); await processWorldEvents();
+  // High-heat crimes always trigger police
+  if (crime.heat >= 15 && !policeEncounterActive) {
+    const pp = await q1('SELECT * FROM player');
+    // Force at least 1 wanted for the encounter
+    if (pp.wanted_level <= 0) await conn.query(`UPDATE player SET wanted_level=1`);
+    const pp2 = await q1('SELECT * FROM player');
+    log('Sirens everywhere! The cops are on you!', 'c-red');
+    await triggerPoliceEncounter(pp2);
+    return;
+  }
+  await checkPolice();
   hideSubMenu(); await updateHUD(); showMainActions();
 }
 
@@ -2053,7 +3310,9 @@ async function menuGuns() {
     html += `<td>${isOwned ? '<span class="c-green">OWNED</span>' : `<button class="btn buy-gun" data-name="${gun.name}" data-price="${gun.price}" data-cat="${gun.cat}" data-bonus="${gun.bonus}">Buy</button>`}</td></tr>`;
   }
   html += '</table>';
+  html += '<div style="margin-top:6px"><button class="btn rob-ammo">*** Rob Ammu-Nation ***</button></div>';
   showSubMenuHTML('Ammu-Nation', html);
+  $('sub-menu').querySelector('.rob-ammo')?.addEventListener('click', () => robLocation('Ammu-Nation', 100, 500, 15, 5));
   $('sub-menu').querySelectorAll('.buy-gun').forEach(btn => {
     btn.addEventListener('click', async () => {
       const name = btn.dataset.name; const price = parseInt(btn.dataset.price);
@@ -2115,7 +3374,37 @@ async function menuShops() {
       await updateHUD();
     }
   }));
+  options.push({ label: '*** Rob This Store ***', action: () => robLocation('Convenience Store', 50, 250, 10, 2) });
   showSubMenu('Convenience Store', options);
+}
+
+async function robLocation(placeName, lootMin, lootMax, lootMul, heat) {
+  setStatus(`Robbing ${placeName}...`);
+  const p = await q1('SELECT * FROM player');
+  const skill = await getSkill('stealth');
+  const gunBonus = await getGunBonus();
+  let successChance = rand(20, 55) + skill * 3 + gunBonus;
+  successChance = Math.min(successChance, 90);
+  await advanceTime(1);
+  if (chance(successChance)) {
+    const loot = rand(lootMin, lootMax) + skill * lootMul;
+    const respect = rand(5, 20);
+    await conn.query(`UPDATE player SET cash=cash+${loot}, respect=respect+${respect}, wanted_level=LEAST(5,wanted_level+1)`);
+    const safeD = p.district.replace(/'/g, "''"); const safeC = p.city.replace(/'/g, "''");
+    await conn.query(`UPDATE district_heat SET heat=heat+${heat} WHERE district='${safeD}' AND city='${safeC}'`);
+    log(`Robbed ${placeName}! Got $${loot}, +${respect} Respect. +1 Wanted.`, 'c-green');
+    spawnParticlesAtDuck(0xffdd00, 15, 2, 1.5);
+    await maybeSkillUp('stealth'); await updateRank();
+  } else {
+    const fine = rand(100, 400);
+    const dmg = rand(10, 35);
+    await conn.query(`UPDATE player SET cash=GREATEST(0,cash-${fine}), health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+2)`);
+    log(`Failed to rob ${placeName}! Fined $${fine}, -${dmg} HP, +2 Wanted.`, 'c-red');
+    spawnParticlesAtDuck(0xff2222, 12, 1.5, 1);
+  }
+  clearStatus();
+  await checkDeath(); await checkPolice();
+  hideSubMenu(); await updateHUD(); showMainActions();
 }
 
 // --------------------------------------------------------
@@ -2187,7 +3476,7 @@ async function menuVehicles() {
       const cash = await qv('SELECT cash FROM player');
       if (cash < price) { log('Not enough cash!', 'c-red'); return; }
       await conn.query(`UPDATE player SET cash=cash-${price}`);
-      await conn.query(`INSERT INTO vehicles VALUES ('${name}')`);
+      await conn.query(`INSERT INTO vehicles VALUES ('${name}',0)`);
       log(`Bought a ${name} for $${price}!`, 'c-green');
       await updateHUD(); await menuVehicles();
     });
@@ -2235,15 +3524,15 @@ async function menuGang() {
   if (!p.gang) {
     const localGangs = GANGS[p.city] || [];
     const options = localGangs.map(g => ({
-      label: `Join ${g}`,
+      label: `Join ${g} - Gain territory, recruit crew, earn daily income`,
       action: async () => {
         await conn.query(`UPDATE player SET gang='${g.replace(/'/g,"''")}', gang_rank='Outsider'`);
-        log(`Joined ${g}!`, 'c-magenta');
+        log(`Joined ${g}! Visit Gang & Empire [9] to manage territory, recruit crew, and build your empire.`, 'c-magenta');
         hideSubMenu(); await updateHUD(); showMainActions();
       }
     }));
     if (p.respect >= 1500) {
-      options.push({ label: 'Create Your Own Gang', action: async () => {
+      options.push({ label: 'Create Your Own Gang (1500+ Respect)', action: async () => {
         const rawName = prompt('Enter gang name:');
         if (!rawName) return;
         const name = rawName.replace(/[^a-zA-Z0-9 ]/g, '').trim().slice(0, 30);
@@ -2253,15 +3542,24 @@ async function menuGang() {
         hideSubMenu(); await updateHUD(); showMainActions();
       }});
     }
-    showSubMenu('Join a Gang', options); return;
+    showSubMenu(`Join a Gang in ${p.city}`, options); return;
   }
+  const tCount = await qv(`SELECT COUNT(*) FROM territories WHERE owner='${p.gang.replace(/'/g,"''")}'`);
+  const recruitCount = (await qv('SELECT COUNT(*) FROM recruits')) || 0;
+  const bizCount = (await qv(`SELECT COUNT(*) FROM businesses WHERE city='${p.city.replace(/'/g,"''")}'`)) || 0;
+  let gangInfo = `<div style="margin-bottom:6px">`;
+  gangInfo += `<span class="c-cyan">Territories: ${tCount || 0}</span> | `;
+  gangInfo += `<span class="c-cyan">Crew: ${recruitCount}</span> | `;
+  gangInfo += `<span class="c-cyan">Businesses: ${bizCount}</span> | `;
+  gangInfo += `<span class="c-gold">Respect: ${p.respect}</span>`;
+  gangInfo += `</div>`;
   showSubMenu(`${p.gang} - ${p.gang_rank}`, [
-    { label: 'Territory Map', action: menuTerritoryMap },
-    { label: 'Attack Territory', action: menuAttackTerritory },
-    { label: 'Recruit Members', action: menuRecruit },
-    { label: 'Upgrades', action: menuGangUpgrades },
-    { label: 'Buy Business', action: menuBusiness },
-    { label: 'View Recruits', action: menuViewRecruits },
+    { label: 'Territory Map - See who controls each district', action: menuTerritoryMap },
+    { label: 'Attack Territory - Fight rival gangs for turf ($150/day per territory)', action: menuAttackTerritory },
+    { label: `Recruit Members - Hire crew (have ${recruitCount})`, action: menuRecruit },
+    { label: 'Upgrades - Safe house, weapons, smuggling routes', action: menuGangUpgrades },
+    { label: `Buy Business - Earn passive daily income (own ${bizCount})`, action: menuBusiness },
+    { label: `View Recruits - See your crew (${recruitCount} members)`, action: menuViewRecruits },
     { label: 'Leave Gang', action: async () => {
       showSubMenu('Leave Gang?', [
         { label: 'Yes, leave', action: async () => {
@@ -2273,6 +3571,12 @@ async function menuGang() {
       ]);
     }}
   ]);
+  // Inject gang stats above the options
+  const gangMenu = $('sub-menu');
+  const gangStats = document.createElement('div');
+  gangStats.style.cssText = 'margin-bottom:6px;font-size:11px';
+  gangStats.innerHTML = gangInfo;
+  gangMenu.insertBefore(gangStats, gangMenu.querySelector('.sub-options'));
 }
 
 async function menuTerritoryMap() {
@@ -2289,43 +3593,61 @@ async function menuTerritoryMap() {
 
 async function menuAttackTerritory() {
   const p = await q1('SELECT city, gang, respect FROM player');
-  const targets = await q(`SELECT district, owner FROM territories WHERE city='${p.city.replace(/'/g,"''")}' AND owner != '${p.gang.replace(/'/g,"''")}' AND owner != 'Unaffiliated'`);
-  if (targets.length === 0) {
-    const unclaimed = await q(`SELECT district FROM territories WHERE city='${p.city.replace(/'/g,"''")}' AND owner='Unaffiliated'`);
-    if (unclaimed.length === 0) { log('No territories to attack or claim here.', 'c-yellow'); return; }
-    const options = unclaimed.map(t => ({
-      label: `Claim ${t.district}`,
-      action: async () => {
-        await conn.query(`UPDATE territories SET owner='${p.gang.replace(/'/g,"''")}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
-        log(`Claimed ${t.district} for ${p.gang}!`, 'c-green');
-        await advanceTime(2); hideSubMenu(); await updateHUD(); showMainActions();
-      }
-    }));
-    showSubMenu('Claim Territory', options); return;
+  const safeGang = p.gang.replace(/'/g,"''");
+  const safeCity = p.city.replace(/'/g,"''");
+  const targets = await q(`SELECT district, owner FROM territories WHERE city='${safeCity}' AND owner != '${safeGang}' AND owner != 'Unaffiliated'`);
+  const unclaimed = await q(`SELECT district FROM territories WHERE city='${safeCity}' AND owner='Unaffiliated'`);
+  if (targets.length === 0 && unclaimed.length === 0) {
+    log('No territories to attack or claim here.', 'c-yellow');
+    hideSubMenu(); showMainActions();
+    return;
   }
-  const options = targets.map(t => ({
-    label: `Attack ${t.district} (${t.owner})`,
-    action: async () => {
-      const recruitCount = (await qv('SELECT COUNT(*) FROM recruits')) || 0;
-      const upgrades = (await qv(`SELECT COALESCE(SUM(level),0) FROM gang_upgrades`)) || 0;
-      const strength = recruitCount * 2 + upgrades * 5;
-      await advanceTime(3);
-      if (chance(Math.min(40 + strength, 85))) {
-        await conn.query(`UPDATE territories SET owner='${p.gang.replace(/'/g,"''")}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
-        const respect = rand(25, 100);
-        await conn.query(`UPDATE player SET respect=respect+${respect}`);
-        log(`Victory! Took ${t.district} from ${t.owner}! +${respect} Respect`, 'c-green');
-        await updateRank();
-      } else {
-        const dmg = rand(20, 50);
-        await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), respect=GREATEST(0,respect-75)`);
-        log(`Defeat! Failed to take ${t.district}. -${dmg} HP, -75 Respect.`, 'c-red');
-        await checkDeath();
+  const options = [];
+  for (const t of targets) {
+    options.push({
+      label: `Attack ${t.district} (${t.owner})`,
+      action: async () => {
+        setStatus(`Attacking ${t.district}...`);
+        const recruitCount = (await qv('SELECT COUNT(*) FROM recruits')) || 0;
+        const upgrades = (await qv(`SELECT COALESCE(SUM(level),0) FROM gang_upgrades`)) || 0;
+        const strength = recruitCount * 2 + upgrades * 5;
+        await advanceTime(3);
+        if (chance(Math.min(40 + strength, 85))) {
+          await conn.query(`UPDATE territories SET owner='${safeGang}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${safeCity}'`);
+          const respect = rand(25, 100);
+          await conn.query(`UPDATE player SET respect=respect+${respect}`);
+          log(`Victory! Took ${t.district} from ${t.owner}! +${respect} Respect`, 'c-green');
+          spawnParticlesAtDuck(0x44ff44, 20, 2, 2);
+          await updateRank();
+        } else {
+          const dmg = rand(20, 50);
+          await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), respect=GREATEST(0,respect-75)`);
+          log(`Defeat! Failed to take ${t.district}. -${dmg} HP, -75 Respect.`, 'c-red');
+          spawnParticlesAtDuck(0xff2222, 15, 1.5, 1);
+          await checkDeath();
+        }
+        clearStatus();
+        await processWorldEvents(); await checkPolice();
+        hideSubMenu(); await updateHUD(); showMainActions();
       }
-      hideSubMenu(); await updateHUD(); showMainActions();
-    }
-  }));
-  showSubMenu('Attack Territory', options);
+    });
+  }
+  for (const t of unclaimed) {
+    options.push({
+      label: `Claim ${t.district} (Unclaimed)`,
+      action: async () => {
+        await conn.query(`UPDATE territories SET owner='${safeGang}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${safeCity}'`);
+        const respect = rand(10, 30);
+        await conn.query(`UPDATE player SET respect=respect+${respect}`);
+        log(`Claimed ${t.district} for ${p.gang}! +${respect} Respect`, 'c-green');
+        spawnParticlesAtDuck(0x44ff44, 12, 1.5, 1.5);
+        await advanceTime(2); await processWorldEvents();
+        await updateRank();
+        hideSubMenu(); await updateHUD(); showMainActions();
+      }
+    });
+  }
+  showSubMenu('Attack / Claim Territory', options);
 }
 
 async function menuRecruit() {
@@ -2406,10 +3728,72 @@ async function menuViewRecruits() {
 }
 
 // --------------------------------------------------------
+//  STRIP CLUB
+// --------------------------------------------------------
+async function menuStripClub() {
+  const p = await q1('SELECT cash, health, wanted_level, city FROM player');
+  const ownsClub = await qv(`SELECT COUNT(*) FROM businesses WHERE type='strip_club' AND city='${p.city.replace(/'/g,"''")}'`);
+  const stripOptions = [];
+  if (ownsClub > 0) {
+    stripOptions.push({ label: 'Hide out in the back office (Heal, lose cops)', action: async () => {
+      stopSiren(); clearPoliceNPCs(); policeEncounterActive = false;
+      await conn.query(`UPDATE player SET wanted_level=0, health=LEAST(100,health+30)`);
+      await advanceTime(3);
+      log('Hid out in your own club. Cops lost your trail. +30 HP, wanted cleared.', 'c-green');
+      spawnParticlesAtDuck(0x44ff44, 10, 1.5, 1.5);
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }});
+  }
+  showSubMenu(ownsClub > 0 ? 'Your Strip Club' : 'Strip Club', [...stripOptions,
+    { label: 'Lap Dance - $75 (+15 HP)', action: async () => {
+      if (p.cash < 75) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
+      await conn.query(`UPDATE player SET cash=cash-75, health=LEAST(100,health+15)`);
+      await advanceTime(1);
+      log('Enjoyed a lap dance. Feeling relaxed. +15 HP.', 'c-magenta');
+      spawnParticlesAtDuck(0xff66aa, 8, 1, 1.5);
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'VIP Room - $200 (+30 HP, -1 Wanted)', action: async () => {
+      if (p.cash < 200) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
+      await conn.query(`UPDATE player SET cash=cash-200, health=LEAST(100,health+30), wanted_level=GREATEST(0,wanted_level-1)`);
+      await advanceTime(2);
+      log('VIP treatment. Nobody looks for you here. +30 HP, -1 Wanted.', 'c-magenta');
+      spawnParticlesAtDuck(0xff66aa, 15, 1.5, 2);
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'Champagne Room - $500 (+50 HP, +10 Respect)', action: async () => {
+      if (p.cash < 500) { log('Not enough cash for the high life!', 'c-red'); hideSubMenu(); showMainActions(); return; }
+      await conn.query(`UPDATE player SET cash=cash-500, health=LEAST(100,health+50), respect=respect+10`);
+      await advanceTime(3);
+      log('Big spender! The whole club knows your name. +50 HP, +10 Respect.', 'c-gold');
+      spawnParticlesAtDuck(0xffd700, 20, 2, 2);
+      await maybeSkillUp('charisma');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }},
+    { label: 'Buy Drinks & Hang Out - $30 (-1 Wanted)', action: async () => {
+      if (p.cash < 30) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
+      await conn.query(`UPDATE player SET cash=cash-30, wanted_level=GREATEST(0,wanted_level-1)`);
+      await advanceTime(2);
+      log('Laid low at the strip club for a while. -1 Wanted.', 'c-cyan');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }}
+  ]);
+}
+
+// --------------------------------------------------------
 //  GAMBLING
 // --------------------------------------------------------
 async function menuGambling() {
-  showSubMenu('Gambling Den', [
+  // Check if at gambling POI or nighttime
+  const clk = await q1('SELECT hour FROM game_clock');
+  const p = await q1('SELECT x, y FROM player');
+  const isNight = clk.hour < 5 || clk.hour > 21;
+  const atGamblingPOI = currentMapGrid && currentMapGrid[p.y][p.x] === T.POI_GAMBLING;
+  if (!isNight && !atGamblingPOI) {
+    log('Gambling is only available at night or at a Gambling Den [B].', 'c-yellow');
+    return;
+  }
+  showSubMenu(atGamblingPOI ? 'Gambling Den' : 'Street Gambling (Night)', [
     { label: 'Slot Machine ($50)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < 50) { log('Need $50 to play!', 'c-red'); return; }
@@ -2447,7 +3831,8 @@ async function menuGambling() {
         await maybeSkillUp('charisma');
       } else { log('Poker face failed. Lost your buy-in.', 'c-red'); }
       await updateHUD();
-    }}
+    }},
+    { label: '*** Rob the Gambling Den ***', action: () => robLocation('Gambling Den', 200, 800, 20, 8) }
   ]);
 }
 
@@ -2455,7 +3840,7 @@ async function menuGambling() {
 //  STREET RACING
 // --------------------------------------------------------
 async function menuStreetRace() {
-  const hasVehicle = await qv('SELECT COUNT(*) FROM vehicles');
+  const hasVehicle = await qv(`SELECT COUNT(*) FROM vehicles WHERE stored=0`);
   if (!hasVehicle) { log('You need a vehicle to street race!', 'c-red'); return; }
   const drivingSkill = await getSkill('driving');
   const buyIn = rand(100, 500);
@@ -2463,6 +3848,7 @@ async function menuStreetRace() {
   if (cash < buyIn) { log(`Need $${buyIn} buy-in for the race!`, 'c-red'); return; }
   showSubMenu(`Street Race - $${buyIn} buy-in`, [
     { label: 'Enter Race', action: async () => {
+      setStatus('Street racing...');
       await conn.query(`UPDATE player SET cash=cash-${buyIn}`);
       await advanceTime(2);
       const winChance = 30 + drivingSkill * 5;
@@ -2479,6 +3865,7 @@ async function menuStreetRace() {
         log(`Crashed out! Lost $${buyIn} and ${dmg}% HP.`, 'c-red'); await checkDeath();
       }
       if (chance(30)) await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+      clearStatus();
       await checkPolice(); hideSubMenu(); await updateHUD(); showMainActions();
     }}
   ]);
@@ -2543,7 +3930,13 @@ async function menuInventory() {
   else { html += '<table>'; for (const d of drugs) html += `<tr><td>${d.name}</td><td>x${d.qty}</td></tr>`; html += '</table>'; }
   html += '<div class="c-yellow" style="margin-top:6px">--- Vehicles ---</div>';
   if (vehicles.length === 0) html += '<div class="c-gray">None</div>';
-  else { for (const v of vehicles) html += `<div class="c-cyan">${v.name}</div>`; }
+  else {
+    html += '<div style="margin:4px 0"><button class="btn switch-vehicle" data-name="">Go on Foot</button></div>';
+    for (const v of vehicles) {
+      const status = v.stored ? ' (garaged)' : '';
+      html += `<div style="margin:2px 0"><button class="btn switch-vehicle" data-name="${v.name}" data-stored="${v.stored}">${v.name}${status}</button></div>`;
+    }
+  }
   showSubMenuHTML('Inventory', html);
   $('sub-menu').querySelectorAll('.use-item').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -2561,6 +3954,27 @@ async function menuInventory() {
       }
       await conn.query(`UPDATE inventory SET qty=qty-1 WHERE item='${item}'`);
       await conn.query(`DELETE FROM inventory WHERE qty <= 0`);
+      await updateHUD(); await menuInventory();
+    });
+  });
+  $('sub-menu').querySelectorAll('.switch-vehicle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.name;
+      if (!name) {
+        // Go on foot — store all active vehicles
+        await conn.query(`UPDATE vehicles SET stored=1 WHERE stored=0`);
+        log('Going on foot. All vehicles stored.', 'c-cyan');
+      } else {
+        const isStored = btn.dataset.stored === '1';
+        if (isStored) {
+          // Take out of garage and make active
+          await conn.query(`UPDATE vehicles SET stored=1 WHERE stored=0`); // store current
+          await conn.query(`UPDATE vehicles SET stored=0 WHERE name='${name.replace(/'/g,"''")}'`);
+          log(`Switched to ${name}. Other vehicles stored.`, 'c-green');
+        } else {
+          log(`Already driving ${name}.`, 'c-gray');
+        }
+      }
       await updateHUD(); await menuInventory();
     });
   });
@@ -2582,7 +3996,10 @@ async function menuNews() {
 // --------------------------------------------------------
 async function menuWait() {
   const clk = await q1('SELECT * FROM game_clock');
-  showSubMenu(`Current time: Day ${clk.day}, ${String(clk.hour).padStart(2,'0')}:00`, [
+  const safeHouseLevel = await qv(`SELECT level FROM gang_upgrades WHERE name='safe_house'`) || 0;
+  const ownedBiz = await qv(`SELECT COUNT(*) FROM businesses`) || 0;
+  const canHideOut = safeHouseLevel > 0 || ownedBiz > 0;
+  const options = [
     { label: 'Wait 1 hour', action: async () => {
       await advanceTime(1); await processWorldEvents();
       if (chance(15)) { await conn.query(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`); log('Laying low... wanted level decreased.', 'c-green'); }
@@ -2613,7 +4030,23 @@ async function menuWait() {
       log(`Waited ${h} hours until midnight.`, 'c-cyan');
       hideSubMenu(); await updateHUD(); showMainActions();
     }}
-  ]);
+  ];
+  if (canHideOut) {
+    options.unshift({
+      label: `Rest at ${safeHouseLevel > 0 ? 'Safe House' : 'your Business'} (Sleep, heal, lose cops)`,
+      action: async () => {
+        const hoursToMorning = clk.hour >= 8 ? (24 - clk.hour + 8) : (8 - clk.hour);
+        const restHours = Math.max(hoursToMorning, 4);
+        stopSiren(); clearPoliceNPCs(); policeEncounterActive = false;
+        await conn.query(`UPDATE player SET wanted_level=0, health=LEAST(100,health+40)`);
+        await advanceTime(restHours); await processWorldEvents();
+        log(`Laid low and rested for ${restHours} hours. Wanted level cleared, +40 HP.`, 'c-green');
+        spawnParticlesAtDuck(0x44ff44, 10, 1.5, 1.5);
+        hideSubMenu(); await updateHUD(); showMainActions();
+      }
+    });
+  }
+  showSubMenu(`Current time: Day ${clk.day}, ${String(clk.hour).padStart(2,'0')}:00`, options);
 }
 
 // --------------------------------------------------------
@@ -2625,6 +4058,10 @@ function menuHelp() {
 <table>
   <tr><td class="c-cyan">WASD / Arrows</td><td>Move your duck</td></tr>
   <tr><td class="c-cyan">Enter</td><td>Interact with POI (glowing markers)</td></tr>
+  <tr><td class="c-cyan">1-9, 0</td><td>Quick action keys (shown in brackets)</td></tr>
+  <tr><td class="c-cyan">F5</td><td>Quick save</td></tr>
+  <tr><td class="c-cyan">Esc</td><td>Close menu / go back</td></tr>
+  <tr><td class="c-cyan">Space / F</td><td>Shoot (requires weapon)</td></tr>
   <tr><td class="c-cyan">Scroll Wheel</td><td>Zoom in / out</td></tr>
   <tr><td class="c-cyan">+ / -</td><td>Zoom in / out (keyboard)</td></tr>
   <tr><td class="c-cyan">Q / E</td><td>Rotate camera left / right</td></tr>
@@ -2636,7 +4073,7 @@ function menuHelp() {
   <tr><td class="c-green">Work legal jobs</td><td>Earn safe cash, build skills</td></tr>
   <tr><td class="c-green">Commit crimes</td><td>High risk, high reward, raises wanted level</td></tr>
   <tr><td class="c-green">Join a gang</td><td>Attack territories, recruit members, buy businesses</td></tr>
-  <tr><td class="c-green">Buy weapons</td><td>Increase crime success chance</td></tr>
+  <tr><td class="c-green">Buy weapons</td><td>Increase crime success, enables shooting (Space/F)</td></tr>
   <tr><td class="c-green">Buy vehicles</td><td>Free travel between cities</td></tr>
   <tr><td class="c-green">Visit hookers</td><td>Restore health (+HP)</td></tr>
   <tr><td class="c-green">Drug market</td><td>Buy low, sell high, build dealing skill</td></tr>
@@ -2649,7 +4086,7 @@ function menuHelp() {
 <div class="c-white">- Upgrade your safe house to recruit more gang members.</div>
 <div class="c-white">- Adrenaline Shots give +20% crime success for one crime.</div>
 <div class="c-white">- Earn perk points every 1000 respect. Unlock powerful bonuses.</div>
-<div class="c-white">- Enter name "test" at start for $999,999.</div>
+<div class="c-white">- Pick Oz at character select for hacker mode ($1M, all weapons).</div>
 
 <div class="c-yellow" style="margin:8px 0 6px">--- Camera Settings ---</div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
@@ -2678,6 +4115,7 @@ function menuHelp() {
   <tr><td style="color:#ff8800">V</td><td>Vehicle Dealer</td></tr>
   <tr><td style="color:#44ff44">W</td><td>Job Center (legal work)</td></tr>
   <tr><td style="color:#aa44ff">G</td><td>Gang HQ (join gang, territories)</td></tr>
+  <tr><td style="color:#ff66aa">X</td><td>Strip Club (health, respect, lay low)</td></tr>
 </table>
 
 <div class="c-gray" style="margin-top:8px;font-size:10px">All game state is stored in DuckDB-WASM. Every action is a SQL query.</div>
@@ -2698,11 +4136,55 @@ function menuHelp() {
 }
 
 // --------------------------------------------------------
+//  GARAGE
+// --------------------------------------------------------
+async function menuGarage() {
+  const safeHouseLevel = await qv(`SELECT level FROM gang_upgrades WHERE name='safe_house'`);
+  if (!safeHouseLevel || safeHouseLevel < 1) {
+    log('You need a Safe House upgrade to store vehicles! Join a gang and upgrade.', 'c-red');
+    return;
+  }
+  const maxSlots = safeHouseLevel * 3;
+  const allVehicles = await q('SELECT * FROM vehicles');
+  const stored = allVehicles.filter(v => v.stored);
+  const active = allVehicles.filter(v => !v.stored);
+  const options = [];
+  // Store active vehicles
+  for (const v of active) {
+    options.push({
+      label: `Store: ${v.name} (driving)`,
+      action: async () => {
+        if (stored.length >= maxSlots) { log(`Garage full! Max ${maxSlots} slots (upgrade safe house for more).`, 'c-red'); return; }
+        await conn.query(`UPDATE vehicles SET stored=1 WHERE name='${v.name.replace(/'/g,"''")}'`);
+        log(`Stored ${v.name} in your garage.`, 'c-green');
+        await updateHUD(); await menuGarage();
+      }
+    });
+  }
+  // Retrieve stored vehicles
+  for (const v of stored) {
+    options.push({
+      label: `Take out: ${v.name} (garaged)`,
+      action: async () => {
+        await conn.query(`UPDATE vehicles SET stored=0 WHERE name='${v.name.replace(/'/g,"''")}'`);
+        log(`Took ${v.name} out of the garage.`, 'c-green');
+        await updateHUD(); await menuGarage();
+      }
+    });
+  }
+  if (options.length === 0) {
+    log('No vehicles to manage. Buy or steal some cars first!', 'c-yellow');
+    return;
+  }
+  showSubMenu(`Garage (${stored.length}/${maxSlots} stored)`, options);
+}
+
+// --------------------------------------------------------
 //  MENU FUNCTION MAP
 // --------------------------------------------------------
 const menuFunctions = {
   menuGuns, menuHospital, menuHookers, menuGambling, menuDrugs,
-  menuShops, menuVehicles, menuJobs, menuGang
+  menuShops, menuVehicles, menuJobs, menuGang, menuStripClub
 };
 
 // --------------------------------------------------------
@@ -2715,21 +4197,30 @@ function rebuildActionKeys() {
     { key: '4', action: menuGuns }, { key: '5', action: menuHospital }, { key: '6', action: menuShops },
     { key: '7', action: menuDrugs }, { key: '8', action: menuVehicles }, { key: '9', action: menuGang },
     { key: '0', action: menuGambling }, { key: 'h', action: menuHookers }, { key: 'p', action: menuPerks },
-    { key: 'i', action: menuInventory }, { key: 'n', action: menuNews }, { key: 's', action: saveGame },
-    { key: 'r', action: menuStreetRace }, { key: 't', action: menuWait }, { key: '/', action: menuHelp }
+    { key: 'i', action: menuInventory }, { key: 'n', action: menuNews }, { key: 'f5', action: saveGame },
+    { key: 'r', action: menuStreetRace }, { key: 't', action: menuWait }, { key: 'g', action: menuGarage }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
 rebuildActionKeys();
 
 document.addEventListener('keydown', async (e) => {
-  if ($('game-ui').style.display === 'none') return;
+  // Don't capture keys when not in game (e.g. title screen, typing in input)
+  if (!gameActive) return;
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
 
   if (e.key === 'Escape' || e.key === 'Backspace') {
     e.preventDefault();
     stopSiren();
+    if (policeEncounterActive) { clearPoliceNPCs(); policeEncounterActive = false; clearStatus(); }
     hideSubMenu();
     showMainActions();
+    return;
+  }
+
+  if (e.key === 'F5') {
+    e.preventDefault();
+    saveGame();
     return;
   }
 
@@ -2771,6 +4262,7 @@ document.addEventListener('keydown', async (e) => {
     case 'ArrowLeft':  case 'a': e.preventDefault(); await movePlayer(-1, 0); return;
     case 'ArrowRight': case 'd': e.preventDefault(); await movePlayer(1, 0); return;
     case 'Enter': e.preventDefault(); await enterPOI(); return;
+    case ' ': case 'f': e.preventDefault(); await playerShoot(); return;
     case 'q': e.preventDefault(); setCamAngle(camAngle - 0.15); return;
     case 'e': e.preventDefault(); setCamAngle(camAngle + 0.15); return;
   }
@@ -2808,30 +4300,53 @@ document.addEventListener('wheel', (e) => {
 //  GAME START
 // --------------------------------------------------------
 window.startNewGame = async function() {
-  const name = $('player-name-input').value.trim() || 'CJ';
+  const selectedCard = document.querySelector('.char-card.selected');
+  if (!selectedCard) { alert('Select a character first!'); return; }
+  const charType = selectedCard.dataset.name;
+  const customName = $('player-name-input').value.trim();
+  const name = customName || charType;
+  const startCity = selectedCard.dataset.city;
+  const bonus = selectedCard.dataset.bonus;
   await initSchema();
-  await initPlayer(name);
+  await initPlayer(name, startCity, bonus, charType);
+  applyCharacterSkin(charType);
   await initWorld();
   $('title-screen').style.display = 'none';
   $('game-ui').style.display = 'block';
   setGameActive(true);
   log(`Welcome to Duck Theft Auto, ${name}!`, 'c-gold');
-  log('All game state is stored in DuckDB. Every action is a SQL query.', 'c-cyan');
-  log('Walk with WASD/Arrows. Press ENTER on glowing markers to visit locations.', 'c-white');
-  log('You start in Los Santos with $' + (name.toLowerCase() === 'test' ? '999,999' : '500') + '. Good luck.', 'c-white');
+  if (startCity !== 'Los Santos') log(`Starting in ${startCity}.`, 'c-cyan');
+  if (charType.toLowerCase() === 'oz') {
+    log('HACKER MODE: $1,000,000 | All weapons unlocked | Max skills | Full armor', 'c-magenta');
+    log('Oz is strapped and ready. No one stands a chance.', 'c-magenta');
+  } else if (bonus === 'cash') {
+    log('Street smart bonus: extra starting cash!', 'c-yellow');
+  } else if (bonus !== 'none') {
+    log(`Character bonus: +2 ${bonus} skill!`, 'c-cyan');
+  }
+  log('Move: WASD/Arrows | Shoot: Space/F | Interact: ENTER | Save: F5', 'c-cyan');
+  log('[1] Travel  [2] Work  [3] Crime  [4] Guns  [5] Hospital  [6] Shops', 'c-gray');
+  log('[7] Drugs  [8] Vehicles  [9] Gang & Empire  [0] Gambling', 'c-gray');
+  const isOzChar = charType.toLowerCase() === 'oz';
+  const startCash = isOzChar ? '1,000,000' : bonus === 'cash' ? '750' : '500';
+  log('Starting cash: $' + startCash + '. Earn respect, join a gang, build your empire.', 'c-white');
+  if (!isOzChar) log('Tip: Start with legal jobs [2] to earn cash safely, then try crime [3] for bigger payoffs.', 'c-yellow');
   await updateHUD(); await checkPOI();
   showMainActions();
   if (!window._autoSaveInterval) window._autoSaveInterval = setInterval(() => { if (gameActive) saveGame(); }, 5 * 60 * 1000);
 };
 
-window.loadGame = async function() {
+window.loadGame = async function(slotName) {
   const loaded = await loadGameData({
     setGameActive,
     updateHUD,
     checkPOI,
     showMainActions
-  });
+  }, slotName);
   if (!loaded) { alert('No save game found. Starting new game.'); return; }
+  // Apply character skin from saved char_type
+  const p = await q1('SELECT name, char_type FROM player');
+  if (p) applyCharacterSkin(p.char_type || p.name);
   if (!window._autoSaveInterval) window._autoSaveInterval = setInterval(() => { if (gameActive) saveGame(); }, 5 * 60 * 1000);
 };
 
@@ -2844,6 +4359,37 @@ window.loadGame = async function() {
     await initDB();
     $('loading').style.display = 'none';
     $('title-screen').style.display = 'flex';
+
+    // Character card selection
+    const cards = document.querySelectorAll('.char-card');
+    const nameInput = $('player-name-input');
+    cards.forEach(card => {
+      card.addEventListener('click', () => {
+        cards.forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        nameInput.value = '';
+      });
+    });
+    nameInput.addEventListener('input', () => {
+      if (nameInput.value.trim()) cards.forEach(c => c.classList.remove('selected'));
+    });
+
+    // Populate saved sessions list
+    const saveIndex = getSaveIndex();
+    const entries = Object.values(saveIndex).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    if (entries.length > 0) {
+      $('saved-sessions').style.display = 'block';
+      const list = $('saved-list');
+      for (const s of entries) {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.cssText = 'font-size:11px;padding:6px 12px;';
+        const date = s.timestamp ? new Date(s.timestamp).toLocaleDateString() : '';
+        btn.innerHTML = '<span style="color:#ff6600">' + s.name + '</span> <span style="color:#888">' + s.city + ' Day ' + s.day + ' $' + (s.cash||0).toLocaleString() + '</span> <span style="color:#666;font-size:9px">' + date + '</span>';
+        btn.addEventListener('click', () => window.loadGame(s.name));
+        list.appendChild(btn);
+      }
+    }
   } catch (e) {
     $('loading').textContent = 'Failed to load: ' + e.message;
     console.error(e);

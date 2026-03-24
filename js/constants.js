@@ -4,7 +4,8 @@
 export const T = {
   WALL: '#', ROAD_MAIN: '=', ROAD_SIDE: '-', GROUND: '.', WATER: '~', TREE: 'T', PARK: 'P', SAND: 's',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
-  POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G'
+  POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
+  POI_STRIP: 'X'
 };
 
 export const POI_DEFS = {
@@ -16,7 +17,8 @@ export const POI_DEFS = {
   [T.POI_SHOP]:     { name: 'Convenience Store',color: '#4488ff', colorHex: 0x4488ff, icon: '$', menu: 'menuShops' },
   [T.POI_VEHICLE]:  { name: 'Vehicle Dealer',  color: '#ff8800', colorHex: 0xff8800, icon: 'V', menu: 'menuVehicles' },
   [T.POI_WORK]:     { name: 'Job Center',      color: '#44ff44', colorHex: 0x44ff44, icon: 'W', menu: 'menuJobs' },
-  [T.POI_GANG]:     { name: 'Gang HQ',         color: '#aa44ff', colorHex: 0xaa44ff, icon: 'G', menu: 'menuGang' }
+  [T.POI_GANG]:     { name: 'Gang HQ',         color: '#aa44ff', colorHex: 0xaa44ff, icon: 'G', menu: 'menuGang' },
+  [T.POI_STRIP]:    { name: 'Strip Club',      color: '#ff66aa', colorHex: 0xff66aa, icon: 'X', menu: 'menuStripClub' }
 };
 
 export const TILE_COLORS = {
@@ -45,29 +47,32 @@ export const CITIES = {
 };
 
 export const JOBS = [
-  { name: 'Taxi Driver',     skill: 'driving',  min: 20, max: 70,  hours: 4 },
-  { name: 'Delivery Driver', skill: 'driving',  min: 25, max: 80,  hours: 5 },
-  { name: 'Mechanic',        skill: 'strength', min: 30, max: 75,  hours: 6 },
-  { name: 'Security Guard',  skill: 'strength', min: 35, max: 85,  hours: 6 },
-  { name: 'Street Performer',skill: 'charisma', min: 25, max: 80,  hours: 4 },
-  { name: 'Bus Driver',      skill: 'driving',  min: 20, max: 70,  hours: 8 },
-  { name: 'Bartender',       skill: 'charisma', min: 30, max: 85,  hours: 6 },
-  { name: 'Dock Worker',     skill: 'strength', min: 25, max: 75,  hours: 8 },
-  { name: 'Construction',    skill: 'strength', min: 35, max: 90,  hours: 8 },
-  { name: 'Chef',            skill: 'charisma', min: 40, max: 100, hours: 6 },
-  { name: 'Pizza Delivery',  skill: 'driving',  min: 25, max: 70,  hours: 4 },
-  { name: 'Street Vendor',   skill: 'charisma', min: 30, max: 75,  hours: 5 }
+  { name: 'Taxi Driver',     skill: 'driving',  min: 20, max: 70,  hours: 2 },
+  { name: 'Delivery Driver', skill: 'driving',  min: 25, max: 80,  hours: 3 },
+  { name: 'Mechanic',        skill: 'strength', min: 30, max: 75,  hours: 3 },
+  { name: 'Security Guard',  skill: 'strength', min: 35, max: 85,  hours: 4 },
+  { name: 'Street Performer',skill: 'charisma', min: 25, max: 80,  hours: 2 },
+  { name: 'Bus Driver',      skill: 'driving',  min: 20, max: 70,  hours: 4 },
+  { name: 'Bartender',       skill: 'charisma', min: 30, max: 85,  hours: 3 },
+  { name: 'Dock Worker',     skill: 'strength', min: 25, max: 75,  hours: 4 },
+  { name: 'Construction',    skill: 'strength', min: 35, max: 90,  hours: 4 },
+  { name: 'Chef',            skill: 'charisma', min: 40, max: 100, hours: 3 },
+  { name: 'Pizza Delivery',  skill: 'driving',  min: 25, max: 70,  hours: 2 },
+  { name: 'Street Vendor',   skill: 'charisma', min: 30, max: 75,  hours: 3 }
 ];
 
 export const CRIMES = [
   { name: 'Rob Store',         skill: 'stealth',  baseMin: 15, baseMax: 35, lootMin: 50,  lootMax: 250,  lootMul: 10, dmgMin: 5,  dmgMax: 20, respectMin: 5,   respectMax: 15,  heat: 2,  hours: 2, failWanted: 1, failFineMin: 50,  failFineMax: 225, failDmgMin: 10, failDmgMax: 45 },
-  { name: 'Burglary',          skill: 'stealth',  baseMin: 5,  baseMax: 55, lootMin: 75,  lootMax: 400,  lootMul: 15, dmgMin: 0,  dmgMax: 10, respectMin: 10,  respectMax: 30,  heat: 5,  hours: 4, failWanted: 1, failFineMin: 75,  failFineMax: 350, failDmgMin: 15, failDmgMax: 55 },
-  { name: 'Heist',             skill: 'stealth',  baseMin: 10, baseMax: 55, lootMin: 250, lootMax: 1000, lootMul: 25, dmgMin: 15, dmgMax: 45, respectMin: 50,  respectMax: 150, heat: 15, hours: 8, failWanted: 2, failFineMin: 100, failFineMax: 500, failDmgMin: 20, failDmgMax: 75 },
+  { name: 'Burglary',          skill: 'stealth',  baseMin: 5,  baseMax: 55, lootMin: 75,  lootMax: 400,  lootMul: 15, dmgMin: 0,  dmgMax: 10, respectMin: 10,  respectMax: 30,  heat: 5,  hours: 3, failWanted: 1, failFineMin: 75,  failFineMax: 350, failDmgMin: 15, failDmgMax: 55 },
+  { name: 'Heist',             skill: 'stealth',  baseMin: 10, baseMax: 55, lootMin: 250, lootMax: 1000, lootMul: 25, dmgMin: 15, dmgMax: 45, respectMin: 50,  respectMax: 150, heat: 15, hours: 5, failWanted: 2, failFineMin: 100, failFineMax: 500, failDmgMin: 20, failDmgMax: 75 },
   { name: 'Carjack',           skill: 'driving',  baseMin: 20, baseMax: 35, lootMin: 20,  lootMax: 70,   lootMul: 5,  dmgMin: 0,  dmgMax: 15, respectMin: 1,   respectMax: 6,   heat: 1,  hours: 1, failWanted: 1, failFineMin: 25,  failFineMax: 150, failDmgMin: 10, failDmgMax: 45 },
   { name: 'Pickpocket',        skill: 'stealth',  baseMin: 30, baseMax: 90, lootMin: 20,  lootMax: 100,  lootMul: 5,  dmgMin: 0,  dmgMax: 0,  respectMin: 1,   respectMax: 3,   heat: 0,  hours: 1, failWanted: 1, failFineMin: 25,  failFineMax: 100, failDmgMin: 5,  failDmgMax: 15 },
   { name: 'Mug Someone',       skill: 'strength', baseMin: 35, baseMax: 65, lootMin: 30,  lootMax: 200,  lootMul: 8,  dmgMin: 10, dmgMax: 30, respectMin: 3,   respectMax: 10,  heat: 2,  hours: 2, failWanted: 1, failFineMin: 50,  failFineMax: 200, failDmgMin: 15, failDmgMax: 50 },
   { name: 'Arson',             skill: 'stealth',  baseMin: 25, baseMax: 60, lootMin: 100, lootMax: 300,  lootMul: 0,  dmgMin: 20, dmgMax: 40, respectMin: 20,  respectMax: 40,  heat: 8,  hours: 3, failWanted: 1, failFineMin: 100, failFineMax: 400, failDmgMin: 25, failDmgMax: 60 },
-  { name: 'Kidnap for Ransom', skill: 'charisma', baseMin: 10, baseMax: 50, lootMin: 200, lootMax: 700,  lootMul: 20, dmgMin: 15, dmgMax: 35, respectMin: 30,  respectMax: 75,  heat: 10, hours: 5, failWanted: 1, failFineMin: 200, failFineMax: 600, failDmgMin: 25, failDmgMax: 65 }
+  { name: 'Kidnap for Ransom', skill: 'charisma', baseMin: 10, baseMax: 50, lootMin: 200, lootMax: 700,  lootMul: 20, dmgMin: 15, dmgMax: 35, respectMin: 30,  respectMax: 75,  heat: 10, hours: 3, failWanted: 1, failFineMin: 200, failFineMax: 600, failDmgMin: 25, failDmgMax: 65 },
+  { name: 'Bank Robbery',     skill: 'stealth',  baseMin: 5,  baseMax: 35, lootMin: 500, lootMax: 2000, lootMul: 30, dmgMin: 20, dmgMax: 50, respectMin: 80,  respectMax: 200, heat: 20, hours: 4, failWanted: 3, failFineMin: 500, failFineMax: 1500, failDmgMin: 30, failDmgMax: 80 },
+  { name: 'Cop Car Ambush',   skill: 'strength', baseMin: 5,  baseMax: 30, lootMin: 300, lootMax: 900,  lootMul: 20, dmgMin: 25, dmgMax: 55, respectMin: 60,  respectMax: 120, heat: 25, hours: 2, failWanted: 3, failFineMin: 400, failFineMax: 1000, failDmgMin: 35, failDmgMax: 70 },
+  { name: 'Armored Truck Hit', skill: 'driving', baseMin: 8,  baseMax: 40, lootMin: 800, lootMax: 3000, lootMul: 40, dmgMin: 15, dmgMax: 45, respectMin: 100, respectMax: 250, heat: 30, hours: 5, failWanted: 3, failFineMin: 600, failFineMax: 2000, failDmgMin: 40, failDmgMax: 90 }
 ];
 
 export const GUNS = [
