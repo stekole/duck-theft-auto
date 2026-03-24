@@ -328,7 +328,7 @@ async function checkPolice() {
   if (policeEncounterActive) return;
   const p = await q1('SELECT * FROM player');
   if (p.wanted_level <= 0) { clearPoliceNPCs(); return; }
-  if (!chance(p.wanted_level * 20)) return;
+  if (!chance(p.wanted_level * 8)) return;
   await triggerPoliceEncounter(p);
 }
 
@@ -336,7 +336,7 @@ async function checkPoliceOnMove() {
   const p = await q1('SELECT * FROM player');
   if (p.wanted_level <= 0) return;
   if (policeEncounterActive) return;
-  const moveChance = p.wanted_level * p.wanted_level * 1.5 + 3;
+  const moveChance = p.wanted_level * 1.5 + 1;
   if (!chance(moveChance)) return;
   await triggerPoliceEncounter(p);
 }
