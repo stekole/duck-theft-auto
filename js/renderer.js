@@ -1166,6 +1166,130 @@ export function renderMinimap(px, py) {
 // --------------------------------------------------------
 //  GAME LOOP
 // --------------------------------------------------------
+// --------------------------------------------------------
+//  REMOTE PLAYER DUCKS (Multiplayer)
+// --------------------------------------------------------
+const remoteDucks = new Map(); // peerId -> { group, targetX, targetZ, label }
+
+export function spawnRemoteDuck(peerId, charType, name) {
+  if (remoteDucks.has(peerId)) return remoteDucks.get(peerId);
+
+  const group = new THREE.Group();
+
+  // Body (slightly tinted to distinguish from local player)
+  const bodyGeo = new THREE.SphereGeometry(0.3, 16, 12);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffdd00, roughness: 0.6, metalness: 0.1 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.scale.set(1, 0.8, 1.2);
+  body.position.y = 0.3;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeo = new THREE.SphereGeometry(0.2, 16, 12);
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xffee33, roughness: 0.5 });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.set(0, 0.55, 0.15);
+  group.add(head);
+
+  // Beak
+  const beakGeo = new THREE.ConeGeometry(0.06, 0.18, 8);
+  const beakMat = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: 0.4 });
+  const beak = new THREE.Mesh(beakGeo, beakMat);
+  beak.rotation.x = -Math.PI / 2;
+  beak.position.set(0, 0.52, 0.35);
+  group.add(beak);
+
+  // Eyes
+  const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.1, 0.6, 0.28);
+  group.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeR.position.set(0.1, 0.6, 0.28);
+  group.add(eyeR);
+
+  // Feet
+  const footGeo = new THREE.BoxGeometry(0.12, 0.03, 0.18);
+  const footMat = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+  const footL = new THREE.Mesh(footGeo, footMat);
+  footL.position.set(-0.1, 0.02, 0.05);
+  footL.name = 'footL';
+  group.add(footL);
+  const footR = new THREE.Mesh(footGeo, footMat);
+  footR.position.set(0.1, 0.02, 0.05);
+  footR.name = 'footR';
+  group.add(footR);
+
+  // Name label (sprite)
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#00ff00';
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(name || peerId.slice(0, 8), 128, 40);
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const label = new THREE.Sprite(spriteMat);
+  label.position.set(0, 1.1, 0);
+  label.scale.set(1.5, 0.4, 1);
+  group.add(label);
+
+  scene.add(group);
+
+  const entry = { group, targetX: 0, targetZ: 0, label, waddle: 0 };
+  remoteDucks.set(peerId, entry);
+
+  // Apply character skin if available
+  if (charType) {
+    _applyRemoteSkin(group, charType);
+  }
+
+  return entry;
+}
+
+function _applyRemoteSkin(group, charName) {
+  // Simplified skin: just tint the body based on character
+  const skinColors = {
+    cj: 0x44aa44, tommy: 0x4488ff, claude: 0x888888,
+    niko: 0xaa6644, catalina: 0xff4488, oz: 0xaa44ff
+  };
+  const color = skinColors[charName.toLowerCase()] || 0xffdd00;
+  const body = group.children[0]; // first child is body
+  if (body && body.material) {
+    body.material.color.setHex(color);
+  }
+}
+
+export function updateRemoteDuck(peerId, x, y, data) {
+  let entry = remoteDucks.get(peerId);
+  if (!entry) {
+    entry = spawnRemoteDuck(peerId, data?.char, data?.name);
+  }
+  entry.targetX = x + 0.5;
+  entry.targetZ = y + 0.5;
+}
+
+export function despawnRemoteDuck(peerId) {
+  const entry = remoteDucks.get(peerId);
+  if (entry) {
+    scene.remove(entry.group);
+    remoteDucks.delete(peerId);
+  }
+}
+
+export function clearRemoteDucks() {
+  for (const [, entry] of remoteDucks) {
+    scene.remove(entry.group);
+  }
+  remoteDucks.clear();
+}
+
+export function getRemoteDucks() { return remoteDucks; }
+
 export function gameLoop() {
   requestAnimationFrame(gameLoop);
   if (!gameActive) { renderer.render(scene, camera); return; }
@@ -1194,6 +1318,27 @@ export function gameLoop() {
       duckGroup.position.y = Math.sin(waddle * 2) * 0.02;
     } else {
       duckGroup.position.y = 0;
+    }
+  }
+
+  // Remote duck interpolation (multiplayer)
+  for (const [, rd] of remoteDucks) {
+    const g = rd.group;
+    const dx = rd.targetX - g.position.x;
+    const dz = rd.targetZ - g.position.z;
+    g.position.x += dx * 0.15;
+    g.position.z += dz * 0.15;
+    const moving = Math.abs(dx) > 0.02 || Math.abs(dz) > 0.02;
+    if (moving) {
+      g.rotation.y = Math.atan2(dx, dz);
+      rd.waddle += dt * 12;
+      const fL = g.getObjectByName('footL');
+      const fR = g.getObjectByName('footR');
+      if (fL) fL.position.z = 0.05 + Math.sin(rd.waddle) * 0.08;
+      if (fR) fR.position.z = 0.05 + Math.sin(rd.waddle + Math.PI) * 0.08;
+      g.position.y = Math.sin(rd.waddle * 2) * 0.02;
+    } else {
+      g.position.y = 0;
     }
   }
 
