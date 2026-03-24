@@ -1,6 +1,6 @@
 # Duck Theft Auto
 
-A GTA-style open-world crime game where all game state lives in DuckDB. Runs entirely in the browser — no server required.
+A GTA-style open-world crime game where all game state lives in DuckDB. Runs entirely in the browser — no server required. Optional P2P multiplayer via WebRTC.
 
 Inspired by some fun projects I've enjoyed
 - [duckdb-doom](https://github.com/nickvdyck/duckdb-doom)
@@ -30,6 +30,8 @@ Every player action is a SQL query against DuckDB-WASM running in your browser. 
 | `businesses` | Owned properties generating daily income |
 | `recruits` | Gang members with strength and daily upkeep |
 | `game_clock` | Day and hour, advances with every action |
+| `remote_players` | Connected multiplayer peers (position, character, health) |
+| `connection_log` | P2P connection events with timestamps and remote IPs |
 
 ## Features
 
@@ -51,6 +53,13 @@ Every player action is a SQL query against DuckDB-WASM running in your browser. 
 - **Perks** — 6 unlockable perks across 3 tiers
 - **Save/Load** — persists to localStorage with auto-save every 5 minutes
 - **AI gang wars** — rival gangs fight over territory in the background
+- **P2P Multiplayer** — optional WebRTC multiplayer via Trystero (Nostr signaling)
+  - Host or join games with a 4-character room code
+  - See other players as colored ducks on the shared map
+  - PvP combat — shoot other players in proximity
+  - In-game chat (press T)
+  - Shared world events — see other players' crimes, robberies, and deaths
+  - Security: rate limiting, tick validation, movement validation, peer kick voting
 
 ## Data Persistence
 
@@ -77,10 +86,13 @@ All game state lives in **DuckDB-WASM**, an in-memory SQL database running entir
 |-----|--------|
 | WASD / Arrow Keys | Move your duck around the 3D city |
 | Enter | Interact with POI (glowing markers) |
+| Space / F | Shoot (targets nearest NPC, cop, or player) |
 | 1-9, 0 | Quick-select menu actions |
 | Escape | Close any menu |
 | Scroll wheel / +/- | Zoom in/out |
 | Q / E | Rotate camera |
+| T | Open chat (multiplayer only) |
+| F5 | Quick save |
 
 ## Development
 
@@ -92,6 +104,7 @@ js/constants.js     — game data (cities, jobs, crimes, guns, drugs, gangs, per
 js/city.js          — procedural city map generation
 js/renderer.js      — Three.js 3D rendering (duck, city, NPCs, particles, lighting)
 js/db.js            — DuckDB-WASM init, schema, queries, save/load
+js/multiplayer.js   — P2P multiplayer (Trystero/WebRTC, lobby, sync, security)
 js/game.js          — all gameplay logic, menus, keyboard controls
 build.sh            — builds dist/index.html from source files
 dist/index.html     — single-file build (works with file://, no server needed)
@@ -105,15 +118,49 @@ After making changes, rebuild the playable single file:
 ./build.sh
 ```
 
+## Multiplayer
+
+Multiplayer is fully peer-to-peer — no game server required. Players connect directly via WebRTC, with signaling handled by free public Nostr relays.
+
+### How to play multiplayer
+
+1. Open the game in two browser tabs (or on two machines)
+2. Both players select a character
+3. Player 1 clicks **Host Game** — a 4-character room code appears
+4. Player 2 clicks **Join Game**, enters the room code, clicks **Connect**
+5. Once both appear in the lobby, the host clicks **Start Game**
+6. Both players start a new game and can see each other on the map
+
+### Architecture
+
+- **Signaling:** Nostr public relays (free, decentralized, no account needed)
+- **Data transport:** WebRTC data channels (direct P2P, encrypted)
+- **State model:** Host-authoritative — the host's DuckDB is the source of truth for world state. Clients send actions, host validates and broadcasts results.
+- **Each player runs their own DuckDB-WASM** — the host syncs world state to joining clients
+
+### Security
+
+| Layer | Protection |
+|-------|-----------|
+| Rate limiting | Max 30 events/sec per peer — excess silently dropped |
+| Tick validation | Monotonic tick counter per peer — rejects stale/duplicate events |
+| Movement validation | Host rejects teleport moves (>3 tiles per step) |
+| Damage capping | Incoming PvP damage capped at 50 HP to limit cheating |
+| Peer kick | Host can force-kick; vote-kick requires majority |
+| Connection logging | All peer joins/leaves logged to DuckDB with remote IP (from WebRTC stats) |
+| Encryption | WebRTC data channels are encrypted by default (DTLS) |
+
 ## Tech
 
 - **Three.js** v0.170.0 — 3D rendering (isometric camera, shadows, day/night cycle)
 - **DuckDB-WASM** v1.28.0 — all game state stored in SQL tables
+- **Trystero** — serverless WebRTC matchmaking via Nostr relays
 - Vanilla JS ES modules, zero npm dependencies
 - CDN imports via import maps
 
 ## Changelog
 
+- v4: P2P multiplayer via WebRTC/Trystero, PvP combat, in-game chat, security hardening
 - v3: Three.js 3D rendering, procedural cities, 3D duck character, NPCs, particles, day/night cycle
 - v2: Canvas-based visual improvements
 - v1: ASCII terminal-style rendering
