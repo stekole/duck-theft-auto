@@ -140,9 +140,9 @@ function _joinRoom(roomCode, playerName, charType) {
     if (kickedPeers.has(peerId)) return;
     if (!_checkRateLimit(peerId)) return;
     if (!_validateTick(peerId, data.tick)) return;
-    if (isHost && !_validateMove(peerId, data)) return;
+    if (!_validateMove(peerId, data)) return;
     _updatePeerData(peerId, data);
-    upsertRemotePlayer(peerId, data).catch(() => {});
+    upsertRemotePlayer(peerId, data).catch(e => console.warn('[MP]', e.message));
     if (_onRemoteMove) _onRemoteMove(peerId, data);
   });
 
@@ -222,7 +222,7 @@ function _joinRoom(roomCode, playerName, charType) {
     const peerInfo = peers.get(peerId);
     _logFn(`[MP] Peer disconnected: ${peerInfo?.name || peerId.slice(0, 8)}`);
     peers.delete(peerId);
-    dbRemoveRemotePlayer(peerId).catch(() => {});
+    dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
     _logConnectionEvent(peerId, 'left');
     _updateLobbyUI();
     if (_onPeerLeave) _onPeerLeave(peerId, {});
@@ -311,12 +311,12 @@ function _updateLobbyUI() {
   if (countEl) countEl.textContent = peers.size + 1;
 }
 
-// Generate a random 4-character room code
+// Generate a random 6-character room code (crypto-secure)
 export function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
+  const arr = new Uint8Array(6);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => chars[b % chars.length]).join('');
 }
 
 // --------------------------------------------------------
@@ -349,7 +349,7 @@ function _checkRateLimit(peerId) {
 const peerTicks = new Map(); // peerId -> lastTick
 
 function _validateTick(peerId, eventTick) {
-  if (!eventTick) return true; // allow events without ticks (worldSync)
+  if (eventTick == null || typeof eventTick !== 'number') return false; // reject events without valid tick
   const lastTick = peerTicks.get(peerId) || 0;
   if (eventTick <= lastTick) {
     return false; // stale or duplicate
@@ -378,7 +378,7 @@ export function kickPeer(peerId) {
     if (pc && pc.close) pc.close();
   } catch (_) { /* best-effort close */ }
   peers.delete(peerId);
-  dbRemoveRemotePlayer(peerId).catch(() => {});
+  dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
   if (sendAction) sendAction({ action: 'peer_kicked', peerId, name: peerInfo?.name });
   _updateLobbyUI();
 }

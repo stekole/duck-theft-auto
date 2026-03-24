@@ -90,11 +90,12 @@ setMPCallbacks({
     despawnRemoteDuck(peerId);
   },
   onRemoteChat: (peerId, data) => {
-    log(`[${data.name || 'Player'}] ${data.msg}`, 'c-yellow');
+    const name = getPeers().get(peerId)?.name || peerId.slice(0, 8);
+    log(`[${name}] ${data.msg}`, 'c-yellow');
   },
   onRemoteAction: (peerId, data) => {
     // Display remote player actions in the log
-    const name = data.name || 'Player';
+    const name = getPeers().get(peerId)?.name || peerId.slice(0, 8);
     switch (data.action) {
       case 'crime': log(`${name} committed ${data.crime || 'a crime'}!`, 'c-red'); break;
       case 'rob': log(`${name} robbed ${data.place || 'a location'}!`, 'c-red'); break;
@@ -126,11 +127,13 @@ setMPCallbacks({
       const dmg = Math.max(1, Math.min(Math.floor(Number(data.damage)) || 15, 50));
       await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), armor=GREATEST(0,armor-${dmg})`);
       spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
-      log(`${data.name || 'Player'} shot you! -${dmg} HP`, 'c-red');
+      const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
+      log(`${shooterName} shot you! -${dmg} HP`, 'c-red');
       await checkDeath();
       await updateHUD();
     } else {
-      log(`${data.name || 'Player'} opened fire!`, 'c-red');
+      const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
+      log(`${shooterName} opened fire!`, 'c-red');
     }
   },
   onWorldSyncReceived: async (peerId, data) => {
@@ -2048,8 +2051,8 @@ document.addEventListener('keydown', async (e) => {
 
   if (e.key === 'Escape' || e.key === 'Backspace') {
     e.preventDefault();
+    if (policeEncounterActive) return; // Can't escape police encounters
     stopSiren();
-    if (policeEncounterActive) { clearPoliceNPCs(); policeEncounterActive = false; clearStatus(); }
     hideSubMenu();
     showMainActions();
     return;
