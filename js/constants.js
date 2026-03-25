@@ -6,7 +6,8 @@ export const T = {
   BRIDGE: 'b', DOCK: 'k', INDUSTRIAL: 'I', HIGHWAY: 'H',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
   POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
-  POI_STRIP: 'X'
+  POI_STRIP: 'X',
+  PLAZA: 'Z', PARKING: 'L'
 };
 
 export const POI_DEFS = {
@@ -34,21 +35,23 @@ export const TILE_COLORS = {
   [T.BRIDGE]:     '#5a5040',
   [T.DOCK]:       '#3a3028',
   [T.INDUSTRIAL]: '#2a2a30',
-  [T.HIGHWAY]:    '#4a4a4a'
+  [T.HIGHWAY]:    '#4a4a4a',
+  [T.PLAZA]:      '#3a3a2a',
+  [T.PARKING]:    '#2a2a2a'
 };
 
 // --------------------------------------------------------
 //  CONSTANTS
 // --------------------------------------------------------
-export const MAP_SIZE = 80;
+export const MAP_SIZE = 120;
 export const CELL = 1; // world units per cell
 
 export const CITIES = {
-  'Los Santos':   { districts: ['Grove Street','Idlewood','Ganton','Vinewood','Santa Maria Beach','Downtown LS','East LS','Verona Beach','Playa del Seville','Temple'], color: '#44ff44', groundTint: [26, 42, 26], waterSide: 'south' },
-  'San Fierro':   { districts: ['Chinatown','Doherty','Garcia','Hashbury','Queens','Esplanade North','Juniper Hill','Calton Heights','Financial','Ocean Flats'], color: '#4488ff', groundTint: [26, 36, 42], waterSide: 'west' },
-  'Las Venturas': { districts: ['The Strip','Old Venturas','Creek','Redsands West','Redsands East','Camel Toe','Pilson Intersection','Whitewood Estates','Roca Escalante','Royal Casino'], color: '#ff44ff', groundTint: [50, 40, 26], waterSide: null },
-  'Vice City':    { districts: ['Ocean Beach','Washington Beach','Starfish Island','Prawn Island','Little Havana','Little Haiti','Downtown Vice','Vice Point','Escobar International','Hyman Memorial'], color: '#ff8844', groundTint: [42, 36, 26], waterSide: 'surround' },
-  'Liberty City': { districts: ['Portland','Staunton Island','Shoreside Vale','Chinatown LC','Saint Marks','Trenton','Aspatria','Bedford Point','Pike Creek','Cedar Grove'], color: '#ffff44', groundTint: [34, 34, 38], waterSide: 'east' }
+  'Los Santos':   { districts: ['Grove Street','Idlewood','Ganton','Vinewood','Santa Maria Beach','Downtown LS','East LS','Verona Beach','Playa del Seville','Temple','Rodeo','Richman','El Corona','Willowfield','Jefferson','Market','Commerce'], color: '#44ff44', groundTint: [26, 42, 26], waterSide: 'south' },
+  'San Fierro':   { districts: ['Chinatown','Doherty','Garcia','Hashbury','Queens','Esplanade North','Juniper Hill','Calton Heights','Financial','Ocean Flats','Avispa Country Club','Foster Valley','Missionary Hill','Kings','Battery Point','Paradiso','Santa Flora'], color: '#4488ff', groundTint: [26, 36, 42], waterSide: 'west' },
+  'Las Venturas': { districts: ['The Strip','Old Venturas','Creek','Redsands West','Redsands East','Camel Toe','Pilson Intersection','Whitewood Estates','Roca Escalante','Royal Casino','Come-a-Lot','Pirates in Mens Pants','Starfish Casino','Emerald Isle','LV Airport','Randolph Industrial','The Clown Pocket'], color: '#ff44ff', groundTint: [50, 40, 26], waterSide: null },
+  'Vice City':    { districts: ['Ocean Beach','Washington Beach','Starfish Island','Prawn Island','Little Havana','Little Haiti','Downtown Vice','Vice Point','Escobar International','Hyman Memorial','Coral Gables','Leaf Links','Viceport','North Point Mall','Sunshine Autos','Junkyard','Links View'], color: '#ff8844', groundTint: [42, 36, 26], waterSide: 'surround' },
+  'Liberty City': { districts: ['Portland','Staunton Island','Shoreside Vale','Chinatown LC','Saint Marks','Trenton','Aspatria','Bedford Point','Pike Creek','Cedar Grove','Cochrane Dam','Francis International','Fort Staunton','Belleville Park','Wichita Gardens','Callahan Point','Harwood'], color: '#ffff44', groundTint: [34, 34, 38], waterSide: 'east' }
 };
 
 export const JOBS = [
@@ -93,22 +96,39 @@ export const GUNS = [
   { name: 'AR-7 Assault',    cat: 'Rifle',   price: 750,  bonus: 22 },
   { name: 'Ravager LMG',     cat: 'Heavy',   price: 900,  bonus: 25 },
   { name: 'Diamondback MG',  cat: 'Heavy',   price: 1100, bonus: 28 },
-  { name: 'Ghost Sniper',    cat: 'Sniper',  price: 1000, bonus: 25 }
+  { name: 'Ghost Sniper',    cat: 'Sniper',  price: 1000, bonus: 25 },
+  // Premium weapons
+  { name: 'Rocket Launcher', cat: 'Heavy',   price: 5000,  bonus: 45 },
+  { name: 'Minigun',         cat: 'Heavy',   price: 8000,  bonus: 50 },
+  { name: 'Katana',          cat: 'Melee',   price: 2000,  bonus: 18 },
+  { name: 'Chainsaw',        cat: 'Melee',   price: 3000,  bonus: 22 },
+  { name: 'Golden Desert Eagle', cat: 'Pistol', price: 4000, bonus: 30 },
+  { name: 'Plasma Rifle',    cat: 'Rifle',   price: 15000, bonus: 60 },
+  { name: 'Flamethrower',    cat: 'Heavy',   price: 10000, bonus: 40 }
 ];
 
 export const VEHICLES = [
-  { name: 'Rusty Sedan',    price: 2000 },
-  { name: 'Motorcycle',     price: 1500 },
-  { name: 'Pickup Truck',   price: 2500 },
-  { name: 'Sports Car',     price: 5000 },
-  { name: 'Lowrider',       price: 3000 },
-  { name: 'SUV',            price: 3500 },
-  { name: 'Muscle Car',     price: 4000 },
-  { name: 'Convertible',    price: 4500 },
-  { name: 'Delivery Van',   price: 2000 },
-  { name: 'Dirt Bike',      price: 1200 },
-  { name: 'Luxury Sedan',   price: 7000 },
-  { name: 'Taxi Cab',       price: 2500 }
+  { name: 'Rusty Sedan',    price: 2000,  speed: 2 },
+  { name: 'Motorcycle',     price: 1500,  speed: 2 },
+  { name: 'Pickup Truck',   price: 2500,  speed: 2 },
+  { name: 'Sports Car',     price: 5000,  speed: 3 },
+  { name: 'Lowrider',       price: 3000,  speed: 2 },
+  { name: 'SUV',            price: 3500,  speed: 2 },
+  { name: 'Muscle Car',     price: 4000,  speed: 3 },
+  { name: 'Convertible',    price: 4500,  speed: 2 },
+  { name: 'Delivery Van',   price: 2000,  speed: 1 },
+  { name: 'Dirt Bike',      price: 1200,  speed: 2 },
+  { name: 'Luxury Sedan',   price: 7000,  speed: 3 },
+  { name: 'Taxi Cab',       price: 2500,  speed: 2 },
+  // Premium rides
+  { name: 'Race Car',       price: 10000, speed: 4 },
+  { name: 'Lamborduckni',   price: 25000, speed: 5 },
+  { name: 'Monster Truck',  price: 15000, speed: 2 },
+  { name: 'Armored Limo',   price: 20000, speed: 3 },
+  { name: 'Jet Ski',        price: 8000,  speed: 3 },
+  { name: 'Gold Plated SUV',price: 30000, speed: 3 },
+  { name: 'Helicopter',     price: 50000, speed: 6 },
+  { name: 'Tank',           price: 75000, speed: 1 }
 ];
 
 export const DRUGS = [
@@ -156,5 +176,11 @@ export const ITEMS = {
   'Body Armor': { price: 200, desc: 'Restores 50 armor' },
   'Lockpick Kit': { price: 120, desc: 'Burglary success +10%' },
   'Police Scanner': { price: 300, desc: 'Warns of nearby police' },
-  'Brass Knuckles': { price: 60, desc: 'Mugging success +10%' }
+  'Brass Knuckles': { price: 60, desc: 'Mugging success +10%' },
+  'Bulletproof Vest': { price: 500, desc: 'Restores 100 armor' },
+  'Night Vision Goggles': { price: 1500, desc: 'See NPCs through walls at night' },
+  'Jetpack Fuel': { price: 5000, desc: 'Instant travel to any district' },
+  'Gold Watch': { price: 3000, desc: '+50 Respect' },
+  'Duffle Bag': { price: 800, desc: 'Crime loot +25%' },
+  'Smoke Grenade': { price: 200, desc: 'Escape police instantly once' }
 };

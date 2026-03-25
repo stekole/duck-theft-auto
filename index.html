@@ -309,7 +309,7 @@ body {
       </svg></div>
       <div class="char-name">CJ</div>
       <div class="char-city">Los Santos</div>
-      <div class="char-desc">Balanced start. $500 cash.</div>
+      <div class="char-desc">Balanced. $2K, +2 charisma, respect.</div>
     </div>
     <div class="char-card" data-name="Tommy" data-city="Vice City" data-bonus="cash">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -328,7 +328,7 @@ body {
       </svg></div>
       <div class="char-name">Tommy</div>
       <div class="char-city">Vice City</div>
-      <div class="char-desc">Street smart. $750 cash.</div>
+      <div class="char-desc">Street smart. $3.5K, pistol, armor.</div>
     </div>
     <div class="char-card" data-name="Claude" data-city="Liberty City" data-bonus="stealth">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -347,7 +347,7 @@ body {
       </svg></div>
       <div class="char-name">Claude</div>
       <div class="char-city">Liberty City</div>
-      <div class="char-desc">Silent type. +2 stealth.</div>
+      <div class="char-desc">Silent killer. $2.5K, +2 stealth, respect.</div>
     </div>
     <div class="char-card" data-name="Niko" data-city="San Fierro" data-bonus="strength">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -366,7 +366,7 @@ body {
       </svg></div>
       <div class="char-name">Niko</div>
       <div class="char-city">San Fierro</div>
-      <div class="char-desc">Tough immigrant. +2 strength.</div>
+      <div class="char-desc">Tough. $2K, +2 strength, heavy armor.</div>
     </div>
     <div class="char-card" data-name="Catalina" data-city="Las Venturas" data-bonus="driving">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -387,7 +387,7 @@ body {
       </svg></div>
       <div class="char-name">Catalina</div>
       <div class="char-city">Las Venturas</div>
-      <div class="char-desc">Wild card. +2 driving.</div>
+      <div class="char-desc">Wild. $3K, +2 driving, starts with SMG.</div>
     </div>
     <div class="char-card" data-name="Oz" data-city="Liberty City" data-bonus="none" style="border-color:#ff00ff">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -413,23 +413,21 @@ body {
   </div>
   <div style="margin-top:6px"><input type="text" id="player-name-input" value="" maxlength="20" placeholder="Enter your name (optional)"></div>
   <div id="saved-sessions" style="margin-top:8px;display:none">
-    <div style="color:#ffcc00;font-size:12px;margin-bottom:6px">Saved Sessions:</div>
+    <div style="color:#ffcc00;font-size:12px;margin-bottom:6px">Your Saved Games (Local):</div>
     <div id="saved-list" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center"></div>
   </div>
   <div style="margin-top:8px">
     <button onclick="startNewGame()">New Game</button>
-    <button onclick="loadGame()">Load Game</button>
   </div>
   <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
-    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
-    <div id="mp-game-list" style="margin-bottom:6px"></div>
-    <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
-    <button onclick="hostMultiplayer()">Host Game</button>
-    <button onclick="showJoinUI()">Join Game</button>
-    <div id="mp-join-ui" style="display:none;margin-top:6px">
-      <input type="text" id="mp-room-input" maxlength="6" placeholder="Room code" style="width:80px;text-transform:uppercase;text-align:center">
-      <button onclick="joinMultiplayer()">Connect</button>
+    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)
+      <button id="mp-show-games-btn" style="font-size:9px;padding:1px 6px;margin-left:6px;background:#222;color:#888;border:1px solid #444;cursor:pointer;border-radius:3px" onclick="var el=document.getElementById('mp-game-list');el.style.display=el.style.display==='none'?'block':'none';this.textContent=el.style.display==='none'?'Show Games':'Hide Games'">Show Games</button>
     </div>
+    <div id="mp-game-list" style="display:none;margin-bottom:6px"></div>
+    <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
+    <div style="margin-bottom:4px"><input type="text" id="mp-room-input" maxlength="6" placeholder="Room code (to join)" style="width:120px;text-transform:uppercase;text-align:center;font-size:11px"></div>
+    <button onclick="hostMultiplayer()">Host Game</button>
+    <button onclick="joinMultiplayer()">Join by Code</button>
   </div>
   <div id="mp-lobby" style="display:none;margin-top:8px;border:1px solid #333;padding:8px;text-align:left;max-width:300px">
     <div style="color:#00ff00;font-size:12px">Room: <span id="mp-room-code" style="color:#ff6600;font-weight:bold;cursor:pointer;text-decoration:underline dotted" title="Click to copy"></span> &mdash; Players: <span id="mp-peer-count">1</span></div>
@@ -471,6 +469,13 @@ body {
   <div id="sub-menu"></div>
 
   <div id="poi-indicator"></div>
+  <div id="mp-hud-bar" style="display:none;position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:60;background:rgba(0,0,0,0.85);border:1px solid #333;border-top:none;border-radius:0 0 8px 8px;padding:4px 14px;font-size:11px;color:#aaa;font-family:'Courier New',monospace">
+    <span style="color:#00ff00">Room:</span> <span id="mp-hud-code" style="color:#ff6600;cursor:pointer;text-decoration:underline dotted" title="Click to copy"></span>
+    <span style="margin:0 6px;color:#333">|</span>
+    <span style="color:#00ff00">Players:</span> <span id="mp-hud-count" style="color:#ffcc00">1</span>
+    <button id="mp-hud-toggle" style="margin-left:8px;font-size:9px;padding:1px 6px;background:#222;color:#0f0;border:1px solid #333;cursor:pointer;border-radius:3px">Show</button>
+    <div id="mp-hud-players" style="display:none;margin-top:4px;border-top:1px solid #333;padding-top:4px;max-height:200px;overflow-y:auto"></div>
+  </div>
   <input type="text" id="mp-chat-input" maxlength="100" placeholder="Type message... (Enter to send, Esc to cancel)" style="display:none;position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:400px;z-index:50;background:#111;border:1px solid #00ff00;color:#00ff00;font-family:'Courier New',monospace;font-size:13px;padding:6px 10px;outline:none">
 
   <div id="minimap-container">
@@ -559,9 +564,8 @@ const $ = id => document.getElementById(id);
         nameInput.value = '';
       });
     });
-    nameInput.addEventListener('input', () => {
-      if (nameInput.value.trim()) cards.forEach(c => c.classList.remove('selected'));
-    });
+    // Keep card selected when typing a custom name — card determines class/city/bonus
+    // Only clear selection if user deliberately clicks outside cards (not needed)
 
     // Populate saved sessions list
     const saveIndex = getSaveIndex();
@@ -646,7 +650,7 @@ const $ = id => document.getElementById(id);
       await window.startNewGame();
       // Host broadcasts start to all connected peers
       if (getIsHost()) {
-        broadcastAction({ action: 'game_start' });
+        broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue });
       }
     };
 
