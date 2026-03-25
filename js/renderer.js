@@ -25,11 +25,11 @@ export let playerVehicleMesh = null;
 export let currentGameHour = 12;
 
 // Camera settings (isometric-ish)
-export let camHeight = 18;
-export let camDist = 22;
+export let camHeight = 22;
+export let camDist = 28;
 export let camAngle = Math.PI / 4; // 45 degrees
 export const CAM_ZOOM_MIN = 8;
-export const CAM_ZOOM_MAX = 40;
+export const CAM_ZOOM_MAX = 60;
 
 // Duck movement
 export let duckTargetX = 0, duckTargetZ = 0;
@@ -51,9 +51,9 @@ export function setCurrentGameHour(v) { currentGameHour = v; }
 export function initThree() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
-  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.025);
+  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
 
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 300);
   camera.position.set(camDist, camHeight, camDist);
   camera.lookAt(0, 0, 0);
 
@@ -500,8 +500,8 @@ export function buildCity3D() {
   const carTopGeo = new THREE.BoxGeometry(0.28, 0.15, 0.35);
   const carColors = [0xcc2222, 0x2244cc, 0x22aa22, 0xcccc22, 0xeeeeee, 0x222222, 0xcc6600, 0x8822aa];
   let carCount = 0;
-  for (let y = 2; y < MAP_SIZE - 2 && carCount < 40; y++) {
-    for (let x = 2; x < MAP_SIZE - 2 && carCount < 40; x++) {
+  for (let y = 2; y < MAP_SIZE - 2 && carCount < 80; y++) {
+    for (let x = 2; x < MAP_SIZE - 2 && carCount < 80; x++) {
       if (currentMapGrid[y][x] !== T.ROAD_SIDE) continue;
       if (Math.random() > 0.06) continue;
       const adjWall = [[1,0],[-1,0],[0,1],[0,-1]].some(([ox,oz]) => {
@@ -550,7 +550,7 @@ export function buildCity3D() {
       if (currentMapGrid[y][x] === T.ROAD_MAIN) mainRoadTiles.push({x, y});
     }
   }
-  const npcCarCount = Math.min(8, Math.floor(mainRoadTiles.length / 30));
+  const npcCarCount = Math.min(18, Math.floor(mainRoadTiles.length / 30));
   for (let i = 0; i < npcCarCount; i++) {
     const rt = mainRoadTiles[Math.floor(Math.random() * mainRoadTiles.length)];
     const colorIdx = Math.floor(Math.random() * npcCarColors.length);
@@ -613,7 +613,7 @@ export function buildCity3D() {
       speed: 0.5 + Math.random() * 0.8,
       startX: wx, startZ: wz,
       driveAxis,
-      driveDist: 4 + Math.random() * 8,
+      driveDist: 6 + Math.random() * 14,
       driven: 0
     });
   }
@@ -665,7 +665,7 @@ export function spawnNPCs() {
     }
   }
 
-  const count = Math.max(10, Math.min(20, Math.floor(roadTiles.length / 25)));
+  const count = Math.max(25, Math.min(50, Math.floor(roadTiles.length / 30)));
   console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs`);
   for (let i = 0; i < count; i++) {
     const rt = roadTiles[Math.floor(Math.random() * roadTiles.length)];
