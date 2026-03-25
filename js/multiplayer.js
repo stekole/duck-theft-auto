@@ -12,6 +12,104 @@ let peers = new Map(); // peerId -> { name, char, ready }
 let tick = 0;
 const kickedPeers = new Set(); // H4: track kicked peers
 
+// --------------------------------------------------------
+//  LOBBY DISCOVERY — shared room for game announcements
+// --------------------------------------------------------
+let lobbyRoom = null;
+let sendLobbyAnnounce = null, onLobbyAnnounce = null;
+let sendLobbyQuery = null, onLobbyQuery = null;
+const discoveredGames = new Map(); // roomCode -> { host, players, city, hasPassword, ts }
+let _onGamesUpdated = null; // callback for UI
+let lobbyAnnounceInterval = null;
+
+export function setOnGamesUpdated(fn) { _onGamesUpdated = fn; }
+
+export function getDiscoveredGames() { return discoveredGames; }
+
+export function joinLobby() {
+  if (lobbyRoom) return;
+  try {
+    lobbyRoom = joinRoom({ appId: APP_ID }, '__lobby__');
+  } catch (e) {
+    console.warn('[MP] Lobby join failed:', e.message);
+    return;
+  }
+
+  [sendLobbyAnnounce, onLobbyAnnounce] = lobbyRoom.makeAction('announce');
+  [sendLobbyQuery, onLobbyQuery] = lobbyRoom.makeAction('query');
+
+  // When we hear a game announcement, store it
+  onLobbyAnnounce((data) => {
+    if (!data.code) return;
+    discoveredGames.set(data.code, {
+      host: data.host || '?',
+      players: data.players || 1,
+      city: data.city || '?',
+      hasPassword: !!data.hasPassword,
+      ts: Date.now()
+    });
+    _pruneStaleGames();
+    if (_onGamesUpdated) _onGamesUpdated(discoveredGames);
+  });
+
+  // Respond to queries with our game info (if hosting)
+  onLobbyQuery(() => {
+    if (isHost && room && sendLobbyAnnounce) {
+      _broadcastGameToLobby();
+    }
+  });
+
+  // On joining lobby, ask existing hosts to announce themselves
+  lobbyRoom.onPeerJoin(() => {
+    if (sendLobbyQuery) sendLobbyQuery({});
+  });
+
+  // Query immediately for any existing hosts
+  setTimeout(() => { if (sendLobbyQuery) sendLobbyQuery({}); }, 500);
+}
+
+export function leaveLobby() {
+  if (lobbyRoom) {
+    lobbyRoom.leave();
+    lobbyRoom = null;
+  }
+  sendLobbyAnnounce = null;
+  onLobbyAnnounce = null;
+  sendLobbyQuery = null;
+  onLobbyQuery = null;
+  if (lobbyAnnounceInterval) { clearInterval(lobbyAnnounceInterval); lobbyAnnounceInterval = null; }
+}
+
+function _broadcastGameToLobby() {
+  if (!sendLobbyAnnounce || !room) return;
+  sendLobbyAnnounce({
+    code: _currentRoomCode,
+    host: _currentPlayerName,
+    players: peers.size + 1,
+    city: _currentCity || '?',
+    hasPassword: _currentHasPassword
+  });
+}
+
+function _pruneStaleGames() {
+  const cutoff = Date.now() - 30000; // 30s stale
+  for (const [code, info] of discoveredGames) {
+    if (info.ts < cutoff) discoveredGames.delete(code);
+  }
+}
+
+// Host announces periodically
+function _startLobbyAnnouncing() {
+  if (lobbyAnnounceInterval) clearInterval(lobbyAnnounceInterval);
+  _broadcastGameToLobby();
+  lobbyAnnounceInterval = setInterval(() => _broadcastGameToLobby(), 10000);
+}
+
+let _currentRoomCode = '';
+let _currentPlayerName = '';
+let _currentHasPassword = false;
+let _currentCity = '';
+
 // Action senders (set when room is joined)
 let sendMove = null, onMove = null;
 let sendShoot = null, onShoot = null;
@@ -40,7 +138,11 @@ const APP_ID = 'duck-theft-auto';
 export function isMultiplayer() { return room !== null; }
 export function getIsHost() { return isHost; }
 export function getPeers() { return peers; }
-export function getLocalPeerId() { return localPeerId; }
+export function getLocalPeerId() {
+  // Re-check selfId in case it was set after room creation
+  if (!localPeerId && room?.selfId) localPeerId = room.selfId;
+  return localPeerId;
+}
 export function nextTick() { return ++tick; }
 
 export function setCallbacks({ onPeerJoin, onPeerLeave, onRemoteMove, onRemoteShoot, onRemoteChat, onWorldSyncReceived, onRemoteAction, logFn }) {
@@ -56,7 +158,12 @@ export function setCallbacks({ onPeerJoin, onPeerLeave, onRemoteMove, onRemoteSh
 
 export function hostGame(roomCode, playerName, charType, password = '') {
   isHost = true;
-  return _joinRoom(roomCode, playerName, charType, password);
+  _currentRoomCode = roomCode;
+  _currentPlayerName = playerName;
+  _currentHasPassword = !!password;
+  const result = _joinRoom(roomCode, playerName, charType, password);
+  if (result) _startLobbyAnnouncing();
+  return result;
 }
 
 export function joinGame(roomCode, playerName, charType, password = '') {
@@ -64,7 +171,10 @@ export function joinGame(roomCode, playerName, charType, password = '') {
   return _joinRoom(roomCode, playerName, charType, password);
 }
 
+export function setCurrentCity(city) { _currentCity = city; }
+
 export function leaveGame() {
+  if (lobbyAnnounceInterval) { clearInterval(lobbyAnnounceInterval); lobbyAnnounceInterval = null; }
   if (room) {
     room.leave();
     room = null;
@@ -124,9 +234,12 @@ function _joinRoom(roomCode, playerName, charType, password = '') {
     // Encrypt signaling via Nostr relays if password provided
     // This prevents MITM attacks and hides SDP from relay operators
     if (password) config.password = password;
+    console.log('[MP] Connecting to room:', roomId, 'config:', { ...config, password: password ? '***' : undefined });
     room = joinRoom(config, roomId);
+    console.log('[MP] Room object created, waiting for peers...');
   } catch (e) {
     _logFn('[MP] Failed to join room: ' + e.message);
+    console.error('[MP] Room join error:', e);
     return false;
   }
 
@@ -228,15 +341,41 @@ function _joinRoom(roomCode, playerName, charType, password = '') {
     peers.delete(peerId);
     dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
     _logConnectionEvent(peerId, 'left');
+
+    // Host migration: if the host left, promote ourselves
+    if (!isHost && peerId === hostPeerId) {
+      hostPeerId = null;
+      // Become the new host if there are remaining peers (or we're alone)
+      if (peers.size === 0 || _shouldBecomeHost()) {
+        isHost = true;
+        _currentRoomCode = roomCode;
+        _currentPlayerName = playerName;
+        _currentHasPassword = !!password;
+        _logFn('[MP] Host left — you are now the host!');
+        _startLobbyAnnouncing();
+      }
+    }
+
     _updateLobbyUI();
     if (_onPeerLeave) _onPeerLeave(peerId, {});
   });
 
   // Get our own peer ID from the room selfId
-  localPeerId = room.selfId || 'local';
+  // selfId may not be available immediately — also capture it on first peer join
+  localPeerId = room.selfId || null;
 
   _logFn(`[MP] ${isHost ? 'Hosting' : 'Joined'} room: ${roomId}`);
   _updateLobbyUI();
+  return true;
+}
+
+// Deterministic host election: peer with lowest ID becomes host
+function _shouldBecomeHost() {
+  const myId = getLocalPeerId();
+  if (!myId) return true; // if we can't determine, just take it
+  for (const [peerId] of peers) {
+    if (peerId < myId) return false; // someone else has a lower ID
+  }
   return true;
 }
 

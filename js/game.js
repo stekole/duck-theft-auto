@@ -24,7 +24,7 @@ import {
 import {
   isMultiplayer, getIsHost, broadcastMove, broadcastShoot, broadcastChat,
   broadcastAction, broadcastWorldSync, setCallbacks as setMPCallbacks, getPeers,
-  getLocalPeerId
+  getLocalPeerId, setCurrentCity
 } from './multiplayer.js';
 
 const $ = id => document.getElementById(id);
@@ -35,17 +35,16 @@ const peerShootTimestamps = new Map();
 // --------------------------------------------------------
 //  EVENT LOG
 // --------------------------------------------------------
-const logEntries = [];
+const LOG_MAX = 100;
 export function log(msg, cls = 'c-white') {
-  logEntries.push({ msg, cls });
-  if (logEntries.length > 100) logEntries.shift();
   const el = $('event-log');
-  el.innerHTML = '';
-  for (const e of logEntries) {
-    const div = document.createElement('div');
-    div.className = 'log-entry ' + e.cls;
-    div.textContent = e.msg;
-    el.appendChild(div);
+  const div = document.createElement('div');
+  div.className = 'log-entry ' + cls;
+  div.textContent = msg;
+  el.appendChild(div);
+  // Remove oldest entries beyond limit
+  while (el.childElementCount > LOG_MAX) {
+    el.removeChild(el.firstChild);
   }
   el.scrollTop = el.scrollHeight;
 }
@@ -94,6 +93,12 @@ setMPCallbacks({
     log(`[${name}] ${data.msg}`, 'c-yellow');
   },
   onRemoteAction: (peerId, data) => {
+    // Host broadcast game_start → joiner auto-starts their own game
+    if (data.action === 'game_start' && !getIsHost() && !gameActive) {
+      log('Host started the game!', 'c-cyan');
+      window.startNewGame();
+      return;
+    }
     // Display remote player actions in the log
     const name = getPeers().get(peerId)?.name || peerId.slice(0, 8);
     switch (data.action) {
@@ -108,7 +113,10 @@ setMPCallbacks({
   onRemoteShoot: async (peerId, data) => {
     // Check if we are the target
     const localId = getLocalPeerId();
-    if (data.target === localId) {
+    // Match by localId, or accept if we're the only other peer (ID may not be known to self)
+    const isTargeted = data.target === localId || (!localId && data.target && data.target !== peerId);
+    console.log('[PvP] Shot received:', { target: data.target, localId, from: peerId, isTargeted });
+    if (isTargeted) {
       // H2: Per-peer cooldown — reject shots faster than 200ms
       const now = Date.now();
       const lastShot = peerShootTimestamps.get(peerId) || 0;
@@ -125,10 +133,14 @@ setMPCallbacks({
 
       // H1: Sanitize damage — must be positive integer, clamped 1–50
       const dmg = Math.max(1, Math.min(Math.floor(Number(data.damage)) || 15, 50));
-      await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), armor=GREATEST(0,armor-${dmg})`);
+      // Armor absorbs damage first, remainder goes to health
+      const p = await q1('SELECT health, armor FROM player');
+      const armorAbsorb = Math.min(p.armor, dmg);
+      const healthDmg = dmg - armorAbsorb;
+      await conn.query(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
       spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
       const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
-      log(`${shooterName} shot you! -${dmg} HP`, 'c-red');
+      log(`${shooterName} shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed by armor)` : ''}`, 'c-red');
       await checkDeath();
       await updateHUD();
     } else {
@@ -140,6 +152,11 @@ setMPCallbacks({
     // Client receives world state from host
     if (getIsHost()) return; // host doesn't apply sync from others
     log(`Received world sync — ${data.city}, Day ${data.day}`, 'c-cyan');
+
+    // Auto-start the client's game if not already running
+    if (!gameActive) {
+      await window.startNewGame();
+    }
 
     // Spawn host's duck
     if (data.hostPlayer) {
@@ -197,6 +214,7 @@ async function advanceTime(hours) {
       daysAdvanced.push(d);
       try { await dailyPayout(); } catch (e) { log('Daily payout error: ' + e.message, 'c-red'); }
       try { await decayHeat(); } catch (e) { /* ignore */ }
+      try { await pruneWorldEvents(); } catch (e) { /* ignore */ }
     }
     await conn.query(`UPDATE game_clock SET day=${d}, hour=${h}`);
     if (daysAdvanced.length > 0) {
@@ -241,6 +259,13 @@ async function dailyPayout() {
 }
 
 async function decayHeat() { await conn.query(`UPDATE district_heat SET heat = GREATEST(0, heat - 1)`); }
+
+async function pruneWorldEvents() {
+  const count = await qv('SELECT COUNT(*) FROM world_events');
+  if (count > 500) {
+    await conn.query(`DELETE FROM world_events WHERE id IN (SELECT id FROM world_events ORDER BY id ASC LIMIT ${count - 500})`);
+  }
+}
 
 // --------------------------------------------------------
 //  RANDOM HELPERS
@@ -615,6 +640,7 @@ async function checkDeath() {
         for (let x = 5; x < MAP_SIZE - 5; x++) {
           if (currentMapGrid[y][x] === T.POI_HOSPITAL) {
             await conn.query(`UPDATE player SET x=${x}, y=${y}`);
+            _cachedPos = { x, y };
             setDuckTarget(x + 0.5, y + 0.5);
             if (duckGroup) { duckGroup.position.x = x + 0.5; duckGroup.position.z = y + 0.5; }
             y = MAP_SIZE; break;
@@ -845,19 +871,28 @@ async function playerShoot() {
 // --------------------------------------------------------
 //  MOVEMENT
 // --------------------------------------------------------
+// Cached player position (avoids DB read on every move)
+let _cachedPos = null; // { x, y }
+export function invalidatePlayerCache() { _cachedPos = null; }
+
 let moveDebounce = false;
 async function movePlayer(dx, dy) {
   if (moveDebounce) return;
   moveDebounce = true;
   setTimeout(() => moveDebounce = false, 80);
 
-  const p = await q1('SELECT x,y FROM player');
-  const nx = p.x + dx;
-  const ny = p.y + dy;
+  if (!_cachedPos) {
+    const p = await q1('SELECT x,y FROM player');
+    _cachedPos = { x: p.x, y: p.y };
+  }
+  const nx = _cachedPos.x + dx;
+  const ny = _cachedPos.y + dy;
   if (nx < 0 || nx >= MAP_SIZE || ny < 0 || ny >= MAP_SIZE) return;
   if (!currentMapGrid) return;
   const tile = currentMapGrid[ny][nx];
   if (tile === T.WALL || tile === T.WATER) return;
+  _cachedPos.x = nx;
+  _cachedPos.y = ny;
   await conn.query(`UPDATE player SET x=${nx}, y=${ny}`);
 
   if (dx !== 0 || dy !== 0) {
@@ -865,7 +900,7 @@ async function movePlayer(dx, dy) {
   }
   setDuckTarget(nx + 0.5, ny + 0.5);
 
-  // Broadcast position to peers
+  // Broadcast position to peers (use cached pos + single query for other fields)
   if (isMultiplayer()) {
     const mp = await q1('SELECT name, char_type, health, wanted_level FROM player');
     broadcastMove({ x: nx, y: ny, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level });
@@ -991,6 +1026,7 @@ async function menuTravel() {
           if (currentMapGrid[y][x] === T.ROAD_MAIN || currentMapGrid[y][x] === T.ROAD_SIDE) { sx = x; sy = y; y = MAP_SIZE; break; }
         }
         await conn.query(`UPDATE player SET x=${sx}, y=${sy}`);
+        _cachedPos = { x: sx, y: sy };
         setDuckTarget(sx + 0.5, sy + 0.5);
         if (duckGroup) { duckGroup.position.x = sx + 0.5; duckGroup.position.z = sy + 0.5; }
         await advanceTime(2); await processWorldEvents(); await checkPolice();
@@ -2044,6 +2080,19 @@ function rebuildActionKeys() {
 }
 rebuildActionKeys();
 
+// Blur buttons after click so keyboard control returns to document
+document.addEventListener('click', (e) => {
+  if (e.target.tagName === 'BUTTON' || e.target.classList.contains('btn')) {
+    setTimeout(() => { if (document.activeElement?.tagName === 'BUTTON') document.activeElement.blur(); }, 0);
+  }
+});
+// Clicking the canvas should also reclaim focus
+document.getElementById('three-canvas')?.addEventListener('click', () => {
+  if (document.activeElement?.tagName === 'BUTTON' || document.activeElement?.tagName === 'INPUT') {
+    document.activeElement.blur();
+  }
+});
+
 document.addEventListener('keydown', async (e) => {
   // Don't capture keys when not in game (e.g. title screen, typing in input)
   if (!gameActive) return;
@@ -2163,6 +2212,7 @@ window.startNewGame = async function() {
   await initPlayer(name, startCity, bonus, charType);
   applyCharacterSkin(charType);
   await initWorld();
+  setCurrentCity(startCity);
   $('title-screen').style.display = 'none';
   $('game-ui').style.display = 'block';
   setGameActive(true);

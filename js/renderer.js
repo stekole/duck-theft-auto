@@ -35,6 +35,7 @@ export const CAM_ZOOM_MAX = 60;
 export let duckTargetX = 0, duckTargetZ = 0;
 export let duckFacing = 0; // radians
 let waddle = 0;
+let _duckFootL = null, _duckFootR = null;
 
 // Setters for mutable state accessed from game.js
 export function setGameActive(v) { gameActive = v; }
@@ -95,10 +96,11 @@ export function initThree() {
 }
 
 // --------------------------------------------------------
-//  3D DUCK CHARACTER
+//  3D DUCK CHARACTER (shared factory)
 // --------------------------------------------------------
-export function createDuck() {
-  duckGroup = new THREE.Group();
+function _buildDuckGroup(opts = {}) {
+  const group = new THREE.Group();
+  const castShadows = opts.castShadows !== false;
 
   // Body
   const bodyGeo = new THREE.SphereGeometry(0.3, 16, 12);
@@ -106,16 +108,16 @@ export function createDuck() {
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.scale.set(1, 0.8, 1.2);
   body.position.y = 0.3;
-  body.castShadow = true;
-  duckGroup.add(body);
+  body.castShadow = castShadows;
+  group.add(body);
 
   // Head
   const headGeo = new THREE.SphereGeometry(0.2, 16, 12);
   const headMat = new THREE.MeshStandardMaterial({ color: 0xffee33, roughness: 0.5 });
   const head = new THREE.Mesh(headGeo, headMat);
   head.position.set(0, 0.55, 0.15);
-  head.castShadow = true;
-  duckGroup.add(head);
+  head.castShadow = castShadows;
+  group.add(head);
 
   // Beak
   const beakGeo = new THREE.ConeGeometry(0.06, 0.18, 8);
@@ -123,27 +125,29 @@ export function createDuck() {
   const beak = new THREE.Mesh(beakGeo, beakMat);
   beak.rotation.x = -Math.PI / 2;
   beak.position.set(0, 0.52, 0.35);
-  duckGroup.add(beak);
+  group.add(beak);
 
   // Eyes
   const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
   eyeL.position.set(-0.1, 0.6, 0.28);
-  duckGroup.add(eyeL);
+  group.add(eyeL);
   const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
   eyeR.position.set(0.1, 0.6, 0.28);
-  duckGroup.add(eyeR);
+  group.add(eyeR);
 
-  // Eye whites
-  const eyeWhiteGeo = new THREE.SphereGeometry(0.05, 8, 8);
-  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-  const eyeWL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  eyeWL.position.set(-0.1, 0.6, 0.26);
-  duckGroup.add(eyeWL);
-  const eyeWR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  eyeWR.position.set(0.1, 0.6, 0.26);
-  duckGroup.add(eyeWR);
+  // Eye whites (only on local duck for detail)
+  if (opts.eyeWhites) {
+    const eyeWhiteGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const eyeWL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+    eyeWL.position.set(-0.1, 0.6, 0.26);
+    group.add(eyeWL);
+    const eyeWR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+    eyeWR.position.set(0.1, 0.6, 0.26);
+    group.add(eyeWR);
+  }
 
   // Feet
   const footGeo = new THREE.BoxGeometry(0.12, 0.03, 0.18);
@@ -151,11 +155,11 @@ export function createDuck() {
   const footL = new THREE.Mesh(footGeo, footMat);
   footL.position.set(-0.1, 0.02, 0.05);
   footL.name = 'footL';
-  duckGroup.add(footL);
+  group.add(footL);
   const footR = new THREE.Mesh(footGeo, footMat);
   footR.position.set(0.1, 0.02, 0.05);
   footR.name = 'footR';
-  duckGroup.add(footR);
+  group.add(footR);
 
   // Tail
   const tailGeo = new THREE.ConeGeometry(0.08, 0.15, 6);
@@ -163,19 +167,29 @@ export function createDuck() {
   const tail = new THREE.Mesh(tailGeo, tailMat);
   tail.rotation.x = Math.PI / 3;
   tail.position.set(0, 0.4, -0.3);
-  duckGroup.add(tail);
+  group.add(tail);
 
-  // Tiny hat (because GTA)
-  const hatBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
-  const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
-  hatBrim.position.set(0, 0.72, 0.1);
-  duckGroup.add(hatBrim);
-  const hatTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
-  const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
-  hatTop.position.set(0, 0.78, 0.1);
-  duckGroup.add(hatTop);
+  // Hat (default)
+  if (opts.hat !== false) {
+    const hatBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
+    hatBrim.position.set(0, 0.72, 0.1);
+    group.add(hatBrim);
+    const hatTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
+    const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
+    hatTop.position.set(0, 0.78, 0.1);
+    group.add(hatTop);
+  }
 
+  return { group, footL, footR };
+}
+
+export function createDuck() {
+  const { group, footL, footR } = _buildDuckGroup({ eyeWhites: true, castShadows: true });
+  duckGroup = group;
+  _duckFootL = footL;
+  _duckFootR = footR;
   scene.add(duckGroup);
 }
 
@@ -321,6 +335,7 @@ export function buildCity3D() {
   }
   cityGroup = new THREE.Group();
   poiMeshes = [];
+  invalidateMinimapCache();
 
   if (!currentMapGrid) return;
 
@@ -340,6 +355,10 @@ export function buildCity3D() {
   const parkPositions = [];
   const sandPositions = [];
   const treePositions = [];
+  const bridgePositions = [];
+  const dockPositions = [];
+  const industrialPositions = [];
+  const highwayPositions = [];
   const roadMarkPositions = []; // every 8th main road tile
   // Buildings grouped by material index
   const buildingGroups = new Map(); // matIdx -> [{x, z, height}]
@@ -390,6 +409,17 @@ export function buildCity3D() {
         parkPositions.push({ x: wx, z: wz });
       } else if (tile === T.SAND) {
         sandPositions.push({ x: wx, z: wz });
+      } else if (tile === T.BRIDGE) {
+        bridgePositions.push({ x: wx, z: wz });
+      } else if (tile === T.DOCK) {
+        dockPositions.push({ x: wx, z: wz });
+      } else if (tile === T.INDUSTRIAL) {
+        // Low squat buildings
+        const height = 0.4 + ((x * 7 + y * 13) % 5) * 0.15;
+        const matIdx = ((x * 7 + y * 13) % 10) % 8;
+        buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
+      } else if (tile === T.HIGHWAY) {
+        highwayPositions.push({ x: wx, z: wz });
       }
 
       if (POI_DEFS[tile]) {
@@ -498,6 +528,108 @@ export function buildCity3D() {
       inst.setMatrixAt(i, dummy.matrix);
     });
     cityGroup.add(inst);
+  }
+
+  // Bridge (raised wooden planks over water)
+  if (bridgePositions.length > 0) {
+    const bridgeGeo = new THREE.BoxGeometry(1, 0.08, 1);
+    const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x6a5a3a, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(bridgeGeo, bridgeMat, bridgePositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = true;
+    bridgePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.15, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Bridge railings
+    const railGeo = new THREE.BoxGeometry(0.05, 0.3, 1);
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5 });
+    const railInst = new THREE.InstancedMesh(railGeo, railMat, bridgePositions.length * 2);
+    railInst.castShadow = false;
+    bridgePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x - 0.45, 0.3, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      railInst.setMatrixAt(i * 2, dummy.matrix);
+      dummy.position.set(pos.x + 0.45, 0.3, pos.z);
+      dummy.updateMatrix();
+      railInst.setMatrixAt(i * 2 + 1, dummy.matrix);
+    });
+    cityGroup.add(railInst);
+  }
+
+  // Dock (wooden planks at water level)
+  if (dockPositions.length > 0) {
+    const dockGeo = new THREE.BoxGeometry(1, 0.06, 1);
+    const dockMat = new THREE.MeshStandardMaterial({ color: 0x5a4a30, roughness: 1 });
+    const inst = new THREE.InstancedMesh(dockGeo, dockMat, dockPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    dockPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.04, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Dock posts
+    const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.4, 6);
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x443322 });
+    const posts = [];
+    dockPositions.forEach(pos => {
+      if (Math.random() < 0.3) posts.push(pos);
+    });
+    if (posts.length > 0) {
+      const postInst = new THREE.InstancedMesh(postGeo, postMat, posts.length);
+      postInst.castShadow = true;
+      posts.forEach((pos, i) => {
+        dummy.position.set(pos.x + 0.35, 0.2, pos.z + 0.35);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        postInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(postInst);
+    }
+  }
+
+  // Highway (wider, slightly raised, darker road)
+  if (highwayPositions.length > 0) {
+    const hwGeo = new THREE.BoxGeometry(1, 0.06, 1);
+    const hwMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.8 });
+    const inst = new THREE.InstancedMesh(hwGeo, hwMat, highwayPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    highwayPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.05, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Highway lane markings (yellow center line)
+    const hwMarkGeo = new THREE.BoxGeometry(0.06, 0.07, 0.5);
+    const hwMarkMat = new THREE.MeshStandardMaterial({ color: 0xdddd00, emissive: 0x555500 });
+    const marks = highwayPositions.filter((_, i) => i % 3 === 0);
+    if (marks.length > 0) {
+      const markInst = new THREE.InstancedMesh(hwMarkGeo, hwMarkMat, marks.length);
+      markInst.castShadow = false;
+      marks.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.065, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        markInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(markInst);
+    }
   }
 
   // ---- Buildings: InstancedMesh per material group ----
@@ -931,7 +1063,9 @@ export function spawnNPCs() {
       startX: rt.x + 0.5, startZ: rt.y + 0.5,
       walkDist: 3 + Math.random() * 6,
       walked: 0, phase: Math.random() * Math.PI * 2,
-      hostile: isHostile
+      hostile: isHostile,
+      // Cached child references (avoid per-frame getObjectByName)
+      _legL: legL, _legR: legR, _body: body, _head: head
     });
   }
 }
@@ -1002,6 +1136,19 @@ export function removeNPCCar(car) {
   car.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
   const idx = npcCars.indexOf(car);
   if (idx >= 0) npcCars.splice(idx, 1);
+}
+
+// Shared particle pool (used by particles + bullet trails)
+const _particleGeo = new THREE.SphereGeometry(0.05, 4, 4);
+const _particleMatCache = new Map(); // color -> MeshBasicMaterial
+
+function _getParticleMat(color) {
+  let mat = _particleMatCache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    _particleMatCache.set(color, mat);
+  }
+  return mat;
 }
 
 // Projectile system
@@ -1087,9 +1234,9 @@ function updateProjectiles(dt) {
     p.trailTimer += dt;
     if (p.trailTimer > 0.02) {
       p.trailTimer = 0;
-      const trailGeo = new THREE.SphereGeometry(0.04, 4, 4);
-      const trailMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8 });
-      const trail = new THREE.Mesh(trailGeo, trailMat);
+      const trailMat = _getParticleMat(0xff6600).clone();
+      trailMat.opacity = 0.8;
+      const trail = new THREE.Mesh(_particleGeo, trailMat);
       trail.position.copy(p.mesh.position);
       scene.add(trail);
       particles.push({
@@ -1109,13 +1256,14 @@ function updateProjectiles(dt) {
 }
 
 // --------------------------------------------------------
-//  PARTICLE SYSTEM
+//  PARTICLE SYSTEM (pooled geometry + materials)
 // --------------------------------------------------------
 export function spawnParticles(worldX, worldZ, color, count, speed, life, gravity) {
+  const baseMat = _getParticleMat(color);
   for (let i = 0; i < count; i++) {
-    const geo = new THREE.SphereGeometry(0.04 + Math.random() * 0.04, 4, 4);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
-    const mesh = new THREE.Mesh(geo, mat);
+    // Clone material so each particle can fade independently
+    const mat = baseMat.clone();
+    const mesh = new THREE.Mesh(_particleGeo, mat);
     mesh.position.set(
       worldX + (Math.random() - 0.5) * 0.3,
       0.5 + Math.random() * 0.5,
@@ -1145,7 +1293,7 @@ function updateParticles(dt) {
     p.life -= dt;
     if (p.life <= 0) {
       scene.remove(p.mesh);
-      p.mesh.geometry.dispose();
+      // Only dispose cloned materials, not the shared geometry
       p.mesh.material.dispose();
       particles.splice(i, 1);
       continue;
@@ -1223,7 +1371,9 @@ export function spawnPoliceNPC(nearX, nearZ) {
   policeNPCs.push({
     group, phase: Math.random() * Math.PI * 2,
     speed: 1.2 + Math.random() * 0.6,
-    health: 100, alive: true
+    health: 100, alive: true,
+    // Cached child references
+    _legL: legL, _legR: legR, _siren: siren
   });
   return policeNPCs[policeNPCs.length - 1];
 }
@@ -1342,25 +1492,41 @@ export function updateLighting(hour) {
 }
 
 // --------------------------------------------------------
-//  MINIMAP (2D canvas in corner)
+//  MINIMAP (2D canvas in corner) — cached background
 // --------------------------------------------------------
 const minimapCanvas = document.getElementById('minimap');
 const mctx = minimapCanvas.getContext('2d');
 const MCELL = minimapCanvas.width / MAP_SIZE;
 
-export function renderMinimap(px, py) {
-  if (!currentMapGrid) return;
-  mctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+// Offscreen canvas for tile background (rebuilt only when city changes)
+let _minimapBg = null;
 
+export function invalidateMinimapCache() { _minimapBg = null; }
+
+function _buildMinimapBg() {
+  if (!currentMapGrid) return;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = minimapCanvas.width;
+  offscreen.height = minimapCanvas.height;
+  const ctx = offscreen.getContext('2d');
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
       const tile = currentMapGrid[y][x];
       let color = TILE_COLORS[tile] || TILE_COLORS[T.GROUND];
       if (POI_DEFS[tile]) color = POI_DEFS[tile].color;
-      mctx.fillStyle = color;
-      mctx.fillRect(x * MCELL, y * MCELL, MCELL, MCELL);
+      ctx.fillStyle = color;
+      ctx.fillRect(x * MCELL, y * MCELL, MCELL, MCELL);
     }
   }
+  _minimapBg = offscreen;
+}
+
+export function renderMinimap(px, py) {
+  if (!currentMapGrid) return;
+  if (!_minimapBg) _buildMinimapBg();
+
+  mctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+  mctx.drawImage(_minimapBg, 0, 0);
 
   mctx.fillStyle = '#ffdd00';
   mctx.beginPath();
@@ -1382,53 +1548,7 @@ const remoteDucks = new Map(); // peerId -> { group, targetX, targetZ, label }
 export function spawnRemoteDuck(peerId, charType, name) {
   if (remoteDucks.has(peerId)) return remoteDucks.get(peerId);
 
-  const group = new THREE.Group();
-
-  // Body (slightly tinted to distinguish from local player)
-  const bodyGeo = new THREE.SphereGeometry(0.3, 16, 12);
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffdd00, roughness: 0.6, metalness: 0.1 });
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.scale.set(1, 0.8, 1.2);
-  body.position.y = 0.3;
-  body.castShadow = true;
-  group.add(body);
-
-  // Head
-  const headGeo = new THREE.SphereGeometry(0.2, 16, 12);
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xffee33, roughness: 0.5 });
-  const head = new THREE.Mesh(headGeo, headMat);
-  head.position.set(0, 0.55, 0.15);
-  group.add(head);
-
-  // Beak
-  const beakGeo = new THREE.ConeGeometry(0.06, 0.18, 8);
-  const beakMat = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: 0.4 });
-  const beak = new THREE.Mesh(beakGeo, beakMat);
-  beak.rotation.x = -Math.PI / 2;
-  beak.position.set(0, 0.52, 0.35);
-  group.add(beak);
-
-  // Eyes
-  const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-  eyeL.position.set(-0.1, 0.6, 0.28);
-  group.add(eyeL);
-  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-  eyeR.position.set(0.1, 0.6, 0.28);
-  group.add(eyeR);
-
-  // Feet
-  const footGeo = new THREE.BoxGeometry(0.12, 0.03, 0.18);
-  const footMat = new THREE.MeshStandardMaterial({ color: 0xff6600 });
-  const footL = new THREE.Mesh(footGeo, footMat);
-  footL.position.set(-0.1, 0.02, 0.05);
-  footL.name = 'footL';
-  group.add(footL);
-  const footR = new THREE.Mesh(footGeo, footMat);
-  footR.position.set(0.1, 0.02, 0.05);
-  footR.name = 'footR';
-  group.add(footR);
+  const { group, footL, footR } = _buildDuckGroup({ eyeWhites: false, castShadows: true, hat: false });
 
   // Name label (sprite)
   const canvas = document.createElement('canvas');
@@ -1448,7 +1568,7 @@ export function spawnRemoteDuck(peerId, charType, name) {
 
   scene.add(group);
 
-  const entry = { group, targetX: 0, targetZ: 0, label, waddle: 0 };
+  const entry = { group, targetX: 0, targetZ: 0, label, waddle: 0, _footL: footL, _footR: footR };
   remoteDucks.set(peerId, entry);
 
   // Apply character skin if available
@@ -1481,10 +1601,22 @@ export function updateRemoteDuck(peerId, x, y, data) {
   entry.targetZ = y + 0.5;
 }
 
+function _disposeGroup(group) {
+  group.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+      else obj.material.dispose();
+    }
+  });
+}
+
 export function despawnRemoteDuck(peerId) {
   const entry = remoteDucks.get(peerId);
   if (entry) {
     scene.remove(entry.group);
+    _disposeGroup(entry.group);
+    if (entry.label?.material?.map) entry.label.material.map.dispose();
     remoteDucks.delete(peerId);
   }
 }
@@ -1492,6 +1624,8 @@ export function despawnRemoteDuck(peerId) {
 export function clearRemoteDucks() {
   for (const [, entry] of remoteDucks) {
     scene.remove(entry.group);
+    _disposeGroup(entry.group);
+    if (entry.label?.material?.map) entry.label.material.map.dispose();
   }
   remoteDucks.clear();
 }
@@ -1534,10 +1668,8 @@ export function gameLoop() {
     const moving = Math.abs(duckTargetX - duckGroup.position.x) > 0.02 || Math.abs(duckTargetZ - duckGroup.position.z) > 0.02;
     if (moving) {
       waddle += dt * 12;
-      const footL = duckGroup.getObjectByName('footL');
-      const footR = duckGroup.getObjectByName('footR');
-      if (footL) footL.position.z = 0.05 + Math.sin(waddle) * 0.08;
-      if (footR) footR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.08;
+      if (_duckFootL) _duckFootL.position.z = 0.05 + Math.sin(waddle) * 0.08;
+      if (_duckFootR) _duckFootR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.08;
       duckGroup.position.y = Math.sin(waddle * 2) * 0.02;
     } else {
       duckGroup.position.y = 0;
@@ -1555,10 +1687,8 @@ export function gameLoop() {
     if (moving) {
       g.rotation.y = Math.atan2(dx, dz);
       rd.waddle += dt * 12;
-      const fL = g.getObjectByName('footL');
-      const fR = g.getObjectByName('footR');
-      if (fL) fL.position.z = 0.05 + Math.sin(rd.waddle) * 0.08;
-      if (fR) fR.position.z = 0.05 + Math.sin(rd.waddle + Math.PI) * 0.08;
+      if (rd._footL) rd._footL.position.z = 0.05 + Math.sin(rd.waddle) * 0.08;
+      if (rd._footR) rd._footR.position.z = 0.05 + Math.sin(rd.waddle + Math.PI) * 0.08;
       g.position.y = Math.sin(rd.waddle * 2) * 0.02;
     } else {
       g.position.y = 0;
@@ -1600,10 +1730,8 @@ export function gameLoop() {
     npc.walked += step;
     npc.phase += dt * 8;
 
-    const legL = npc.group.getObjectByName('legL');
-    const legR = npc.group.getObjectByName('legR');
-    if (legL) legL.rotation.x = Math.sin(npc.phase) * 0.4;
-    if (legR) legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.4;
+    if (npc._legL) npc._legL.rotation.x = Math.sin(npc.phase) * 0.4;
+    if (npc._legR) npc._legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.4;
 
     if (npc.walked >= npc.walkDist) {
       npc.facing *= -1;
@@ -1620,11 +1748,9 @@ export function gameLoop() {
     }
 
     // Night glow — make NPCs visible in the dark
-    const npcBody = npc.group.getObjectByName('npcBody');
-    const npcHead = npc.group.getObjectByName('npcHead');
     const nightGlow = isNight ? 0.4 : 0;
-    if (npcBody) npcBody.material.emissiveIntensity = nightGlow;
-    if (npcHead) npcHead.material.emissiveIntensity = nightGlow;
+    if (npc._body) npc._body.material.emissiveIntensity = nightGlow;
+    if (npc._head) npc._head.material.emissiveIntensity = nightGlow;
   }
 
   // NPC car driving
@@ -1684,14 +1810,11 @@ export function gameLoop() {
       cop.group.rotation.y = Math.atan2(nx, nz);
     }
     cop.phase += dt * 8;
-    const legL = cop.group.getObjectByName('legL');
-    const legR = cop.group.getObjectByName('legR');
-    if (legL) legL.rotation.x = Math.sin(cop.phase) * 0.5;
-    if (legR) legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
-    const siren = cop.group.getObjectByName('siren');
-    if (siren) {
-      siren.material.color.setHex(Math.sin(elapsed * 10 + cop.phase) > 0 ? 0xff0000 : 0x0044ff);
-      siren.material.emissive.setHex(siren.material.color.getHex());
+    if (cop._legL) cop._legL.rotation.x = Math.sin(cop.phase) * 0.5;
+    if (cop._legR) cop._legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
+    if (cop._siren) {
+      cop._siren.material.color.setHex(Math.sin(elapsed * 10 + cop.phase) > 0 ? 0xff0000 : 0x0044ff);
+      cop._siren.material.emissive.setHex(cop._siren.material.color.getHex());
     }
   }
 

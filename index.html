@@ -422,6 +422,7 @@ body {
   </div>
   <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
     <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
+    <div id="mp-game-list" style="margin-bottom:6px"></div>
     <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
     <button onclick="hostMultiplayer()">Host Game</button>
     <button onclick="showJoinUI()">Join Game</button>
@@ -431,7 +432,7 @@ body {
     </div>
   </div>
   <div id="mp-lobby" style="display:none;margin-top:8px;border:1px solid #333;padding:8px;text-align:left;max-width:300px">
-    <div style="color:#00ff00;font-size:12px">Room: <span id="mp-room-code" style="color:#ff6600;font-weight:bold"></span> &mdash; Players: <span id="mp-peer-count">1</span></div>
+    <div style="color:#00ff00;font-size:12px">Room: <span id="mp-room-code" style="color:#ff6600;font-weight:bold;cursor:pointer;text-decoration:underline dotted" title="Click to copy"></span> &mdash; Players: <span id="mp-peer-count">1</span></div>
     <div id="mp-player-list" style="margin-top:4px"></div>
     <div style="margin-top:6px">
       <button id="mp-start-btn" onclick="startMultiplayerGame()" style="display:none">Start Game</button>
@@ -494,7 +495,8 @@ import { initDB, getSaveIndex } from './js/db.js';
 import './js/game.js';
 import {
   hostGame, joinGame, leaveGame, generateRoomCode,
-  isMultiplayer, getIsHost, broadcastChat
+  isMultiplayer, getIsHost, broadcastChat, broadcastAction,
+  joinLobby, leaveLobby, getDiscoveredGames, setOnGamesUpdated
 } from './js/multiplayer.js';
 
 const $ = id => document.getElementById(id);
@@ -508,6 +510,44 @@ const $ = id => document.getElementById(id);
     await initDB();
     $('loading').style.display = 'none';
     $('title-screen').style.display = 'flex';
+
+    // Join the lobby to discover active games
+    joinLobby();
+    setOnGamesUpdated((games) => {
+      const listEl = $('mp-game-list');
+      if (!listEl) return;
+      if (games.size === 0) {
+        listEl.innerHTML = '<div style="color:#666;font-size:10px">No games found — host one or enter a code</div>';
+        return;
+      }
+      listEl.innerHTML = '';
+      for (const [code, info] of games) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px';
+        const lock = info.hasPassword ? '<span title="Password required" style="color:#ff8800">&#128274;</span> ' : '';
+        const label = document.createElement('span');
+        label.style.color = '#aaa';
+        label.innerHTML = `${lock}<span style="color:#ffcc00">${info.host}</span> — ${info.city} — ${info.players} player${info.players !== 1 ? 's' : ''}`;
+        row.appendChild(label);
+        const joinBtn = document.createElement('button');
+        joinBtn.textContent = 'Join';
+        joinBtn.style.cssText = 'font-size:10px;padding:2px 8px';
+        joinBtn.className = 'btn';
+        joinBtn.addEventListener('click', () => {
+          $('mp-room-input').value = code;
+          if (info.hasPassword && !$('mp-password').value) {
+            $('mp-password').focus();
+            $('mp-password').placeholder = 'Password required for this game';
+            return;
+          }
+          window.joinMultiplayer();
+        });
+        row.appendChild(joinBtn);
+        listEl.appendChild(row);
+      }
+    });
+    // Trigger initial render
+    $('mp-game-list').innerHTML = '<div style="color:#666;font-size:10px">Searching for games...</div>';
 
     // Character card selection
     const cards = document.querySelectorAll('.char-card');
@@ -550,6 +590,19 @@ const $ = id => document.getElementById(id);
         list.appendChild(btn);
       }
     }
+    // Room code copy-to-clipboard
+    $('mp-room-code').addEventListener('click', () => {
+      const code = $('mp-room-code').textContent;
+      if (!code) return;
+      navigator.clipboard.writeText(code).then(() => {
+        const el = $('mp-room-code');
+        const orig = el.textContent;
+        el.textContent = 'Copied!';
+        el.style.color = '#44ff44';
+        setTimeout(() => { el.textContent = orig; el.style.color = '#ff6600'; }, 1200);
+      });
+    });
+
     // Multiplayer handlers
     window.hostMultiplayer = () => {
       const card = document.querySelector('.char-card.selected');
@@ -580,8 +633,8 @@ const $ = id => document.getElementById(id);
       $('mp-lobby').style.display = 'block';
       $('mp-room-code').textContent = code;
       $('mp-join-ui').style.display = 'none';
-      $('mp-start-btn').style.display = 'none';
-      $('mp-waiting').style.display = 'inline';
+      $('mp-start-btn').style.display = 'inline';
+      $('mp-waiting').style.display = 'none';
     };
 
     window.leaveMultiplayer = () => {
@@ -589,9 +642,12 @@ const $ = id => document.getElementById(id);
       $('mp-lobby').style.display = 'none';
     };
 
-    window.startMultiplayerGame = () => {
-      // Host starts the game - same as new game but with multiplayer active
-      window.startNewGame();
+    window.startMultiplayerGame = async () => {
+      await window.startNewGame();
+      // Host broadcasts start to all connected peers
+      if (getIsHost()) {
+        broadcastAction({ action: 'game_start' });
+      }
     };
 
     // Chat input handlers
