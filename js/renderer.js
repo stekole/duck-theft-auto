@@ -333,13 +333,21 @@ export function buildCity3D() {
   ground.receiveShadow = true;
   cityGroup.add(ground);
 
-  // Reusable geometries
-  const roadGeo = new THREE.BoxGeometry(1, 0.02, 1);
-  const buildingMats = [];
-  for (let i = 0; i < 8; i++) {
-    const shade = 40 + i * 12;
-    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+10},${shade+10},${shade+20})`), roughness: 0.8 }));
-  }
+  // ---- PASS 1: Collect tile positions by type ----
+  const roadMainPositions = [];
+  const roadSidePositions = [];
+  const waterPositions = [];
+  const parkPositions = [];
+  const sandPositions = [];
+  const treePositions = [];
+  const roadMarkPositions = []; // every 8th main road tile
+  // Buildings grouped by material index
+  const buildingGroups = new Map(); // matIdx -> [{x, z, height}]
+  for (let i = 0; i < 8; i++) buildingGroups.set(i, []);
+  // Windows collected for instancing
+  const windowPositions = [];
+  // POI data collected for individual meshes (small count)
+  const poiTiles = [];
 
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
@@ -347,124 +355,250 @@ export function buildCity3D() {
       const wx = x + 0.5;
       const wz = y + 0.5;
 
-      if (tile === T.ROAD_MAIN || tile === T.ROAD_SIDE) {
-        const roadMat = new THREE.MeshStandardMaterial({
-          color: tile === T.ROAD_MAIN ? 0x444444 : 0x3a3a3a,
-          roughness: 0.9
-        });
-        const road = new THREE.Mesh(roadGeo, roadMat);
-        road.position.set(wx, 0.01, wz);
-        road.receiveShadow = true;
-        cityGroup.add(road);
-
-        if (tile === T.ROAD_MAIN && (x + y) % 3 === 0) {
-          const markGeo = new THREE.BoxGeometry(0.08, 0.025, 0.4);
-          const markMat = new THREE.MeshStandardMaterial({ color: 0xaaaa00, emissive: 0x333300 });
-          const mark = new THREE.Mesh(markGeo, markMat);
-          mark.position.set(wx, 0.025, wz);
-          cityGroup.add(mark);
+      if (tile === T.ROAD_MAIN) {
+        roadMainPositions.push({ x: wx, z: wz });
+        if ((x + y) % 8 === 0) {
+          roadMarkPositions.push({ x: wx, z: wz });
         }
+      } else if (tile === T.ROAD_SIDE) {
+        roadSidePositions.push({ x: wx, z: wz });
       } else if (tile === T.WALL) {
         const heightSeed = (x * 7 + y * 13) % 10;
         const height = 0.8 + heightSeed * 0.4;
-        const bGeo = new THREE.BoxGeometry(0.9, height, 0.9);
-        const bMat = buildingMats[heightSeed % buildingMats.length];
-        const building = new THREE.Mesh(bGeo, bMat);
-        building.position.set(wx, height / 2, wz);
-        building.castShadow = true;
-        building.receiveShadow = true;
-        cityGroup.add(building);
+        const matIdx = heightSeed % 8;
+        buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
 
-        if (height > 1.2) {
-          const windowGeo = new THREE.BoxGeometry(0.06, 0.06, 0.01);
-          const windowMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 0.8 });
-          const wSide = Math.random() < 0.5 ? 0.46 : -0.46;
+        // Windows only on tall buildings (height > 2.0), reduced probability
+        if (height > 2.0) {
+          const wSide = ((x * 31 + y * 17) % 2 === 0) ? 0.46 : -0.46;
           for (let wy = 0.4; wy < height - 0.2; wy += 0.35) {
-            if (Math.random() < 0.6) {
-              const win = new THREE.Mesh(windowGeo, windowMat);
-              win.position.set(wx + wSide, wy, wz + (Math.random() - 0.5) * 0.5);
-              if (Math.abs(wSide) > 0.4) win.rotation.y = Math.PI / 2;
-              cityGroup.add(win);
+            if (((x * 11 + y * 7 + Math.floor(wy * 100)) % 100) < 30) {
+              windowPositions.push({
+                x: wx + wSide,
+                y: wy,
+                z: wz + (((x * 37 + y * 53 + Math.floor(wy * 10)) % 100) / 100 - 0.5) * 0.5,
+                rotated: Math.abs(wSide) > 0.4
+              });
             }
           }
         }
       } else if (tile === T.WATER) {
-        const waterGeo = new THREE.BoxGeometry(1, 0.05, 1);
-        const waterMat = new THREE.MeshStandardMaterial({
-          color: 0x2266aa, transparent: true, opacity: 0.7, roughness: 0.2, metalness: 0.3
-        });
-        const water = new THREE.Mesh(waterGeo, waterMat);
-        water.position.set(wx, -0.05, wz);
-        water.receiveShadow = true;
-        cityGroup.add(water);
+        waterPositions.push({ x: wx, z: wz });
       } else if (tile === T.TREE) {
-        const trunkGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.5, 6);
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.set(wx, 0.25, wz);
-        trunk.castShadow = true;
-        cityGroup.add(trunk);
-
-        const canopyGeo = new THREE.SphereGeometry(0.3, 8, 6);
-        const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
-        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-        canopy.position.set(wx, 0.65, wz);
-        canopy.castShadow = true;
-        cityGroup.add(canopy);
+        treePositions.push({ x: wx, z: wz });
       } else if (tile === T.PARK) {
-        const parkGeo = new THREE.BoxGeometry(1, 0.02, 1);
-        const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 1 });
-        const park = new THREE.Mesh(parkGeo, parkMat);
-        park.position.set(wx, 0.01, wz);
-        park.receiveShadow = true;
-        cityGroup.add(park);
+        parkPositions.push({ x: wx, z: wz });
       } else if (tile === T.SAND) {
-        const sandGeo = new THREE.BoxGeometry(1, 0.02, 1);
-        const sandMat = new THREE.MeshStandardMaterial({ color: 0xaa8844, roughness: 1 });
-        const sand = new THREE.Mesh(sandGeo, sandMat);
-        sand.position.set(wx, 0.01, wz);
-        sand.receiveShadow = true;
-        cityGroup.add(sand);
+        sandPositions.push({ x: wx, z: wz });
       }
 
-      // POI markers
       if (POI_DEFS[tile]) {
-        const poi = POI_DEFS[tile];
-        const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8);
-        const pillarMat = new THREE.MeshStandardMaterial({
-          color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 0.6,
-          transparent: true, opacity: 0.7
-        });
-        const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-        pillar.position.set(wx, 0.6, wz);
-        pillar.castShadow = false;
-        pillar.userData = { poiType: tile, baseY: 0.6 };
-        cityGroup.add(pillar);
-        poiMeshes.push(pillar);
-
-        const diamGeo = new THREE.OctahedronGeometry(0.12, 0);
-        const diamMat = new THREE.MeshStandardMaterial({
-          color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 1.0
-        });
-        const diamond = new THREE.Mesh(diamGeo, diamMat);
-        diamond.position.set(wx, 1.3, wz);
-        diamond.userData = { baseY: 1.3 };
-        cityGroup.add(diamond);
-        poiMeshes.push(diamond);
-
-        const poiLight = new THREE.PointLight(poi.colorHex, 0.5, 3);
-        poiLight.position.set(wx, 1.0, wz);
-        cityGroup.add(poiLight);
+        poiTiles.push({ x: wx, z: wz, tile, poi: POI_DEFS[tile] });
       }
     }
   }
 
-  // Street lamps on main roads (every 4 tiles)
+  // ---- PASS 2: Create InstancedMeshes for flat tiles ----
+  const dummy = new THREE.Object3D();
+  const flatGeo = new THREE.BoxGeometry(1, 0.02, 1);
+
+  // Road main
+  if (roadMainPositions.length > 0) {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, mat, roadMainPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    roadMainPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Road side
+  if (roadSidePositions.length > 0) {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, mat, roadSidePositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    roadSidePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Road markings (every 8 tiles instead of every 3)
+  if (roadMarkPositions.length > 0) {
+    const markGeo = new THREE.BoxGeometry(0.08, 0.025, 0.4);
+    const markMat = new THREE.MeshStandardMaterial({ color: 0xaaaa00, emissive: 0x333300 });
+    const inst = new THREE.InstancedMesh(markGeo, markMat, roadMarkPositions.length);
+    inst.castShadow = false;
+    roadMarkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.025, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Water
+  if (waterPositions.length > 0) {
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x2266aa, transparent: true, opacity: 0.7, roughness: 0.2, metalness: 0.3
+    });
+    const inst = new THREE.InstancedMesh(flatGeo, waterMat, waterPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    waterPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, -0.05, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Park
+  if (parkPositions.length > 0) {
+    const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 1 });
+    const inst = new THREE.InstancedMesh(flatGeo, parkMat, parkPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    parkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Sand
+  if (sandPositions.length > 0) {
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xaa8844, roughness: 1 });
+    const inst = new THREE.InstancedMesh(flatGeo, sandMat, sandPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    sandPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // ---- Buildings: InstancedMesh per material group ----
+  const buildingMats = [];
+  for (let i = 0; i < 8; i++) {
+    const shade = 40 + i * 12;
+    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+10},${shade+10},${shade+20})`), roughness: 0.8 }));
+  }
+  // Base building geo is 0.9 x 1.0 x 0.9 (height=1 will be scaled per instance)
+  const buildGeo = new THREE.BoxGeometry(0.9, 1, 0.9);
+  for (let matIdx = 0; matIdx < 8; matIdx++) {
+    const group = buildingGroups.get(matIdx);
+    if (group.length === 0) continue;
+    const inst = new THREE.InstancedMesh(buildGeo, buildingMats[matIdx], group.length);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    group.forEach((b, i) => {
+      dummy.position.set(b.x, b.height / 2, b.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, b.height, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // ---- Windows: InstancedMesh ----
+  if (windowPositions.length > 0) {
+    const winGeo = new THREE.BoxGeometry(0.06, 0.06, 0.01);
+    const winMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 0.8 });
+    const inst = new THREE.InstancedMesh(winGeo, winMat, windowPositions.length);
+    inst.castShadow = false;
+    windowPositions.forEach((w, i) => {
+      dummy.position.set(w.x, w.y, w.z);
+      dummy.rotation.set(0, w.rotated ? Math.PI / 2 : 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // ---- Trees: 2 InstancedMeshes (trunk + canopy) ----
+  if (treePositions.length > 0) {
+    const trunkGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.5, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
+    const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
+    trunkInst.castShadow = true;
+    treePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.25, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      trunkInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(trunkInst);
+
+    const canopyGeo = new THREE.SphereGeometry(0.3, 8, 6);
+    const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
+    const canopyInst = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
+    canopyInst.castShadow = true;
+    treePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.65, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      canopyInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(canopyInst);
+  }
+
+  // ---- POI markers (individual meshes — small count, need animation) ----
+  for (const { x: wx, z: wz, tile, poi } of poiTiles) {
+    const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8);
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 0.6,
+      transparent: true, opacity: 0.7
+    });
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+    pillar.position.set(wx, 0.6, wz);
+    pillar.castShadow = false;
+    pillar.userData = { poiType: tile, baseY: 0.6 };
+    cityGroup.add(pillar);
+    poiMeshes.push(pillar);
+
+    const diamGeo = new THREE.OctahedronGeometry(0.12, 0);
+    const diamMat = new THREE.MeshStandardMaterial({
+      color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 1.0
+    });
+    const diamond = new THREE.Mesh(diamGeo, diamMat);
+    diamond.position.set(wx, 1.3, wz);
+    diamond.userData = { baseY: 1.3 };
+    cityGroup.add(diamond);
+    poiMeshes.push(diamond);
+    // No PointLight — emissive materials provide the visual glow
+  }
+
+  // ---- Street lamps: InstancedMesh for posts and heads, NO PointLights ----
   streetLamps = [];
-  const lampPostGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.5, 6);
-  const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6 });
-  const lampHeadGeo = new THREE.SphereGeometry(0.1, 8, 6);
-  const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffeeaa, emissiveIntensity: 0.3 });
+  const lampPostPositions = [];
+  const lampHeadPositions = [];
 
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
@@ -477,31 +611,60 @@ export function buildCity3D() {
         const adj = currentMapGrid[nz][nx];
         if (adj === T.GROUND || adj === T.SAND || adj === T.PARK) {
           const wx = nx + 0.5, wz = nz + 0.5;
-          const post = new THREE.Mesh(lampPostGeo, lampPostMat);
-          post.position.set(wx, 0.75, wz);
-          post.castShadow = true;
-          cityGroup.add(post);
-          const head = new THREE.Mesh(lampHeadGeo, lampHeadMat.clone());
-          head.position.set(wx, 1.55, wz);
-          cityGroup.add(head);
-          const light = new THREE.PointLight(0xffeeaa, 0, 5);
-          light.position.set(wx, 1.5, wz);
-          cityGroup.add(light);
-          streetLamps.push({ head, light, x: wx, z: wz });
+          lampPostPositions.push({ x: wx, z: wz });
+          lampHeadPositions.push({ x: wx, z: wz });
           break;
         }
       }
     }
   }
 
-  // Parked cars on side roads
+  // Shared material for all lamp heads — toggle emissiveIntensity globally for night
+  const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffeeaa, emissiveIntensity: 0.3 });
+
+  if (lampPostPositions.length > 0) {
+    const lampPostGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.5, 6);
+    const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6 });
+    const postInst = new THREE.InstancedMesh(lampPostGeo, lampPostMat, lampPostPositions.length);
+    postInst.castShadow = false;
+    lampPostPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.75, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      postInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(postInst);
+
+    const lampHeadGeo = new THREE.SphereGeometry(0.1, 8, 6);
+    const headInst = new THREE.InstancedMesh(lampHeadGeo, lampHeadMat, lampHeadPositions.length);
+    headInst.castShadow = false;
+    lampHeadPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 1.55, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      headInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(headInst);
+  }
+
+  // Store reference to shared material for night toggling
+  // streetLamps now just holds the shared material and positions for compatibility
+  streetLamps = lampHeadPositions.map(pos => ({ x: pos.x, z: pos.z }));
+  streetLamps._sharedHeadMat = lampHeadMat;
+
+  // ---- Parked cars on side roads (max 40, no castShadow) ----
   parkedCars = [];
   const carBodyGeo = new THREE.BoxGeometry(0.35, 0.2, 0.65);
   const carTopGeo = new THREE.BoxGeometry(0.28, 0.15, 0.35);
   const carColors = [0xcc2222, 0x2244cc, 0x22aa22, 0xcccc22, 0xeeeeee, 0x222222, 0xcc6600, 0x8822aa];
+  const carBodyPositions = [];
+  const carTopPositions = [];
+  const carWheelPositions = [];
   let carCount = 0;
-  for (let y = 2; y < MAP_SIZE - 2 && carCount < 80; y++) {
-    for (let x = 2; x < MAP_SIZE - 2 && carCount < 80; x++) {
+  for (let y = 2; y < MAP_SIZE - 2 && carCount < 40; y++) {
+    for (let x = 2; x < MAP_SIZE - 2 && carCount < 40; x++) {
       if (currentMapGrid[y][x] !== T.ROAD_SIDE) continue;
       if (Math.random() > 0.06) continue;
       const adjWall = [[1,0],[-1,0],[0,1],[0,-1]].some(([ox,oz]) => {
@@ -510,27 +673,72 @@ export function buildCity3D() {
       });
       if (!adjWall) continue;
       const wx = x + 0.5, wz = y + 0.5;
-      const color = carColors[Math.floor(Math.random() * carColors.length)];
-      const carMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
-      const body = new THREE.Mesh(carBodyGeo, carMat);
-      body.position.set(wx, 0.12, wz);
-      body.castShadow = true;
-      cityGroup.add(body);
-      const top = new THREE.Mesh(carTopGeo, carMat);
-      top.position.set(wx, 0.27, wz - 0.05);
-      top.castShadow = true;
-      cityGroup.add(top);
-      const wheelGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8);
-      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+      const colorIdx = Math.floor(Math.random() * carColors.length);
+      carBodyPositions.push({ x: wx, z: wz, colorIdx });
+      carTopPositions.push({ x: wx, z: wz - 0.05, colorIdx });
       for (const [sx, sz] of [[-0.18, -0.2], [0.18, -0.2], [-0.18, 0.2], [0.18, 0.2]]) {
-        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(wx + sx, 0.05, wz + sz);
-        cityGroup.add(wheel);
+        carWheelPositions.push({ x: wx + sx, z: wz + sz });
       }
       parkedCars.push({ x: wx, z: wz });
       carCount++;
     }
+  }
+
+  // Parked car bodies — one InstancedMesh per color
+  const carsByColor = new Map();
+  carBodyPositions.forEach((pos) => {
+    if (!carsByColor.has(pos.colorIdx)) carsByColor.set(pos.colorIdx, { bodies: [], tops: [] });
+    carsByColor.get(pos.colorIdx).bodies.push(pos);
+  });
+  carTopPositions.forEach((pos) => {
+    if (carsByColor.has(pos.colorIdx)) carsByColor.get(pos.colorIdx).tops.push(pos);
+  });
+
+  for (const [colorIdx, data] of carsByColor) {
+    const color = carColors[colorIdx];
+    const carMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
+    if (data.bodies.length > 0) {
+      const bodyInst = new THREE.InstancedMesh(carBodyGeo, carMat, data.bodies.length);
+      bodyInst.castShadow = false;
+      bodyInst.receiveShadow = true;
+      data.bodies.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.12, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        bodyInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(bodyInst);
+    }
+    if (data.tops.length > 0) {
+      const topInst = new THREE.InstancedMesh(carTopGeo, carMat, data.tops.length);
+      topInst.castShadow = false;
+      topInst.receiveShadow = true;
+      data.tops.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.27, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        topInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(topInst);
+    }
+  }
+
+  // Parked car wheels — single InstancedMesh
+  if (carWheelPositions.length > 0) {
+    const wheelGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const wheelInst = new THREE.InstancedMesh(wheelGeo, wheelMat, carWheelPositions.length);
+    wheelInst.castShadow = false;
+    carWheelPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.05, pos.z);
+      dummy.rotation.set(0, 0, Math.PI / 2);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      wheelInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(wheelInst);
   }
 
   // NPC cars on main roads (stealable)
@@ -1442,11 +1650,9 @@ export function gameLoop() {
     }
   }
 
-  // Street lamp glow — brighter at night
-  for (const lamp of streetLamps) {
-    lamp.light.intensity = isNight ? 2.5 : 0;
-    lamp.light.distance = isNight ? 8 : 5;
-    lamp.head.material.emissiveIntensity = isNight ? 2.0 : 0.3;
+  // Street lamp glow — toggle shared material emissive for night
+  if (streetLamps._sharedHeadMat) {
+    streetLamps._sharedHeadMat.emissiveIntensity = isNight ? 2.0 : 0.3;
   }
 
   // Neon sign pulse — brighter at night
@@ -1457,19 +1663,7 @@ export function gameLoop() {
     ns.border.material.emissiveIntensity = (pulse * 0.5) * nightBoost;
   }
 
-  // Parked car headlights at night
-  for (const car of parkedCars) {
-    if (!car.headlight && isNight) {
-      const hl = new THREE.PointLight(0xffffcc, 1.5, 4);
-      hl.position.set(car.x, 0.3, car.z);
-      scene.add(hl);
-      car.headlight = hl;
-    } else if (car.headlight && !isNight) {
-      scene.remove(car.headlight);
-      car.headlight.dispose();
-      car.headlight = null;
-    }
-  }
+  // Parked car headlights at night — removed for performance (no PointLights)
 
   // Police siren flash
   if (sirenActive && sirenLights.length === 2) {
