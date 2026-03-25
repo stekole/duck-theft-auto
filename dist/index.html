@@ -420,6 +420,26 @@ body {
     <button onclick="startNewGame()">New Game</button>
     <button onclick="loadGame()">Load Game</button>
   </div>
+  <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
+    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
+    <div id="mp-game-list" style="margin-bottom:6px"></div>
+    <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
+    <button onclick="hostMultiplayer()">Host Game</button>
+    <button onclick="showJoinUI()">Join Game</button>
+    <div id="mp-join-ui" style="display:none;margin-top:6px">
+      <input type="text" id="mp-room-input" maxlength="6" placeholder="Room code" style="width:80px;text-transform:uppercase;text-align:center">
+      <button onclick="joinMultiplayer()">Connect</button>
+    </div>
+  </div>
+  <div id="mp-lobby" style="display:none;margin-top:8px;border:1px solid #333;padding:8px;text-align:left;max-width:300px">
+    <div style="color:#00ff00;font-size:12px">Room: <span id="mp-room-code" style="color:#ff6600;font-weight:bold;cursor:pointer;text-decoration:underline dotted" title="Click to copy"></span> &mdash; Players: <span id="mp-peer-count">1</span></div>
+    <div id="mp-player-list" style="margin-top:4px"></div>
+    <div style="margin-top:6px">
+      <button id="mp-start-btn" onclick="startMultiplayerGame()" style="display:none">Start Game</button>
+      <button onclick="leaveMultiplayer()">Leave</button>
+      <span id="mp-waiting" style="color:#888;font-size:10px;margin-left:6px">Waiting for host to start...</span>
+    </div>
+  </div>
 </div>
 
 <div id="game-ui">
@@ -451,6 +471,7 @@ body {
   <div id="sub-menu"></div>
 
   <div id="poi-indicator"></div>
+  <input type="text" id="mp-chat-input" maxlength="100" placeholder="Type message... (Enter to send, Esc to cancel)" style="display:none;position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:400px;z-index:50;background:#111;border:1px solid #00ff00;color:#00ff00;font-family:'Courier New',monospace;font-size:13px;padding:6px 10px;outline:none">
 
   <div id="minimap-container">
     <canvas id="minimap" width="180" height="180"></canvas>
@@ -462,7 +483,8 @@ body {
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "trystero/nostr": "https://esm.run/trystero/nostr"
   }
 }
 </script>
@@ -473,6 +495,7 @@ body {
 
 import * as THREE from 'three';
 import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';
+import { joinRoom } from 'trystero/nostr';
 
 const $ = id => document.getElementById(id);
 
@@ -483,6 +506,7 @@ const $ = id => document.getElementById(id);
 // --------------------------------------------------------
 const T = {
   WALL: '#', ROAD_MAIN: '=', ROAD_SIDE: '-', GROUND: '.', WATER: '~', TREE: 'T', PARK: 'P', SAND: 's',
+  BRIDGE: 'b', DOCK: 'k', INDUSTRIAL: 'I', HIGHWAY: 'H',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
   POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
   POI_STRIP: 'X'
@@ -502,20 +526,24 @@ const POI_DEFS = {
 };
 
 const TILE_COLORS = {
-  [T.WALL]:      '#2a2a3a',
-  [T.ROAD_MAIN]: '#3a3a3a',
-  [T.ROAD_SIDE]: '#333333',
-  [T.GROUND]:    '#1a2a1a',
-  [T.WATER]:     '#1a3a5a',
-  [T.TREE]:      '#1a4a1a',
-  [T.PARK]:      '#1a3a1a',
-  [T.SAND]:      '#4a3a1a'
+  [T.WALL]:       '#2a2a3a',
+  [T.ROAD_MAIN]:  '#3a3a3a',
+  [T.ROAD_SIDE]:  '#333333',
+  [T.GROUND]:     '#1a2a1a',
+  [T.WATER]:      '#1a3a5a',
+  [T.TREE]:       '#1a4a1a',
+  [T.PARK]:       '#1a3a1a',
+  [T.SAND]:       '#4a3a1a',
+  [T.BRIDGE]:     '#5a5040',
+  [T.DOCK]:       '#3a3028',
+  [T.INDUSTRIAL]: '#2a2a30',
+  [T.HIGHWAY]:    '#4a4a4a'
 };
 
 // --------------------------------------------------------
 //  CONSTANTS
 // --------------------------------------------------------
-const MAP_SIZE = 40;
+const MAP_SIZE = 80;
 const CELL = 1; // world units per cell
 
 const CITIES = {
@@ -577,14 +605,23 @@ const VEHICLES = [
   { name: 'Pickup Truck',   price: 2500 },
   { name: 'Sports Car',     price: 5000 },
   { name: 'Lowrider',       price: 3000 },
-  { name: 'SUV',            price: 3500 }
+  { name: 'SUV',            price: 3500 },
+  { name: 'Muscle Car',     price: 4000 },
+  { name: 'Convertible',    price: 4500 },
+  { name: 'Delivery Van',   price: 2000 },
+  { name: 'Dirt Bike',      price: 1200 },
+  { name: 'Luxury Sedan',   price: 7000 },
+  { name: 'Taxi Cab',       price: 2500 }
 ];
 
 const DRUGS = [
   { name: 'Weed',    basePrice: 50 },
   { name: 'Cocaine', basePrice: 200 },
   { name: 'Heroin',  basePrice: 250 },
-  { name: 'Meth',    basePrice: 150 }
+  { name: 'Meth',    basePrice: 150 },
+  { name: 'Ecstasy', basePrice: 100 },
+  { name: 'LSD',     basePrice: 175 },
+  { name: 'Adderall',basePrice: 80 }
 ];
 
 const GANGS = {
@@ -618,7 +655,11 @@ const ITEMS = {
   'Health Pack': { price: 50, heal: 40, desc: 'Restores 40 HP' },
   'Molotov Cocktail': { price: 75, desc: 'Crime success +5%' },
   'Fake ID': { price: 150, desc: 'Reduces wanted by 1' },
-  'Adrenaline Shot': { price: 100, desc: '+20% crime success for 1 crime' }
+  'Adrenaline Shot': { price: 100, desc: '+20% crime success for 1 crime' },
+  'Body Armor': { price: 200, desc: 'Restores 50 armor' },
+  'Lockpick Kit': { price: 120, desc: 'Burglary success +10%' },
+  'Police Scanner': { price: 300, desc: 'Warns of nearby police' },
+  'Brass Knuckles': { price: 60, desc: 'Mugging success +10%' }
 };
 
 // === city.js ===
@@ -642,63 +683,102 @@ function generateCityMap(cityName) {
   }
 
   if (city.waterSide === 'south') {
-    for (let x = 0; x < S; x++) { grid[S-1][x] = T.WATER; grid[S-2][x] = T.WATER; grid[S-3][x] = T.SAND; }
+    for (let x = 0; x < S; x++) { grid[S-1][x] = T.WATER; grid[S-2][x] = T.WATER; grid[S-3][x] = T.WATER; grid[S-4][x] = T.WATER; grid[S-5][x] = T.SAND; grid[S-6][x] = T.SAND; }
   } else if (city.waterSide === 'west') {
-    for (let y = 0; y < S; y++) { grid[y][0] = T.WATER; grid[y][1] = T.WATER; }
+    for (let y = 0; y < S; y++) { grid[y][0] = T.WATER; grid[y][1] = T.WATER; grid[y][2] = T.WATER; grid[y][3] = T.WATER; }
   } else if (city.waterSide === 'east') {
-    for (let y = 0; y < S; y++) { grid[y][S-1] = T.WATER; grid[y][S-2] = T.WATER; }
+    for (let y = 0; y < S; y++) { grid[y][S-1] = T.WATER; grid[y][S-2] = T.WATER; grid[y][S-3] = T.WATER; grid[y][S-4] = T.WATER; }
   } else if (city.waterSide === 'surround') {
     for (let i = 0; i < S; i++) {
-      grid[0][i] = T.WATER; grid[1][i] = T.WATER;
-      grid[S-1][i] = T.WATER; grid[S-2][i] = T.WATER;
-      grid[i][0] = T.WATER; grid[i][1] = T.WATER;
-      grid[i][S-1] = T.WATER; grid[i][S-2] = T.WATER;
+      grid[0][i] = T.WATER; grid[1][i] = T.WATER; grid[2][i] = T.WATER;
+      grid[S-1][i] = T.WATER; grid[S-2][i] = T.WATER; grid[S-3][i] = T.WATER;
+      grid[i][0] = T.WATER; grid[i][1] = T.WATER; grid[i][2] = T.WATER;
+      grid[i][S-1] = T.WATER; grid[i][S-2] = T.WATER; grid[i][S-3] = T.WATER;
     }
-    for (let x = 18; x <= 22; x++) { grid[0][x] = T.ROAD_MAIN; grid[1][x] = T.ROAD_MAIN; grid[S-1][x] = T.ROAD_MAIN; grid[S-2][x] = T.ROAD_MAIN; }
-    for (let y = 18; y <= 22; y++) { grid[y][0] = T.ROAD_MAIN; grid[y][1] = T.ROAD_MAIN; grid[y][S-1] = T.ROAD_MAIN; grid[y][S-2] = T.ROAD_MAIN; }
+    for (let x = 36; x <= 44; x++) { grid[0][x] = T.ROAD_MAIN; grid[1][x] = T.ROAD_MAIN; grid[2][x] = T.ROAD_MAIN; grid[S-1][x] = T.ROAD_MAIN; grid[S-2][x] = T.ROAD_MAIN; grid[S-3][x] = T.ROAD_MAIN; }
+    for (let y = 36; y <= 44; y++) { grid[y][0] = T.ROAD_MAIN; grid[y][1] = T.ROAD_MAIN; grid[y][2] = T.ROAD_MAIN; grid[y][S-1] = T.ROAD_MAIN; grid[y][S-2] = T.ROAD_MAIN; grid[y][S-3] = T.ROAD_MAIN; }
   }
 
   if (cityName === 'Los Santos') {
-    for (let i = 1; i < S-1; i++) { grid[20][i] = T.ROAD_MAIN; grid[i][20] = T.ROAD_MAIN; }
-    for (let i = 1; i < S-1; i++) { grid[10][i] = T.ROAD_SIDE; grid[30][i] = T.ROAD_SIDE; grid[i][10] = T.ROAD_SIDE; grid[i][30] = T.ROAD_SIDE; }
-    for (let i = 1; i < S-1; i++) { if (i % 5 === 0) { for (let j = 1; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE; } }
-    for (let y = 3; y <= 7; y++) for (let x = 3; x <= 7; x++) grid[y][x] = T.PARK;
-    grid[5][5] = T.TREE; grid[4][4] = T.TREE; grid[6][6] = T.TREE; grid[3][6] = T.TREE;
-    for (let y = 2; y <= 6; y++) for (let x = 28; x <= 36; x++) if (grid[y][x] === T.GROUND && Math.random() < 0.4) grid[y][x] = T.TREE;
+    for (let i = 1; i < S-1; i++) { grid[40][i] = T.ROAD_MAIN; grid[i][40] = T.ROAD_MAIN; }
+    for (let i = 1; i < S-1; i++) { grid[20][i] = T.ROAD_SIDE; grid[60][i] = T.ROAD_SIDE; grid[i][20] = T.ROAD_SIDE; grid[i][60] = T.ROAD_SIDE; }
+    for (let i = 1; i < S-1; i++) { if (i % 8 === 0) { for (let j = 1; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE; } }
+    // Highway along the top
+    for (let x = 1; x < S-1; x++) { grid[3][x] = T.HIGHWAY; grid[4][x] = T.HIGHWAY; }
+    // Park with trees
+    for (let y = 5; y <= 14; y++) for (let x = 5; x <= 14; x++) grid[y][x] = T.PARK;
+    grid[10][10] = T.TREE; grid[8][8] = T.TREE; grid[12][12] = T.TREE; grid[6][12] = T.TREE; grid[7][9] = T.TREE; grid[13][7] = T.TREE;
+    // Forest area
+    for (let y = 4; y <= 12; y++) for (let x = 56; x <= 72; x++) if (grid[y][x] === T.GROUND && Math.random() < 0.4) grid[y][x] = T.TREE;
+    // Docks along the beach
+    for (let x = 20; x <= 30; x++) { grid[S-6][x] = T.DOCK; grid[S-7][x] = T.DOCK; }
+    // Industrial zone east
+    for (let y = 55; y <= 68; y++) for (let x = 62; x <= 75; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
   } else if (cityName === 'San Fierro') {
-    for (let i = 2; i < S-1; i++) { grid[20][i] = T.ROAD_MAIN; grid[i][20] = T.ROAD_MAIN; }
-    for (let i = 3; i < S-3; i++) { const j = Math.min(S-2, Math.max(1, i + 5)); if (grid[i][j] !== T.WATER) grid[i][j] = T.ROAD_SIDE; }
-    for (let i = 2; i < S-1; i++) { grid[12][i] = T.ROAD_SIDE; grid[28][i] = T.ROAD_SIDE; grid[i][8] = T.ROAD_SIDE; grid[i][32] = T.ROAD_SIDE; }
-    for (let y = 14; y <= 18; y++) for (let x = 4; x <= 14; x++) { grid[y][x] = T.PARK; if (Math.random() < 0.3) grid[y][x] = T.TREE; }
+    for (let i = 4; i < S-1; i++) { grid[40][i] = T.ROAD_MAIN; grid[i][40] = T.ROAD_MAIN; }
+    for (let i = 5; i < S-5; i++) { const j = Math.min(S-2, Math.max(1, i + 10)); if (grid[i][j] !== T.WATER) grid[i][j] = T.ROAD_SIDE; }
+    for (let i = 4; i < S-1; i++) { grid[24][i] = T.ROAD_SIDE; grid[56][i] = T.ROAD_SIDE; grid[i][16] = T.ROAD_SIDE; grid[i][64] = T.ROAD_SIDE; }
+    // Large park with trees
+    for (let y = 28; y <= 36; y++) for (let x = 8; x <= 28; x++) { grid[y][x] = T.PARK; if (Math.random() < 0.3) grid[y][x] = T.TREE; }
+    // Bridge over water on the west side
+    for (let y = 30; y <= 50; y++) { grid[y][4] = T.BRIDGE; grid[y][5] = T.BRIDGE; }
+    // Docks at waterfront
+    for (let y = 55; y <= 65; y++) { grid[y][4] = T.DOCK; grid[y][5] = T.DOCK; grid[y][6] = T.DOCK; }
+    // Industrial near docks
+    for (let y = 55; y <= 68; y++) for (let x = 7; x <= 15; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
+    // Highway across the north
+    for (let x = 4; x < S-1; x++) { grid[6][x] = T.HIGHWAY; grid[7][x] = T.HIGHWAY; }
   } else if (cityName === 'Las Venturas') {
-    for (let i = 1; i < S-1; i++) { grid[i][20] = T.ROAD_MAIN; grid[i][21] = T.ROAD_MAIN; }
-    for (let i = 1; i < S-1; i++) { grid[13][i] = T.ROAD_SIDE; grid[27][i] = T.ROAD_SIDE; grid[i][10] = T.ROAD_SIDE; grid[i][30] = T.ROAD_SIDE; }
-    for (let i = 1; i < S-1; i++) { grid[20][i] = T.ROAD_MAIN; }
-    for (let y = 1; y < S-1; y++) for (let x = 1; x < 4; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
-    for (let y = 1; y < S-1; y++) for (let x = S-4; x < S-1; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
+    for (let i = 1; i < S-1; i++) { grid[i][40] = T.ROAD_MAIN; grid[i][41] = T.ROAD_MAIN; }
+    for (let i = 1; i < S-1; i++) { grid[26][i] = T.ROAD_SIDE; grid[54][i] = T.ROAD_SIDE; grid[i][20] = T.ROAD_SIDE; grid[i][60] = T.ROAD_SIDE; }
+    for (let i = 1; i < S-1; i++) { grid[40][i] = T.ROAD_MAIN; }
+    // The Strip — wide boulevard (already main road at 40/41)
+    // Desert edges
+    for (let y = 1; y < S-1; y++) for (let x = 1; x < 7; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
+    for (let y = 1; y < S-1; y++) for (let x = S-7; x < S-1; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
+    // Highway loop around the city
+    for (let x = 1; x < S-1; x++) { grid[8][x] = T.HIGHWAY; grid[S-9][x] = T.HIGHWAY; }
+    for (let y = 8; y <= S-9; y++) { grid[y][8] = T.HIGHWAY; grid[y][S-9] = T.HIGHWAY; }
+    // Park/oasis in the NW
+    for (let y = 12; y <= 18; y++) for (let x = 12; x <= 18; x++) { grid[y][x] = T.PARK; if (Math.random() < 0.25) grid[y][x] = T.TREE; }
   } else if (cityName === 'Vice City') {
-    for (let i = 2; i < S-2; i++) { grid[20][i] = T.ROAD_MAIN; grid[i][20] = T.ROAD_MAIN; }
-    for (let i = 2; i < S-2; i++) { grid[10][i] = T.ROAD_SIDE; grid[30][i] = T.ROAD_SIDE; grid[i][10] = T.ROAD_SIDE; grid[i][30] = T.ROAD_SIDE; }
-    for (let y = 2; y < S-2; y++) for (let x = 2; x < S-2; x++) {
-      if (grid[y][x] === T.GROUND && (y <= 3 || y >= S-4 || x <= 3 || x >= S-4)) grid[y][x] = T.SAND;
-    }
+    for (let i = 3; i < S-3; i++) { grid[40][i] = T.ROAD_MAIN; grid[i][40] = T.ROAD_MAIN; }
+    for (let i = 3; i < S-3; i++) { grid[20][i] = T.ROAD_SIDE; grid[60][i] = T.ROAD_SIDE; grid[i][20] = T.ROAD_SIDE; grid[i][60] = T.ROAD_SIDE; }
     for (let y = 3; y < S-3; y++) for (let x = 3; x < S-3; x++) {
+      if (grid[y][x] === T.GROUND && (y <= 6 || y >= S-7 || x <= 6 || x >= S-7)) grid[y][x] = T.SAND;
+    }
+    for (let y = 5; y < S-5; y++) for (let x = 5; x < S-5; x++) {
       if (grid[y][x] === T.SAND && Math.random() < 0.15) grid[y][x] = T.TREE;
     }
+    // Bridges connecting the island to the edges
+    for (let x = 36; x <= 44; x++) { grid[3][x] = T.BRIDGE; grid[S-4][x] = T.BRIDGE; }
+    for (let y = 36; y <= 44; y++) { grid[y][3] = T.BRIDGE; grid[y][S-4] = T.BRIDGE; }
+    // Marina/docks
+    for (let x = 55; x <= 68; x++) { grid[4][x] = T.DOCK; grid[5][x] = T.DOCK; }
+    // Highway ring
+    for (let x = 8; x < S-8; x++) { grid[10][x] = T.HIGHWAY; grid[S-11][x] = T.HIGHWAY; }
   } else if (cityName === 'Liberty City') {
-    for (let i = 1; i < S-1; i++) { grid[i][20] = T.ROAD_MAIN; grid[20][i] = T.ROAD_MAIN; }
-    for (let r = 4; r < S-1; r += 4) for (let i = 1; i < S-1; i++) { if (grid[r][i] === T.GROUND) grid[r][i] = T.ROAD_SIDE; }
-    for (let c = 4; c < S-1; c += 4) for (let i = 1; i < S-1; i++) { if (grid[i][c] === T.GROUND) grid[i][c] = T.ROAD_SIDE; }
-    for (let y = 10; y <= 30; y++) for (let x = S-5; x < S-2; x++) { if (grid[y][x] === T.GROUND) grid[y][x] = T.WALL; }
+    for (let i = 1; i < S-1; i++) { grid[i][40] = T.ROAD_MAIN; grid[40][i] = T.ROAD_MAIN; }
+    for (let r = 6; r < S-1; r += 6) for (let i = 1; i < S-1; i++) { if (grid[r][i] === T.GROUND) grid[r][i] = T.ROAD_SIDE; }
+    for (let c = 6; c < S-1; c += 6) for (let i = 1; i < S-1; i++) { if (grid[i][c] === T.GROUND) grid[i][c] = T.ROAD_SIDE; }
+    // Dense high-rise core (east side)
+    for (let y = 20; y <= 60; y++) for (let x = S-9; x < S-4; x++) { if (grid[y][x] === T.GROUND) grid[y][x] = T.WALL; }
+    // Bridge over the east river
+    for (let y = 35; y <= 45; y++) { grid[y][S-4] = T.BRIDGE; grid[y][S-3] = T.BRIDGE; grid[y][S-2] = T.BRIDGE; }
+    // Industrial docks north
+    for (let x = 5; x <= 20; x++) for (let y = 3; y <= 8; y++) { if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL; }
+    for (let x = 5; x <= 15; x++) { grid[3][x] = T.DOCK; grid[4][x] = T.DOCK; }
+    // Highway
+    for (let y = 1; y < S-1; y++) { grid[y][10] = T.HIGHWAY; }
+    // Park in the center
+    for (let y = 30; y <= 38; y++) for (let x = 25; x <= 35; x++) { grid[y][x] = T.PARK; if (Math.random() < 0.2) grid[y][x] = T.TREE; }
   }
 
+  const isRoad = t => t === T.ROAD_MAIN || t === T.ROAD_SIDE || t === T.HIGHWAY;
   for (let y = 2; y < S-2; y++) {
     for (let x = 2; x < S-2; x++) {
       if (grid[y][x] !== T.GROUND) continue;
-      const isInterior = grid[y-1][x] !== T.ROAD_MAIN && grid[y-1][x] !== T.ROAD_SIDE &&
-                          grid[y+1][x] !== T.ROAD_MAIN && grid[y+1][x] !== T.ROAD_SIDE &&
-                          grid[y][x-1] !== T.ROAD_MAIN && grid[y][x-1] !== T.ROAD_SIDE &&
-                          grid[y][x+1] !== T.ROAD_MAIN && grid[y][x+1] !== T.ROAD_SIDE;
+      const isInterior = !isRoad(grid[y-1][x]) && !isRoad(grid[y+1][x]) && !isRoad(grid[y][x-1]) && !isRoad(grid[y][x+1]);
       if (isInterior && Math.random() < 0.55) grid[y][x] = T.WALL;
     }
   }
@@ -708,7 +788,7 @@ function generateCityMap(cityName) {
   for (let y = 2; y < S-2; y++) {
     for (let x = 2; x < S-2; x++) {
       if (grid[y][x] !== T.GROUND && grid[y][x] !== T.SAND) continue;
-      const adjRoad = [grid[y-1][x], grid[y+1][x], grid[y][x-1], grid[y][x+1]].some(t => t === T.ROAD_MAIN || t === T.ROAD_SIDE);
+      const adjRoad = [grid[y-1][x], grid[y+1][x], grid[y][x-1], grid[y][x+1]].some(t => isRoad(t));
       if (adjRoad) roadAdjacentSpots.push([x, y]);
     }
   }
@@ -717,11 +797,19 @@ function generateCityMap(cityName) {
     [roadAdjacentSpots[i], roadAdjacentSpots[j]] = [roadAdjacentSpots[j], roadAdjacentSpots[i]];
   }
   let spotIdx = 0;
+  // Place one of each POI type first
   for (const poi of poiTypes) {
     if (spotIdx < roadAdjacentSpots.length) { const [px, py] = roadAdjacentSpots[spotIdx++]; grid[py][px] = poi; }
   }
-  const extraPOIs = [T.POI_SHOP, T.POI_WORK, T.POI_HOOKER, T.POI_DRUG, T.POI_GAMBLING];
-  for (const poi of extraPOIs) {
+  // Place 2 more of each POI type (3 total per type = 30)
+  for (let round = 0; round < 2; round++) {
+    for (const poi of poiTypes) {
+      if (spotIdx < roadAdjacentSpots.length) { const [px, py] = roadAdjacentSpots[spotIdx++]; grid[py][px] = poi; }
+    }
+  }
+  // Extra copies of common POIs (~15 more, total ~45)
+  const commonPOIs = [T.POI_SHOP, T.POI_SHOP, T.POI_SHOP, T.POI_WORK, T.POI_WORK, T.POI_WORK, T.POI_DRUG, T.POI_DRUG, T.POI_HOOKER, T.POI_HOOKER, T.POI_GAMBLING, T.POI_GAMBLING, T.POI_AMMO, T.POI_HOSPITAL, T.POI_VEHICLE];
+  for (const poi of commonPOIs) {
     if (spotIdx < roadAdjacentSpots.length) { const [px, py] = roadAdjacentSpots[spotIdx++]; grid[py][px] = poi; }
   }
 
@@ -762,16 +850,17 @@ let playerVehicleMesh = null;
 let currentGameHour = 12;
 
 // Camera settings (isometric-ish)
-let camHeight = 18;
-let camDist = 22;
+let camHeight = 22;
+let camDist = 28;
 let camAngle = Math.PI / 4; // 45 degrees
 const CAM_ZOOM_MIN = 8;
-const CAM_ZOOM_MAX = 40;
+const CAM_ZOOM_MAX = 60;
 
 // Duck movement
 let duckTargetX = 0, duckTargetZ = 0;
 let duckFacing = 0; // radians
 let waddle = 0;
+let _duckFootL = null, _duckFootR = null;
 
 // Setters for mutable state accessed from game.js
 function setGameActive(v) { gameActive = v; }
@@ -788,9 +877,9 @@ function setCurrentGameHour(v) { currentGameHour = v; }
 function initThree() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
-  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.025);
+  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
 
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 300);
   camera.position.set(camDist, camHeight, camDist);
   camera.lookAt(0, 0, 0);
 
@@ -832,10 +921,11 @@ function initThree() {
 }
 
 // --------------------------------------------------------
-//  3D DUCK CHARACTER
+//  3D DUCK CHARACTER (shared factory)
 // --------------------------------------------------------
-function createDuck() {
-  duckGroup = new THREE.Group();
+function _buildDuckGroup(opts = {}) {
+  const group = new THREE.Group();
+  const castShadows = opts.castShadows !== false;
 
   // Body
   const bodyGeo = new THREE.SphereGeometry(0.3, 16, 12);
@@ -843,16 +933,16 @@ function createDuck() {
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.scale.set(1, 0.8, 1.2);
   body.position.y = 0.3;
-  body.castShadow = true;
-  duckGroup.add(body);
+  body.castShadow = castShadows;
+  group.add(body);
 
   // Head
   const headGeo = new THREE.SphereGeometry(0.2, 16, 12);
   const headMat = new THREE.MeshStandardMaterial({ color: 0xffee33, roughness: 0.5 });
   const head = new THREE.Mesh(headGeo, headMat);
   head.position.set(0, 0.55, 0.15);
-  head.castShadow = true;
-  duckGroup.add(head);
+  head.castShadow = castShadows;
+  group.add(head);
 
   // Beak
   const beakGeo = new THREE.ConeGeometry(0.06, 0.18, 8);
@@ -860,27 +950,29 @@ function createDuck() {
   const beak = new THREE.Mesh(beakGeo, beakMat);
   beak.rotation.x = -Math.PI / 2;
   beak.position.set(0, 0.52, 0.35);
-  duckGroup.add(beak);
+  group.add(beak);
 
   // Eyes
   const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
   eyeL.position.set(-0.1, 0.6, 0.28);
-  duckGroup.add(eyeL);
+  group.add(eyeL);
   const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
   eyeR.position.set(0.1, 0.6, 0.28);
-  duckGroup.add(eyeR);
+  group.add(eyeR);
 
-  // Eye whites
-  const eyeWhiteGeo = new THREE.SphereGeometry(0.05, 8, 8);
-  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-  const eyeWL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  eyeWL.position.set(-0.1, 0.6, 0.26);
-  duckGroup.add(eyeWL);
-  const eyeWR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  eyeWR.position.set(0.1, 0.6, 0.26);
-  duckGroup.add(eyeWR);
+  // Eye whites (only on local duck for detail)
+  if (opts.eyeWhites) {
+    const eyeWhiteGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const eyeWL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+    eyeWL.position.set(-0.1, 0.6, 0.26);
+    group.add(eyeWL);
+    const eyeWR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+    eyeWR.position.set(0.1, 0.6, 0.26);
+    group.add(eyeWR);
+  }
 
   // Feet
   const footGeo = new THREE.BoxGeometry(0.12, 0.03, 0.18);
@@ -888,11 +980,11 @@ function createDuck() {
   const footL = new THREE.Mesh(footGeo, footMat);
   footL.position.set(-0.1, 0.02, 0.05);
   footL.name = 'footL';
-  duckGroup.add(footL);
+  group.add(footL);
   const footR = new THREE.Mesh(footGeo, footMat);
   footR.position.set(0.1, 0.02, 0.05);
   footR.name = 'footR';
-  duckGroup.add(footR);
+  group.add(footR);
 
   // Tail
   const tailGeo = new THREE.ConeGeometry(0.08, 0.15, 6);
@@ -900,19 +992,29 @@ function createDuck() {
   const tail = new THREE.Mesh(tailGeo, tailMat);
   tail.rotation.x = Math.PI / 3;
   tail.position.set(0, 0.4, -0.3);
-  duckGroup.add(tail);
+  group.add(tail);
 
-  // Tiny hat (because GTA)
-  const hatBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
-  const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
-  hatBrim.position.set(0, 0.72, 0.1);
-  duckGroup.add(hatBrim);
-  const hatTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
-  const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
-  hatTop.position.set(0, 0.78, 0.1);
-  duckGroup.add(hatTop);
+  // Hat (default)
+  if (opts.hat !== false) {
+    const hatBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
+    hatBrim.position.set(0, 0.72, 0.1);
+    group.add(hatBrim);
+    const hatTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
+    const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
+    hatTop.position.set(0, 0.78, 0.1);
+    group.add(hatTop);
+  }
 
+  return { group, footL, footR };
+}
+
+function createDuck() {
+  const { group, footL, footR } = _buildDuckGroup({ eyeWhites: true, castShadows: true });
+  duckGroup = group;
+  _duckFootL = footL;
+  _duckFootR = footR;
   scene.add(duckGroup);
 }
 
@@ -1058,6 +1160,7 @@ function buildCity3D() {
   }
   cityGroup = new THREE.Group();
   poiMeshes = [];
+  invalidateMinimapCache();
 
   if (!currentMapGrid) return;
 
@@ -1070,13 +1173,25 @@ function buildCity3D() {
   ground.receiveShadow = true;
   cityGroup.add(ground);
 
-  // Reusable geometries
-  const roadGeo = new THREE.BoxGeometry(1, 0.02, 1);
-  const buildingMats = [];
-  for (let i = 0; i < 8; i++) {
-    const shade = 40 + i * 12;
-    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+10},${shade+10},${shade+20})`), roughness: 0.8 }));
-  }
+  // ---- PASS 1: Collect tile positions by type ----
+  const roadMainPositions = [];
+  const roadSidePositions = [];
+  const waterPositions = [];
+  const parkPositions = [];
+  const sandPositions = [];
+  const treePositions = [];
+  const bridgePositions = [];
+  const dockPositions = [];
+  const industrialPositions = [];
+  const highwayPositions = [];
+  const roadMarkPositions = []; // every 8th main road tile
+  // Buildings grouped by material index
+  const buildingGroups = new Map(); // matIdx -> [{x, z, height}]
+  for (let i = 0; i < 8; i++) buildingGroups.set(i, []);
+  // Windows collected for instancing
+  const windowPositions = [];
+  // POI data collected for individual meshes (small count)
+  const poiTiles = [];
 
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
@@ -1084,124 +1199,363 @@ function buildCity3D() {
       const wx = x + 0.5;
       const wz = y + 0.5;
 
-      if (tile === T.ROAD_MAIN || tile === T.ROAD_SIDE) {
-        const roadMat = new THREE.MeshStandardMaterial({
-          color: tile === T.ROAD_MAIN ? 0x444444 : 0x3a3a3a,
-          roughness: 0.9
-        });
-        const road = new THREE.Mesh(roadGeo, roadMat);
-        road.position.set(wx, 0.01, wz);
-        road.receiveShadow = true;
-        cityGroup.add(road);
-
-        if (tile === T.ROAD_MAIN && (x + y) % 3 === 0) {
-          const markGeo = new THREE.BoxGeometry(0.08, 0.025, 0.4);
-          const markMat = new THREE.MeshStandardMaterial({ color: 0xaaaa00, emissive: 0x333300 });
-          const mark = new THREE.Mesh(markGeo, markMat);
-          mark.position.set(wx, 0.025, wz);
-          cityGroup.add(mark);
+      if (tile === T.ROAD_MAIN) {
+        roadMainPositions.push({ x: wx, z: wz });
+        if ((x + y) % 8 === 0) {
+          roadMarkPositions.push({ x: wx, z: wz });
         }
+      } else if (tile === T.ROAD_SIDE) {
+        roadSidePositions.push({ x: wx, z: wz });
       } else if (tile === T.WALL) {
         const heightSeed = (x * 7 + y * 13) % 10;
         const height = 0.8 + heightSeed * 0.4;
-        const bGeo = new THREE.BoxGeometry(0.9, height, 0.9);
-        const bMat = buildingMats[heightSeed % buildingMats.length];
-        const building = new THREE.Mesh(bGeo, bMat);
-        building.position.set(wx, height / 2, wz);
-        building.castShadow = true;
-        building.receiveShadow = true;
-        cityGroup.add(building);
+        const matIdx = heightSeed % 8;
+        buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
 
-        if (height > 1.2) {
-          const windowGeo = new THREE.BoxGeometry(0.06, 0.06, 0.01);
-          const windowMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 0.8 });
-          const wSide = Math.random() < 0.5 ? 0.46 : -0.46;
+        // Windows only on tall buildings (height > 2.0), reduced probability
+        if (height > 2.0) {
+          const wSide = ((x * 31 + y * 17) % 2 === 0) ? 0.46 : -0.46;
           for (let wy = 0.4; wy < height - 0.2; wy += 0.35) {
-            if (Math.random() < 0.6) {
-              const win = new THREE.Mesh(windowGeo, windowMat);
-              win.position.set(wx + wSide, wy, wz + (Math.random() - 0.5) * 0.5);
-              if (Math.abs(wSide) > 0.4) win.rotation.y = Math.PI / 2;
-              cityGroup.add(win);
+            if (((x * 11 + y * 7 + Math.floor(wy * 100)) % 100) < 30) {
+              windowPositions.push({
+                x: wx + wSide,
+                y: wy,
+                z: wz + (((x * 37 + y * 53 + Math.floor(wy * 10)) % 100) / 100 - 0.5) * 0.5,
+                rotated: Math.abs(wSide) > 0.4
+              });
             }
           }
         }
       } else if (tile === T.WATER) {
-        const waterGeo = new THREE.BoxGeometry(1, 0.05, 1);
-        const waterMat = new THREE.MeshStandardMaterial({
-          color: 0x2266aa, transparent: true, opacity: 0.7, roughness: 0.2, metalness: 0.3
-        });
-        const water = new THREE.Mesh(waterGeo, waterMat);
-        water.position.set(wx, -0.05, wz);
-        water.receiveShadow = true;
-        cityGroup.add(water);
+        waterPositions.push({ x: wx, z: wz });
       } else if (tile === T.TREE) {
-        const trunkGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.5, 6);
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.set(wx, 0.25, wz);
-        trunk.castShadow = true;
-        cityGroup.add(trunk);
-
-        const canopyGeo = new THREE.SphereGeometry(0.3, 8, 6);
-        const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
-        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-        canopy.position.set(wx, 0.65, wz);
-        canopy.castShadow = true;
-        cityGroup.add(canopy);
+        treePositions.push({ x: wx, z: wz });
       } else if (tile === T.PARK) {
-        const parkGeo = new THREE.BoxGeometry(1, 0.02, 1);
-        const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 1 });
-        const park = new THREE.Mesh(parkGeo, parkMat);
-        park.position.set(wx, 0.01, wz);
-        park.receiveShadow = true;
-        cityGroup.add(park);
+        parkPositions.push({ x: wx, z: wz });
       } else if (tile === T.SAND) {
-        const sandGeo = new THREE.BoxGeometry(1, 0.02, 1);
-        const sandMat = new THREE.MeshStandardMaterial({ color: 0xaa8844, roughness: 1 });
-        const sand = new THREE.Mesh(sandGeo, sandMat);
-        sand.position.set(wx, 0.01, wz);
-        sand.receiveShadow = true;
-        cityGroup.add(sand);
+        sandPositions.push({ x: wx, z: wz });
+      } else if (tile === T.BRIDGE) {
+        bridgePositions.push({ x: wx, z: wz });
+      } else if (tile === T.DOCK) {
+        dockPositions.push({ x: wx, z: wz });
+      } else if (tile === T.INDUSTRIAL) {
+        // Low squat buildings
+        const height = 0.4 + ((x * 7 + y * 13) % 5) * 0.15;
+        const matIdx = ((x * 7 + y * 13) % 10) % 8;
+        buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
+      } else if (tile === T.HIGHWAY) {
+        highwayPositions.push({ x: wx, z: wz });
       }
 
-      // POI markers
       if (POI_DEFS[tile]) {
-        const poi = POI_DEFS[tile];
-        const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8);
-        const pillarMat = new THREE.MeshStandardMaterial({
-          color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 0.6,
-          transparent: true, opacity: 0.7
-        });
-        const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-        pillar.position.set(wx, 0.6, wz);
-        pillar.castShadow = false;
-        pillar.userData = { poiType: tile, baseY: 0.6 };
-        cityGroup.add(pillar);
-        poiMeshes.push(pillar);
-
-        const diamGeo = new THREE.OctahedronGeometry(0.12, 0);
-        const diamMat = new THREE.MeshStandardMaterial({
-          color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 1.0
-        });
-        const diamond = new THREE.Mesh(diamGeo, diamMat);
-        diamond.position.set(wx, 1.3, wz);
-        diamond.userData = { baseY: 1.3 };
-        cityGroup.add(diamond);
-        poiMeshes.push(diamond);
-
-        const poiLight = new THREE.PointLight(poi.colorHex, 0.5, 3);
-        poiLight.position.set(wx, 1.0, wz);
-        cityGroup.add(poiLight);
+        poiTiles.push({ x: wx, z: wz, tile, poi: POI_DEFS[tile] });
       }
     }
   }
 
-  // Street lamps on main roads (every 4 tiles)
+  // ---- PASS 2: Create InstancedMeshes for flat tiles ----
+  const dummy = new THREE.Object3D();
+  const flatGeo = new THREE.BoxGeometry(1, 0.02, 1);
+
+  // Road main
+  if (roadMainPositions.length > 0) {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, mat, roadMainPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    roadMainPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Road side
+  if (roadSidePositions.length > 0) {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, mat, roadSidePositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    roadSidePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Road markings (every 8 tiles instead of every 3)
+  if (roadMarkPositions.length > 0) {
+    const markGeo = new THREE.BoxGeometry(0.08, 0.025, 0.4);
+    const markMat = new THREE.MeshStandardMaterial({ color: 0xaaaa00, emissive: 0x333300 });
+    const inst = new THREE.InstancedMesh(markGeo, markMat, roadMarkPositions.length);
+    inst.castShadow = false;
+    roadMarkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.025, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Water
+  if (waterPositions.length > 0) {
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x2266aa, transparent: true, opacity: 0.7, roughness: 0.2, metalness: 0.3
+    });
+    const inst = new THREE.InstancedMesh(flatGeo, waterMat, waterPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    waterPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, -0.05, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Park
+  if (parkPositions.length > 0) {
+    const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 1 });
+    const inst = new THREE.InstancedMesh(flatGeo, parkMat, parkPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    parkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Sand
+  if (sandPositions.length > 0) {
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xaa8844, roughness: 1 });
+    const inst = new THREE.InstancedMesh(flatGeo, sandMat, sandPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    sandPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Bridge (raised wooden planks over water)
+  if (bridgePositions.length > 0) {
+    const bridgeGeo = new THREE.BoxGeometry(1, 0.08, 1);
+    const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x6a5a3a, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(bridgeGeo, bridgeMat, bridgePositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = true;
+    bridgePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.15, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Bridge railings
+    const railGeo = new THREE.BoxGeometry(0.05, 0.3, 1);
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5 });
+    const railInst = new THREE.InstancedMesh(railGeo, railMat, bridgePositions.length * 2);
+    railInst.castShadow = false;
+    bridgePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x - 0.45, 0.3, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      railInst.setMatrixAt(i * 2, dummy.matrix);
+      dummy.position.set(pos.x + 0.45, 0.3, pos.z);
+      dummy.updateMatrix();
+      railInst.setMatrixAt(i * 2 + 1, dummy.matrix);
+    });
+    cityGroup.add(railInst);
+  }
+
+  // Dock (wooden planks at water level)
+  if (dockPositions.length > 0) {
+    const dockGeo = new THREE.BoxGeometry(1, 0.06, 1);
+    const dockMat = new THREE.MeshStandardMaterial({ color: 0x5a4a30, roughness: 1 });
+    const inst = new THREE.InstancedMesh(dockGeo, dockMat, dockPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    dockPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.04, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Dock posts
+    const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.4, 6);
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x443322 });
+    const posts = [];
+    dockPositions.forEach(pos => {
+      if (Math.random() < 0.3) posts.push(pos);
+    });
+    if (posts.length > 0) {
+      const postInst = new THREE.InstancedMesh(postGeo, postMat, posts.length);
+      postInst.castShadow = true;
+      posts.forEach((pos, i) => {
+        dummy.position.set(pos.x + 0.35, 0.2, pos.z + 0.35);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        postInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(postInst);
+    }
+  }
+
+  // Highway (wider, slightly raised, darker road)
+  if (highwayPositions.length > 0) {
+    const hwGeo = new THREE.BoxGeometry(1, 0.06, 1);
+    const hwMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.8 });
+    const inst = new THREE.InstancedMesh(hwGeo, hwMat, highwayPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    highwayPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.05, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Highway lane markings (yellow center line)
+    const hwMarkGeo = new THREE.BoxGeometry(0.06, 0.07, 0.5);
+    const hwMarkMat = new THREE.MeshStandardMaterial({ color: 0xdddd00, emissive: 0x555500 });
+    const marks = highwayPositions.filter((_, i) => i % 3 === 0);
+    if (marks.length > 0) {
+      const markInst = new THREE.InstancedMesh(hwMarkGeo, hwMarkMat, marks.length);
+      markInst.castShadow = false;
+      marks.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.065, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        markInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(markInst);
+    }
+  }
+
+  // ---- Buildings: InstancedMesh per material group ----
+  const buildingMats = [];
+  for (let i = 0; i < 8; i++) {
+    const shade = 40 + i * 12;
+    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+10},${shade+10},${shade+20})`), roughness: 0.8 }));
+  }
+  // Base building geo is 0.9 x 1.0 x 0.9 (height=1 will be scaled per instance)
+  const buildGeo = new THREE.BoxGeometry(0.9, 1, 0.9);
+  for (let matIdx = 0; matIdx < 8; matIdx++) {
+    const group = buildingGroups.get(matIdx);
+    if (group.length === 0) continue;
+    const inst = new THREE.InstancedMesh(buildGeo, buildingMats[matIdx], group.length);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    group.forEach((b, i) => {
+      dummy.position.set(b.x, b.height / 2, b.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, b.height, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // ---- Windows: InstancedMesh ----
+  if (windowPositions.length > 0) {
+    const winGeo = new THREE.BoxGeometry(0.06, 0.06, 0.01);
+    const winMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 0.8 });
+    const inst = new THREE.InstancedMesh(winGeo, winMat, windowPositions.length);
+    inst.castShadow = false;
+    windowPositions.forEach((w, i) => {
+      dummy.position.set(w.x, w.y, w.z);
+      dummy.rotation.set(0, w.rotated ? Math.PI / 2 : 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // ---- Trees: 2 InstancedMeshes (trunk + canopy) ----
+  if (treePositions.length > 0) {
+    const trunkGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.5, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
+    const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
+    trunkInst.castShadow = true;
+    treePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.25, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      trunkInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(trunkInst);
+
+    const canopyGeo = new THREE.SphereGeometry(0.3, 8, 6);
+    const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
+    const canopyInst = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
+    canopyInst.castShadow = true;
+    treePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.65, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      canopyInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(canopyInst);
+  }
+
+  // ---- POI markers (individual meshes — small count, need animation) ----
+  for (const { x: wx, z: wz, tile, poi } of poiTiles) {
+    const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8);
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 0.6,
+      transparent: true, opacity: 0.7
+    });
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+    pillar.position.set(wx, 0.6, wz);
+    pillar.castShadow = false;
+    pillar.userData = { poiType: tile, baseY: 0.6 };
+    cityGroup.add(pillar);
+    poiMeshes.push(pillar);
+
+    const diamGeo = new THREE.OctahedronGeometry(0.12, 0);
+    const diamMat = new THREE.MeshStandardMaterial({
+      color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 1.0
+    });
+    const diamond = new THREE.Mesh(diamGeo, diamMat);
+    diamond.position.set(wx, 1.3, wz);
+    diamond.userData = { baseY: 1.3 };
+    cityGroup.add(diamond);
+    poiMeshes.push(diamond);
+    // No PointLight — emissive materials provide the visual glow
+  }
+
+  // ---- Street lamps: InstancedMesh for posts and heads, NO PointLights ----
   streetLamps = [];
-  const lampPostGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.5, 6);
-  const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6 });
-  const lampHeadGeo = new THREE.SphereGeometry(0.1, 8, 6);
-  const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffeeaa, emissiveIntensity: 0.3 });
+  const lampPostPositions = [];
+  const lampHeadPositions = [];
 
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
@@ -1214,28 +1568,57 @@ function buildCity3D() {
         const adj = currentMapGrid[nz][nx];
         if (adj === T.GROUND || adj === T.SAND || adj === T.PARK) {
           const wx = nx + 0.5, wz = nz + 0.5;
-          const post = new THREE.Mesh(lampPostGeo, lampPostMat);
-          post.position.set(wx, 0.75, wz);
-          post.castShadow = true;
-          cityGroup.add(post);
-          const head = new THREE.Mesh(lampHeadGeo, lampHeadMat.clone());
-          head.position.set(wx, 1.55, wz);
-          cityGroup.add(head);
-          const light = new THREE.PointLight(0xffeeaa, 0, 5);
-          light.position.set(wx, 1.5, wz);
-          cityGroup.add(light);
-          streetLamps.push({ head, light, x: wx, z: wz });
+          lampPostPositions.push({ x: wx, z: wz });
+          lampHeadPositions.push({ x: wx, z: wz });
           break;
         }
       }
     }
   }
 
-  // Parked cars on side roads
+  // Shared material for all lamp heads — toggle emissiveIntensity globally for night
+  const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffeeaa, emissiveIntensity: 0.3 });
+
+  if (lampPostPositions.length > 0) {
+    const lampPostGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.5, 6);
+    const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6 });
+    const postInst = new THREE.InstancedMesh(lampPostGeo, lampPostMat, lampPostPositions.length);
+    postInst.castShadow = false;
+    lampPostPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.75, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      postInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(postInst);
+
+    const lampHeadGeo = new THREE.SphereGeometry(0.1, 8, 6);
+    const headInst = new THREE.InstancedMesh(lampHeadGeo, lampHeadMat, lampHeadPositions.length);
+    headInst.castShadow = false;
+    lampHeadPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 1.55, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      headInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(headInst);
+  }
+
+  // Store reference to shared material for night toggling
+  // streetLamps now just holds the shared material and positions for compatibility
+  streetLamps = lampHeadPositions.map(pos => ({ x: pos.x, z: pos.z }));
+  streetLamps._sharedHeadMat = lampHeadMat;
+
+  // ---- Parked cars on side roads (max 40, no castShadow) ----
   parkedCars = [];
   const carBodyGeo = new THREE.BoxGeometry(0.35, 0.2, 0.65);
   const carTopGeo = new THREE.BoxGeometry(0.28, 0.15, 0.35);
   const carColors = [0xcc2222, 0x2244cc, 0x22aa22, 0xcccc22, 0xeeeeee, 0x222222, 0xcc6600, 0x8822aa];
+  const carBodyPositions = [];
+  const carTopPositions = [];
+  const carWheelPositions = [];
   let carCount = 0;
   for (let y = 2; y < MAP_SIZE - 2 && carCount < 40; y++) {
     for (let x = 2; x < MAP_SIZE - 2 && carCount < 40; x++) {
@@ -1247,27 +1630,72 @@ function buildCity3D() {
       });
       if (!adjWall) continue;
       const wx = x + 0.5, wz = y + 0.5;
-      const color = carColors[Math.floor(Math.random() * carColors.length)];
-      const carMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
-      const body = new THREE.Mesh(carBodyGeo, carMat);
-      body.position.set(wx, 0.12, wz);
-      body.castShadow = true;
-      cityGroup.add(body);
-      const top = new THREE.Mesh(carTopGeo, carMat);
-      top.position.set(wx, 0.27, wz - 0.05);
-      top.castShadow = true;
-      cityGroup.add(top);
-      const wheelGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8);
-      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+      const colorIdx = Math.floor(Math.random() * carColors.length);
+      carBodyPositions.push({ x: wx, z: wz, colorIdx });
+      carTopPositions.push({ x: wx, z: wz - 0.05, colorIdx });
       for (const [sx, sz] of [[-0.18, -0.2], [0.18, -0.2], [-0.18, 0.2], [0.18, 0.2]]) {
-        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(wx + sx, 0.05, wz + sz);
-        cityGroup.add(wheel);
+        carWheelPositions.push({ x: wx + sx, z: wz + sz });
       }
       parkedCars.push({ x: wx, z: wz });
       carCount++;
     }
+  }
+
+  // Parked car bodies — one InstancedMesh per color
+  const carsByColor = new Map();
+  carBodyPositions.forEach((pos) => {
+    if (!carsByColor.has(pos.colorIdx)) carsByColor.set(pos.colorIdx, { bodies: [], tops: [] });
+    carsByColor.get(pos.colorIdx).bodies.push(pos);
+  });
+  carTopPositions.forEach((pos) => {
+    if (carsByColor.has(pos.colorIdx)) carsByColor.get(pos.colorIdx).tops.push(pos);
+  });
+
+  for (const [colorIdx, data] of carsByColor) {
+    const color = carColors[colorIdx];
+    const carMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
+    if (data.bodies.length > 0) {
+      const bodyInst = new THREE.InstancedMesh(carBodyGeo, carMat, data.bodies.length);
+      bodyInst.castShadow = false;
+      bodyInst.receiveShadow = true;
+      data.bodies.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.12, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        bodyInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(bodyInst);
+    }
+    if (data.tops.length > 0) {
+      const topInst = new THREE.InstancedMesh(carTopGeo, carMat, data.tops.length);
+      topInst.castShadow = false;
+      topInst.receiveShadow = true;
+      data.tops.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.27, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        topInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(topInst);
+    }
+  }
+
+  // Parked car wheels — single InstancedMesh
+  if (carWheelPositions.length > 0) {
+    const wheelGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const wheelInst = new THREE.InstancedMesh(wheelGeo, wheelMat, carWheelPositions.length);
+    wheelInst.castShadow = false;
+    carWheelPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.05, pos.z);
+      dummy.rotation.set(0, 0, Math.PI / 2);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      wheelInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(wheelInst);
   }
 
   // NPC cars on main roads (stealable)
@@ -1287,7 +1715,7 @@ function buildCity3D() {
       if (currentMapGrid[y][x] === T.ROAD_MAIN) mainRoadTiles.push({x, y});
     }
   }
-  const npcCarCount = Math.min(8, Math.floor(mainRoadTiles.length / 30));
+  const npcCarCount = Math.min(18, Math.floor(mainRoadTiles.length / 30));
   for (let i = 0; i < npcCarCount; i++) {
     const rt = mainRoadTiles[Math.floor(Math.random() * mainRoadTiles.length)];
     const colorIdx = Math.floor(Math.random() * npcCarColors.length);
@@ -1350,7 +1778,7 @@ function buildCity3D() {
       speed: 0.5 + Math.random() * 0.8,
       startX: wx, startZ: wz,
       driveAxis,
-      driveDist: 4 + Math.random() * 8,
+      driveDist: 6 + Math.random() * 14,
       driven: 0
     });
   }
@@ -1402,7 +1830,7 @@ function spawnNPCs() {
     }
   }
 
-  const count = Math.max(10, Math.min(20, Math.floor(roadTiles.length / 25)));
+  const count = Math.max(25, Math.min(50, Math.floor(roadTiles.length / 30)));
   console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs`);
   for (let i = 0; i < count; i++) {
     const rt = roadTiles[Math.floor(Math.random() * roadTiles.length)];
@@ -1460,7 +1888,9 @@ function spawnNPCs() {
       startX: rt.x + 0.5, startZ: rt.y + 0.5,
       walkDist: 3 + Math.random() * 6,
       walked: 0, phase: Math.random() * Math.PI * 2,
-      hostile: isHostile
+      hostile: isHostile,
+      // Cached child references (avoid per-frame getObjectByName)
+      _legL: legL, _legR: legR, _body: body, _head: head
     });
   }
 }
@@ -1531,6 +1961,19 @@ function removeNPCCar(car) {
   car.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
   const idx = npcCars.indexOf(car);
   if (idx >= 0) npcCars.splice(idx, 1);
+}
+
+// Shared particle pool (used by particles + bullet trails)
+const _particleGeo = new THREE.SphereGeometry(0.05, 4, 4);
+const _particleMatCache = new Map(); // color -> MeshBasicMaterial
+
+function _getParticleMat(color) {
+  let mat = _particleMatCache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    _particleMatCache.set(color, mat);
+  }
+  return mat;
 }
 
 // Projectile system
@@ -1616,9 +2059,9 @@ function updateProjectiles(dt) {
     p.trailTimer += dt;
     if (p.trailTimer > 0.02) {
       p.trailTimer = 0;
-      const trailGeo = new THREE.SphereGeometry(0.04, 4, 4);
-      const trailMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8 });
-      const trail = new THREE.Mesh(trailGeo, trailMat);
+      const trailMat = _getParticleMat(0xff6600).clone();
+      trailMat.opacity = 0.8;
+      const trail = new THREE.Mesh(_particleGeo, trailMat);
       trail.position.copy(p.mesh.position);
       scene.add(trail);
       particles.push({
@@ -1638,13 +2081,14 @@ function updateProjectiles(dt) {
 }
 
 // --------------------------------------------------------
-//  PARTICLE SYSTEM
+//  PARTICLE SYSTEM (pooled geometry + materials)
 // --------------------------------------------------------
 function spawnParticles(worldX, worldZ, color, count, speed, life, gravity) {
+  const baseMat = _getParticleMat(color);
   for (let i = 0; i < count; i++) {
-    const geo = new THREE.SphereGeometry(0.04 + Math.random() * 0.04, 4, 4);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
-    const mesh = new THREE.Mesh(geo, mat);
+    // Clone material so each particle can fade independently
+    const mat = baseMat.clone();
+    const mesh = new THREE.Mesh(_particleGeo, mat);
     mesh.position.set(
       worldX + (Math.random() - 0.5) * 0.3,
       0.5 + Math.random() * 0.5,
@@ -1674,7 +2118,7 @@ function updateParticles(dt) {
     p.life -= dt;
     if (p.life <= 0) {
       scene.remove(p.mesh);
-      p.mesh.geometry.dispose();
+      // Only dispose cloned materials, not the shared geometry
       p.mesh.material.dispose();
       particles.splice(i, 1);
       continue;
@@ -1752,7 +2196,9 @@ function spawnPoliceNPC(nearX, nearZ) {
   policeNPCs.push({
     group, phase: Math.random() * Math.PI * 2,
     speed: 1.2 + Math.random() * 0.6,
-    health: 100, alive: true
+    health: 100, alive: true,
+    // Cached child references
+    _legL: legL, _legR: legR, _siren: siren
   });
   return policeNPCs[policeNPCs.length - 1];
 }
@@ -1871,25 +2317,41 @@ function updateLighting(hour) {
 }
 
 // --------------------------------------------------------
-//  MINIMAP (2D canvas in corner)
+//  MINIMAP (2D canvas in corner) — cached background
 // --------------------------------------------------------
 const minimapCanvas = document.getElementById('minimap');
 const mctx = minimapCanvas.getContext('2d');
 const MCELL = minimapCanvas.width / MAP_SIZE;
 
-function renderMinimap(px, py) {
-  if (!currentMapGrid) return;
-  mctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+// Offscreen canvas for tile background (rebuilt only when city changes)
+let _minimapBg = null;
 
+function invalidateMinimapCache() { _minimapBg = null; }
+
+function _buildMinimapBg() {
+  if (!currentMapGrid) return;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = minimapCanvas.width;
+  offscreen.height = minimapCanvas.height;
+  const ctx = offscreen.getContext('2d');
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
       const tile = currentMapGrid[y][x];
       let color = TILE_COLORS[tile] || TILE_COLORS[T.GROUND];
       if (POI_DEFS[tile]) color = POI_DEFS[tile].color;
-      mctx.fillStyle = color;
-      mctx.fillRect(x * MCELL, y * MCELL, MCELL, MCELL);
+      ctx.fillStyle = color;
+      ctx.fillRect(x * MCELL, y * MCELL, MCELL, MCELL);
     }
   }
+  _minimapBg = offscreen;
+}
+
+function renderMinimap(px, py) {
+  if (!currentMapGrid) return;
+  if (!_minimapBg) _buildMinimapBg();
+
+  mctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+  mctx.drawImage(_minimapBg, 0, 0);
 
   mctx.fillStyle = '#ffdd00';
   mctx.beginPath();
@@ -1903,6 +2365,113 @@ function renderMinimap(px, py) {
 // --------------------------------------------------------
 //  GAME LOOP
 // --------------------------------------------------------
+// --------------------------------------------------------
+//  REMOTE PLAYER DUCKS (Multiplayer)
+// --------------------------------------------------------
+const remoteDucks = new Map(); // peerId -> { group, targetX, targetZ, label }
+
+function spawnRemoteDuck(peerId, charType, name) {
+  if (remoteDucks.has(peerId)) return remoteDucks.get(peerId);
+
+  const { group, footL, footR } = _buildDuckGroup({ eyeWhites: false, castShadows: true, hat: false });
+
+  // Name label (sprite)
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#00ff00';
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(name || peerId.slice(0, 8), 128, 40);
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const label = new THREE.Sprite(spriteMat);
+  label.position.set(0, 1.1, 0);
+  label.scale.set(1.5, 0.4, 1);
+  group.add(label);
+
+  scene.add(group);
+
+  const entry = { group, targetX: 0, targetZ: 0, label, waddle: 0, _footL: footL, _footR: footR };
+  remoteDucks.set(peerId, entry);
+
+  // Apply character skin if available
+  if (charType) {
+    _applyRemoteSkin(group, charType);
+  }
+
+  return entry;
+}
+
+function _applyRemoteSkin(group, charName) {
+  // Simplified skin: just tint the body based on character
+  const skinColors = {
+    cj: 0x44aa44, tommy: 0x4488ff, claude: 0x888888,
+    niko: 0xaa6644, catalina: 0xff4488, oz: 0xaa44ff
+  };
+  const color = skinColors[charName.toLowerCase()] || 0xffdd00;
+  const body = group.children[0]; // first child is body
+  if (body && body.material) {
+    body.material.color.setHex(color);
+  }
+}
+
+function updateRemoteDuck(peerId, x, y, data) {
+  let entry = remoteDucks.get(peerId);
+  if (!entry) {
+    entry = spawnRemoteDuck(peerId, data?.char, data?.name);
+  }
+  entry.targetX = x + 0.5;
+  entry.targetZ = y + 0.5;
+}
+
+function _disposeGroup(group) {
+  group.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+      else obj.material.dispose();
+    }
+  });
+}
+
+function despawnRemoteDuck(peerId) {
+  const entry = remoteDucks.get(peerId);
+  if (entry) {
+    scene.remove(entry.group);
+    _disposeGroup(entry.group);
+    if (entry.label?.material?.map) entry.label.material.map.dispose();
+    remoteDucks.delete(peerId);
+  }
+}
+
+function clearRemoteDucks() {
+  for (const [, entry] of remoteDucks) {
+    scene.remove(entry.group);
+    _disposeGroup(entry.group);
+    if (entry.label?.material?.map) entry.label.material.map.dispose();
+  }
+  remoteDucks.clear();
+}
+
+function getRemoteDucks() { return remoteDucks; }
+
+function getNearestRemoteDuck(maxDist = 6) {
+  if (!duckGroup) return null;
+  let nearest = null, nearestDist = maxDist;
+  for (const [peerId, entry] of remoteDucks) {
+    const dx = entry.group.position.x - duckGroup.position.x;
+    const dz = entry.group.position.z - duckGroup.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = { peerId, entry, dist };
+    }
+  }
+  return nearest;
+}
+
 function gameLoop() {
   requestAnimationFrame(gameLoop);
   if (!gameActive) { renderer.render(scene, camera); return; }
@@ -1924,13 +2493,30 @@ function gameLoop() {
     const moving = Math.abs(duckTargetX - duckGroup.position.x) > 0.02 || Math.abs(duckTargetZ - duckGroup.position.z) > 0.02;
     if (moving) {
       waddle += dt * 12;
-      const footL = duckGroup.getObjectByName('footL');
-      const footR = duckGroup.getObjectByName('footR');
-      if (footL) footL.position.z = 0.05 + Math.sin(waddle) * 0.08;
-      if (footR) footR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.08;
+      if (_duckFootL) _duckFootL.position.z = 0.05 + Math.sin(waddle) * 0.08;
+      if (_duckFootR) _duckFootR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.08;
       duckGroup.position.y = Math.sin(waddle * 2) * 0.02;
     } else {
       duckGroup.position.y = 0;
+    }
+  }
+
+  // Remote duck interpolation (multiplayer)
+  for (const [, rd] of remoteDucks) {
+    const g = rd.group;
+    const dx = rd.targetX - g.position.x;
+    const dz = rd.targetZ - g.position.z;
+    g.position.x += dx * 0.15;
+    g.position.z += dz * 0.15;
+    const moving = Math.abs(dx) > 0.02 || Math.abs(dz) > 0.02;
+    if (moving) {
+      g.rotation.y = Math.atan2(dx, dz);
+      rd.waddle += dt * 12;
+      if (rd._footL) rd._footL.position.z = 0.05 + Math.sin(rd.waddle) * 0.08;
+      if (rd._footR) rd._footR.position.z = 0.05 + Math.sin(rd.waddle + Math.PI) * 0.08;
+      g.position.y = Math.sin(rd.waddle * 2) * 0.02;
+    } else {
+      g.position.y = 0;
     }
   }
 
@@ -1969,10 +2555,8 @@ function gameLoop() {
     npc.walked += step;
     npc.phase += dt * 8;
 
-    const legL = npc.group.getObjectByName('legL');
-    const legR = npc.group.getObjectByName('legR');
-    if (legL) legL.rotation.x = Math.sin(npc.phase) * 0.4;
-    if (legR) legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.4;
+    if (npc._legL) npc._legL.rotation.x = Math.sin(npc.phase) * 0.4;
+    if (npc._legR) npc._legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.4;
 
     if (npc.walked >= npc.walkDist) {
       npc.facing *= -1;
@@ -1989,11 +2573,9 @@ function gameLoop() {
     }
 
     // Night glow — make NPCs visible in the dark
-    const npcBody = npc.group.getObjectByName('npcBody');
-    const npcHead = npc.group.getObjectByName('npcHead');
     const nightGlow = isNight ? 0.4 : 0;
-    if (npcBody) npcBody.material.emissiveIntensity = nightGlow;
-    if (npcHead) npcHead.material.emissiveIntensity = nightGlow;
+    if (npc._body) npc._body.material.emissiveIntensity = nightGlow;
+    if (npc._head) npc._head.material.emissiveIntensity = nightGlow;
   }
 
   // NPC car driving
@@ -2019,11 +2601,9 @@ function gameLoop() {
     }
   }
 
-  // Street lamp glow — brighter at night
-  for (const lamp of streetLamps) {
-    lamp.light.intensity = isNight ? 2.5 : 0;
-    lamp.light.distance = isNight ? 8 : 5;
-    lamp.head.material.emissiveIntensity = isNight ? 2.0 : 0.3;
+  // Street lamp glow — toggle shared material emissive for night
+  if (streetLamps._sharedHeadMat) {
+    streetLamps._sharedHeadMat.emissiveIntensity = isNight ? 2.0 : 0.3;
   }
 
   // Neon sign pulse — brighter at night
@@ -2034,19 +2614,7 @@ function gameLoop() {
     ns.border.material.emissiveIntensity = (pulse * 0.5) * nightBoost;
   }
 
-  // Parked car headlights at night
-  for (const car of parkedCars) {
-    if (!car.headlight && isNight) {
-      const hl = new THREE.PointLight(0xffffcc, 1.5, 4);
-      hl.position.set(car.x, 0.3, car.z);
-      scene.add(hl);
-      car.headlight = hl;
-    } else if (car.headlight && !isNight) {
-      scene.remove(car.headlight);
-      car.headlight.dispose();
-      car.headlight = null;
-    }
-  }
+  // Parked car headlights at night — removed for performance (no PointLights)
 
   // Police siren flash
   if (sirenActive && sirenLights.length === 2) {
@@ -2067,14 +2635,11 @@ function gameLoop() {
       cop.group.rotation.y = Math.atan2(nx, nz);
     }
     cop.phase += dt * 8;
-    const legL = cop.group.getObjectByName('legL');
-    const legR = cop.group.getObjectByName('legR');
-    if (legL) legL.rotation.x = Math.sin(cop.phase) * 0.5;
-    if (legR) legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
-    const siren = cop.group.getObjectByName('siren');
-    if (siren) {
-      siren.material.color.setHex(Math.sin(elapsed * 10 + cop.phase) > 0 ? 0xff0000 : 0x0044ff);
-      siren.material.emissive.setHex(siren.material.color.getHex());
+    if (cop._legL) cop._legL.rotation.x = Math.sin(cop.phase) * 0.5;
+    if (cop._legR) cop._legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
+    if (cop._siren) {
+      cop._siren.material.color.setHex(Math.sin(elapsed * 10 + cop.phase) > 0 ? 0xff0000 : 0x0044ff);
+      cop._siren.material.emissive.setHex(cop._siren.material.color.getHex());
     }
   }
 
@@ -2150,6 +2715,22 @@ async function initSchema() {
     CREATE TABLE IF NOT EXISTS district_heat(district VARCHAR, city VARCHAR, heat INT DEFAULT 0, PRIMARY KEY(district, city));
     CREATE TABLE IF NOT EXISTS perks(name VARCHAR PRIMARY KEY, unlocked INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS world_events(id INT DEFAULT nextval('event_id_seq'), day INT, hour INT, description VARCHAR);
+    CREATE TABLE IF NOT EXISTS remote_players(
+      peer_id VARCHAR PRIMARY KEY,
+      name VARCHAR,
+      char_type VARCHAR,
+      x INT DEFAULT 0,
+      y INT DEFAULT 0,
+      health INT DEFAULT 100,
+      wanted_level INT DEFAULT 0,
+      last_update BIGINT DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS connection_log(
+      ts TIMESTAMP DEFAULT now(),
+      peer_id VARCHAR,
+      remote_ip VARCHAR DEFAULT 'unknown',
+      event VARCHAR
+    );
   `);
   for (const p of PERKS) await conn.query(`INSERT INTO perks VALUES ('${p.name}', 0) ON CONFLICT DO NOTHING`);
 }
@@ -2272,6 +2853,25 @@ function getSaveIndex() {
   return raw ? JSON.parse(raw) : {};
 }
 
+const VALID_TABLES = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events'];
+const VALID_COLUMNS = {
+  player: ['name','city','district','x','y','cash','health','armor','wanted_level','gang','gang_rank','respect','perk_points','adrenaline','char_type'],
+  game_clock: ['day','hour'],
+  skills: ['name','level'],
+  guns: ['name','category','bonus'],
+  inventory: ['item','qty'],
+  drugs: ['name','qty','avg_price'],
+  vehicles: ['name','stored'],
+  territories: ['district','city','owner'],
+  businesses: ['name','city','type','daily_income'],
+  recruits: ['id','name','strength','upkeep'],
+  gang_upgrades: ['name','level'],
+  gang_relations: ['gang','relation'],
+  district_heat: ['district','city','heat'],
+  perks: ['name','unlocked'],
+  world_events: ['id','day','hour','description']
+};
+
 async function loadGameData(callbacks, slotName) {
   const raw = slotName
     ? localStorage.getItem('dta_save_' + slotName)
@@ -2281,9 +2881,12 @@ async function loadGameData(callbacks, slotName) {
     const saveData = JSON.parse(raw);
     await initSchema();
     for (const [table, rows] of Object.entries(saveData)) {
+      if (!VALID_TABLES.includes(table)) continue;
       await conn.query(`DELETE FROM ${table}`);
+      const validCols = VALID_COLUMNS[table] || [];
       for (const row of rows) {
-        const cols = Object.keys(row);
+        const cols = Object.keys(row).filter(c => validCols.includes(c));
+        if (cols.length === 0) continue;
         const vals = cols.map(c => {
           const v = row[c];
           if (v === null || v === undefined) return 'NULL';
@@ -2309,9 +2912,610 @@ async function loadGameData(callbacks, slotName) {
   } catch (e) { _dbLog('Load failed: ' + e.message, 'c-red'); return false; }
 }
 
+// Multiplayer: log connection events
+async function logConnection(peerId, remoteIp, event) {
+  const safePeer = peerId.replace(/'/g, "''");
+  const safeIp = (remoteIp || 'unknown').replace(/'/g, "''");
+  const safeEvent = event.replace(/'/g, "''");
+  await conn.query(`INSERT INTO connection_log(peer_id, remote_ip, event) VALUES ('${safePeer}','${safeIp}','${safeEvent}')`);
+}
+
+// Multiplayer: update remote player position
+async function upsertRemotePlayer(peerId, data) {
+  const safePeer = peerId.replace(/'/g, "''");
+  const safeName = String(data.name || 'Unknown').slice(0, 32).replace(/'/g, "''");
+  const safeChar = String(data.char || '').slice(0, 20).replace(/'/g, "''");
+
+  // Validate numeric fields to prevent SQL injection via non-numeric values
+  let x = Number(data.x);
+  x = Number.isFinite(x) ? Math.floor(x) : 0;
+  let y = Number(data.y);
+  y = Number.isFinite(y) ? Math.floor(y) : 0;
+  let health = Number(data.health);
+  health = Number.isFinite(health) ? Math.max(0, Math.min(100, Math.floor(health))) : 100;
+  let wanted = Number(data.wanted);
+  wanted = Number.isFinite(wanted) ? Math.max(0, Math.min(5, Math.floor(wanted))) : 0;
+
+  // Delete + insert since DuckDB WASM doesn't support ON CONFLICT UPDATE well
+  await conn.query(`DELETE FROM remote_players WHERE peer_id='${safePeer}'`);
+  await conn.query(`INSERT INTO remote_players VALUES ('${safePeer}','${safeName}','${safeChar}',${x},${y},${health},${wanted},${Date.now()})`);
+}
+
+// Multiplayer: remove remote player
+async function removeRemotePlayer(peerId) {
+  const safePeer = peerId.replace(/'/g, "''");
+  await conn.query(`DELETE FROM remote_players WHERE peer_id='${safePeer}'`);
+}
+
+// Multiplayer: get all remote players
+async function getRemotePlayers() {
+  return await q('SELECT * FROM remote_players');
+}
+
 // log is injected after game.js loads
 let _dbLog = () => {};
 function setLogFn(fn) { _dbLog = fn; }
+
+// === multiplayer.js ===
+// --------------------------------------------------------
+//  MULTIPLAYER P2P MODULE (Trystero + Nostr signaling)
+// --------------------------------------------------------
+
+
+
+let room = null;
+let isHost = false;
+let localPeerId = null;
+let hostPeerId = null; // H3: track who the host peer is (for clients)
+let peers = new Map(); // peerId -> { name, char, ready }
+let tick = 0;
+const kickedPeers = new Set(); // H4: track kicked peers
+
+// --------------------------------------------------------
+//  LOBBY DISCOVERY — shared room for game announcements
+// --------------------------------------------------------
+let lobbyRoom = null;
+let sendLobbyAnnounce = null, onLobbyAnnounce = null;
+let sendLobbyQuery = null, onLobbyQuery = null;
+const discoveredGames = new Map(); // roomCode -> { host, players, city, hasPassword, ts }
+let _onGamesUpdated = null; // callback for UI
+let lobbyAnnounceInterval = null;
+
+function setOnGamesUpdated(fn) { _onGamesUpdated = fn; }
+
+function getDiscoveredGames() { return discoveredGames; }
+
+function joinLobby() {
+  if (lobbyRoom) return;
+  try {
+    lobbyRoom = joinRoom({ appId: APP_ID }, '__lobby__');
+  } catch (e) {
+    console.warn('[MP] Lobby join failed:', e.message);
+    return;
+  }
+
+  [sendLobbyAnnounce, onLobbyAnnounce] = lobbyRoom.makeAction('announce');
+  [sendLobbyQuery, onLobbyQuery] = lobbyRoom.makeAction('query');
+
+  // When we hear a game announcement, store it
+  onLobbyAnnounce((data) => {
+    if (!data.code) return;
+    discoveredGames.set(data.code, {
+      host: data.host || '?',
+      players: data.players || 1,
+      city: data.city || '?',
+      hasPassword: !!data.hasPassword,
+      ts: Date.now()
+    });
+    _pruneStaleGames();
+    if (_onGamesUpdated) _onGamesUpdated(discoveredGames);
+  });
+
+  // Respond to queries with our game info (if hosting)
+  onLobbyQuery(() => {
+    if (isHost && room && sendLobbyAnnounce) {
+      _broadcastGameToLobby();
+    }
+  });
+
+  // On joining lobby, ask existing hosts to announce themselves
+  lobbyRoom.onPeerJoin(() => {
+    if (sendLobbyQuery) sendLobbyQuery({});
+  });
+
+  // Query immediately for any existing hosts
+  setTimeout(() => { if (sendLobbyQuery) sendLobbyQuery({}); }, 500);
+}
+
+function leaveLobby() {
+  if (lobbyRoom) {
+    lobbyRoom.leave();
+    lobbyRoom = null;
+  }
+  sendLobbyAnnounce = null;
+  onLobbyAnnounce = null;
+  sendLobbyQuery = null;
+  onLobbyQuery = null;
+  if (lobbyAnnounceInterval) { clearInterval(lobbyAnnounceInterval); lobbyAnnounceInterval = null; }
+}
+
+function _broadcastGameToLobby() {
+  if (!sendLobbyAnnounce || !room) return;
+  sendLobbyAnnounce({
+    code: _currentRoomCode,
+    host: _currentPlayerName,
+    players: peers.size + 1,
+    city: _currentCity || '?',
+    hasPassword: _currentHasPassword
+  });
+}
+
+function _pruneStaleGames() {
+  const cutoff = Date.now() - 30000; // 30s stale
+  for (const [code, info] of discoveredGames) {
+    if (info.ts < cutoff) discoveredGames.delete(code);
+  }
+}
+
+// Host announces periodically
+function _startLobbyAnnouncing() {
+  if (lobbyAnnounceInterval) clearInterval(lobbyAnnounceInterval);
+  _broadcastGameToLobby();
+  lobbyAnnounceInterval = setInterval(() => _broadcastGameToLobby(), 10000);
+}
+
+let _currentRoomCode = '';
+let _currentPlayerName = '';
+let _currentHasPassword = false;
+let _currentCity = '';
+
+// Action senders (set when room is joined)
+let sendMove = null, onMove = null;
+let sendShoot = null, onShoot = null;
+let sendChat = null, onChat = null;
+let sendWorldSync = null, onWorldSync = null;
+let sendPlayerJoin = null, onPlayerJoin = null;
+let sendPlayerLeave = null, onPlayerLeave = null;
+let sendAction = null, onAction = null;
+
+// Callbacks set by game.js
+let _onPeerJoin = null;
+let _onPeerLeave = null;
+let _onRemoteMove = null;
+let _onRemoteShoot = null;
+let _onRemoteChat = null;
+let _onWorldSyncReceived = null;
+let _onRemoteAction = null;
+let _logFn = console.log;
+
+const APP_ID = 'duck-theft-auto';
+
+// --------------------------------------------------------
+//  PUBLIC API
+// --------------------------------------------------------
+
+function isMultiplayer() { return room !== null; }
+function getIsHost() { return isHost; }
+function getPeers() { return peers; }
+function getLocalPeerId() {
+  // Re-check selfId in case it was set after room creation
+  if (!localPeerId && room?.selfId) localPeerId = room.selfId;
+  return localPeerId;
+}
+function nextTick() { return ++tick; }
+
+function setCallbacks({ onPeerJoin, onPeerLeave, onRemoteMove, onRemoteShoot, onRemoteChat, onWorldSyncReceived, onRemoteAction, logFn }) {
+  if (onPeerJoin) _onPeerJoin = onPeerJoin;
+  if (onPeerLeave) _onPeerLeave = onPeerLeave;
+  if (onRemoteMove) _onRemoteMove = onRemoteMove;
+  if (onRemoteShoot) _onRemoteShoot = onRemoteShoot;
+  if (onRemoteChat) _onRemoteChat = onRemoteChat;
+  if (onWorldSyncReceived) _onWorldSyncReceived = onWorldSyncReceived;
+  if (onRemoteAction) _onRemoteAction = onRemoteAction;
+  if (logFn) _logFn = logFn;
+}
+
+function hostGame(roomCode, playerName, charType, password = '') {
+  isHost = true;
+  _currentRoomCode = roomCode;
+  _currentPlayerName = playerName;
+  _currentHasPassword = !!password;
+  const result = _joinRoom(roomCode, playerName, charType, password);
+  if (result) _startLobbyAnnouncing();
+  return result;
+}
+
+function joinGame(roomCode, playerName, charType, password = '') {
+  isHost = false;
+  return _joinRoom(roomCode, playerName, charType, password);
+}
+
+function setCurrentCity(city) { _currentCity = city; }
+
+function leaveGame() {
+  if (lobbyAnnounceInterval) { clearInterval(lobbyAnnounceInterval); lobbyAnnounceInterval = null; }
+  if (room) {
+    room.leave();
+    room = null;
+  }
+  peers.clear();
+  kickedPeers.clear();
+  hostPeerId = null;
+  isHost = false;
+  sendMove = null;
+  onMove = null;
+  sendShoot = null;
+  onShoot = null;
+  sendChat = null;
+  onChat = null;
+  sendWorldSync = null;
+  onWorldSync = null;
+  sendPlayerJoin = null;
+  onPlayerJoin = null;
+  sendPlayerLeave = null;
+  onPlayerLeave = null;
+  sendAction = null;
+  onAction = null;
+  _logFn('[MP] Left game');
+  _updateLobbyUI();
+}
+
+// Send functions (called by game.js)
+function broadcastMove(data) {
+  if (sendMove) sendMove({ ...data, tick: nextTick() });
+}
+
+function broadcastShoot(data) {
+  if (sendShoot) sendShoot({ ...data, tick: nextTick() });
+}
+
+function broadcastChat(msg, name) {
+  if (sendChat) sendChat({ msg, name, tick: nextTick() });
+}
+
+function broadcastWorldSync(data) {
+  if (sendWorldSync) sendWorldSync(data);
+}
+
+function broadcastAction(data) {
+  if (sendAction) sendAction({ ...data, tick: nextTick() });
+}
+
+// --------------------------------------------------------
+//  ROOM SETUP (INTERNAL)
+// --------------------------------------------------------
+
+function _joinRoom(roomCode, playerName, charType, password = '') {
+  const roomId = roomCode.trim().toLowerCase();
+
+  try {
+    const config = { appId: APP_ID };
+    // Encrypt signaling via Nostr relays if password provided
+    // This prevents MITM attacks and hides SDP from relay operators
+    if (password) config.password = password;
+    console.log('[MP] Connecting to room:', roomId, 'config:', { ...config, password: password ? '***' : undefined });
+    room = joinRoom(config, roomId);
+    console.log('[MP] Room object created, waiting for peers...');
+  } catch (e) {
+    _logFn('[MP] Failed to join room: ' + e.message);
+    console.error('[MP] Room join error:', e);
+    return false;
+  }
+
+  // Create actions
+  [sendMove, onMove] = room.makeAction('move');
+  [sendShoot, onShoot] = room.makeAction('shoot');
+  [sendChat, onChat] = room.makeAction('chat');
+  [sendWorldSync, onWorldSync] = room.makeAction('worldSync');
+  [sendPlayerJoin, onPlayerJoin] = room.makeAction('playerJoin');
+  [sendPlayerLeave, onPlayerLeave] = room.makeAction('playerLeave');
+  [sendAction, onAction] = room.makeAction('action');
+
+  // Wire up receive handlers (with security checks)
+  onMove((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    if (!_checkRateLimit(peerId)) return;
+    if (!_validateTick(peerId, data.tick)) return;
+    if (!_validateMove(peerId, data)) return;
+    _updatePeerData(peerId, data);
+    upsertRemotePlayer(peerId, data).catch(e => console.warn('[MP]', e.message));
+    if (_onRemoteMove) _onRemoteMove(peerId, data);
+  });
+
+  onShoot((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    if (!_checkRateLimit(peerId)) return;
+    if (!_validateTick(peerId, data.tick)) return;
+    if (_onRemoteShoot) _onRemoteShoot(peerId, data);
+  });
+
+  onChat((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    if (!_checkRateLimit(peerId)) return;
+    if (!_validateTick(peerId, data.tick)) return;
+    if (_onRemoteChat) _onRemoteChat(peerId, data);
+  });
+
+  onWorldSync((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    if (!_checkRateLimit(peerId)) return;
+    // Only clients accept worldSync, and only from the known host
+    if (isHost) return;
+    if (hostPeerId && peerId !== hostPeerId) return;
+    // Accept first worldSync sender as the host
+    if (!hostPeerId) hostPeerId = peerId;
+    if (_onWorldSyncReceived) _onWorldSyncReceived(peerId, data);
+  });
+
+  onPlayerJoin((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    peers.set(peerId, { name: data.name, char: data.char, ready: false });
+    _logFn(`[MP] ${data.name} joined the room`);
+    _updateLobbyUI();
+    if (_onPeerJoin) _onPeerJoin(peerId, data);
+  });
+
+  onPlayerLeave((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    _logFn(`[MP] ${peers.get(peerId)?.name || peerId} left`);
+    peers.delete(peerId);
+    _updateLobbyUI();
+    if (_onPeerLeave) _onPeerLeave(peerId, data);
+  });
+
+  onAction((data, peerId) => {
+    if (kickedPeers.has(peerId)) return;
+    if (!_checkRateLimit(peerId)) return;
+    // Handle kick votes
+    if (data.action === 'vote_kick' && data.target) {
+      if (!kickVotes.has(data.target)) kickVotes.set(data.target, new Set());
+      kickVotes.get(data.target).add(peerId);
+      const totalPeers = peers.size + 1;
+      const votes = kickVotes.get(data.target).size;
+      if (isHost && votes >= Math.ceil(totalPeers / 2)) {
+        kickPeer(data.target);
+        kickVotes.delete(data.target);
+      }
+    }
+    if (_onRemoteAction) _onRemoteAction(peerId, data);
+  });
+
+  // Peer lifecycle
+  room.onPeerJoin(peerId => {
+    _logFn(`[MP] Peer connected: ${peerId.slice(0, 8)}...`);
+    // For clients, track the first peer as the host
+    if (!isHost && !hostPeerId) hostPeerId = peerId;
+    // Send our info to the new peer
+    if (sendPlayerJoin) {
+      sendPlayerJoin({ name: playerName, char: charType });
+    }
+    _logConnectionEvent(peerId, 'joined');
+    _updateLobbyUI();
+  });
+
+  room.onPeerLeave(peerId => {
+    if (!peers.has(peerId)) return; // M8: guard against double-firing
+    const peerInfo = peers.get(peerId);
+    _logFn(`[MP] Peer disconnected: ${peerInfo?.name || peerId.slice(0, 8)}`);
+    peers.delete(peerId);
+    dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
+    _logConnectionEvent(peerId, 'left');
+
+    // Host migration: if the host left, promote ourselves
+    if (!isHost && peerId === hostPeerId) {
+      hostPeerId = null;
+      // Become the new host if there are remaining peers (or we're alone)
+      if (peers.size === 0 || _shouldBecomeHost()) {
+        isHost = true;
+        _currentRoomCode = roomCode;
+        _currentPlayerName = playerName;
+        _currentHasPassword = !!password;
+        _logFn('[MP] Host left — you are now the host!');
+        _startLobbyAnnouncing();
+      }
+    }
+
+    _updateLobbyUI();
+    if (_onPeerLeave) _onPeerLeave(peerId, {});
+  });
+
+  // Get our own peer ID from the room selfId
+  // selfId may not be available immediately — also capture it on first peer join
+  localPeerId = room.selfId || null;
+
+  _logFn(`[MP] ${isHost ? 'Hosting' : 'Joined'} room: ${roomId}`);
+  _updateLobbyUI();
+  return true;
+}
+
+// Deterministic host election: peer with lowest ID becomes host
+function _shouldBecomeHost() {
+  const myId = getLocalPeerId();
+  if (!myId) return true; // if we can't determine, just take it
+  for (const [peerId] of peers) {
+    if (peerId < myId) return false; // someone else has a lower ID
+  }
+  return true;
+}
+
+// --------------------------------------------------------
+//  PEER DATA
+// --------------------------------------------------------
+
+function _updatePeerData(peerId, data) {
+  const existing = peers.get(peerId) || {};
+  peers.set(peerId, {
+    ...existing,
+    name: data.name || existing.name,
+    char: data.char || existing.char,
+    x: data.x ?? existing.x,
+    y: data.y ?? existing.y,
+    health: data.health ?? existing.health,
+    wanted: data.wanted ?? existing.wanted,
+    lastUpdate: Date.now()
+  });
+}
+
+// --------------------------------------------------------
+//  CONNECTION LOGGING
+// --------------------------------------------------------
+
+async function _logConnectionEvent(peerId, event) {
+  let remoteIp = 'unknown';
+  try {
+    // Trystero exposes getPeers() which returns RTCPeerConnections
+    const peerConnections = room?.getPeers?.() || {};
+    const pc = peerConnections[peerId];
+    if (pc && pc.getStats) {
+      const stats = await pc.getStats();
+      stats.forEach(report => {
+        if (report.type === 'remote-candidate' && report.ip) {
+          remoteIp = report.ip;
+        }
+      });
+    }
+  } catch (_) { /* IP extraction is best-effort */ }
+
+  try {
+    await logConnection(peerId, remoteIp, event);
+  } catch (_) { /* DB may not be ready yet */ }
+}
+
+// --------------------------------------------------------
+//  LOBBY UI
+// --------------------------------------------------------
+
+function _updateLobbyUI() {
+  const lobbyEl = document.getElementById('mp-lobby');
+  if (!lobbyEl) return;
+
+  const playerList = document.getElementById('mp-player-list');
+  if (!playerList) return;
+
+  playerList.innerHTML = '';
+
+  // Show self
+  const selfEl = document.createElement('div');
+  selfEl.style.cssText = 'color:#00ff00;font-size:11px;padding:2px 0';
+  selfEl.textContent = `You ${isHost ? '(Host)' : '(Client)'}`;
+  playerList.appendChild(selfEl);
+
+  // Show peers
+  for (const [peerId, info] of peers) {
+    const el = document.createElement('div');
+    el.style.cssText = 'color:#ffcc00;font-size:11px;padding:2px 0';
+    el.textContent = `${info.name || peerId.slice(0, 8)} - ${info.char || '?'}`;
+    playerList.appendChild(el);
+  }
+
+  // Update peer count
+  const countEl = document.getElementById('mp-peer-count');
+  if (countEl) countEl.textContent = peers.size + 1;
+}
+
+// Generate a random 6-character room code (crypto-secure)
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const arr = new Uint8Array(6);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => chars[b % chars.length]).join('');
+}
+
+// --------------------------------------------------------
+//  SECURITY: Rate Limiting
+// --------------------------------------------------------
+
+const peerRateLimits = new Map(); // peerId -> { count, resetTime }
+const RATE_LIMIT_WINDOW = 1000; // 1 second
+const RATE_LIMIT_MAX = 30; // max events per second per peer
+
+function _checkRateLimit(peerId) {
+  const now = Date.now();
+  let rl = peerRateLimits.get(peerId);
+  if (!rl || now > rl.resetTime) {
+    rl = { count: 0, resetTime: now + RATE_LIMIT_WINDOW };
+    peerRateLimits.set(peerId, rl);
+  }
+  rl.count++;
+  if (rl.count > RATE_LIMIT_MAX) {
+    _logFn(`[SEC] Rate limit exceeded by ${peers.get(peerId)?.name || peerId.slice(0, 8)}`);
+    return false;
+  }
+  return true;
+}
+
+// --------------------------------------------------------
+//  SECURITY: Tick Validation (reject old/duplicate events)
+// --------------------------------------------------------
+
+const peerTicks = new Map(); // peerId -> lastTick
+
+function _validateTick(peerId, eventTick) {
+  if (eventTick == null || typeof eventTick !== 'number') return false; // reject events without valid tick
+  const lastTick = peerTicks.get(peerId) || 0;
+  if (eventTick <= lastTick) {
+    return false; // stale or duplicate
+  }
+  peerTicks.set(peerId, eventTick);
+  return true;
+}
+
+// --------------------------------------------------------
+//  SECURITY: Peer Kick (host only)
+// --------------------------------------------------------
+
+const kickVotes = new Map(); // peerId -> Set of voter peerIds
+
+function kickPeer(peerId) {
+  if (!isHost || !room) return;
+  const peerInfo = peers.get(peerId);
+  _logFn(`[MP] Kicked ${peerInfo?.name || peerId.slice(0, 8)}`);
+  _logConnectionEvent(peerId, 'kicked');
+  // Track kicked peer so their messages are ignored
+  kickedPeers.add(peerId);
+  // Try to close the WebRTC connection
+  try {
+    const peerConnections = room?.getPeers?.() || {};
+    const pc = peerConnections[peerId];
+    if (pc && pc.close) pc.close();
+  } catch (_) { /* best-effort close */ }
+  peers.delete(peerId);
+  dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
+  if (sendAction) sendAction({ action: 'peer_kicked', peerId, name: peerInfo?.name });
+  _updateLobbyUI();
+}
+
+function voteKick(targetPeerId) {
+  if (!room) return;
+  if (!kickVotes.has(targetPeerId)) kickVotes.set(targetPeerId, new Set());
+  kickVotes.get(targetPeerId).add(localPeerId);
+  if (sendAction) sendAction({ action: 'vote_kick', target: targetPeerId });
+  // Check if majority voted
+  const totalPeers = peers.size + 1;
+  const votes = kickVotes.get(targetPeerId).size;
+  if (votes >= Math.ceil(totalPeers / 2)) {
+    if (isHost) kickPeer(targetPeerId);
+    _logFn(`[MP] Kick vote passed for ${peers.get(targetPeerId)?.name || targetPeerId.slice(0, 8)}`);
+    kickVotes.delete(targetPeerId);
+  }
+}
+
+// --------------------------------------------------------
+//  SECURITY: Movement Validation (host-side)
+// --------------------------------------------------------
+
+function _validateMove(peerId, data) {
+  const peer = peers.get(peerId);
+  if (!peer || peer.x === undefined) return true; // first move, allow
+  const dx = Math.abs((data.x || 0) - (peer.x || 0));
+  const dy = Math.abs((data.y || 0) - (peer.y || 0));
+  // Reject teleporting (more than 3 tiles per move)
+  if (dx > 3 || dy > 3) {
+    _logFn(`[SEC] Suspicious move from ${peer.name || peerId.slice(0, 8)}: dx=${dx} dy=${dy}`);
+    return false;
+  }
+  return true;
+}
 
 // === game.js ===
 
@@ -2320,26 +3524,150 @@ function setLogFn(fn) { _dbLog = fn; }
 
 
 
+
+// Per-peer cooldown map for incoming PvP shots (H2 security fix)
+const peerShootTimestamps = new Map();
+
 // --------------------------------------------------------
 //  EVENT LOG
 // --------------------------------------------------------
-const logEntries = [];
+const LOG_MAX = 100;
 function log(msg, cls = 'c-white') {
-  logEntries.push({ msg, cls });
-  if (logEntries.length > 100) logEntries.shift();
   const el = $('event-log');
-  el.innerHTML = '';
-  for (const e of logEntries) {
-    const div = document.createElement('div');
-    div.className = 'log-entry ' + e.cls;
-    div.textContent = e.msg;
-    el.appendChild(div);
+  const div = document.createElement('div');
+  div.className = 'log-entry ' + cls;
+  div.textContent = msg;
+  el.appendChild(div);
+  // Remove oldest entries beyond limit
+  while (el.childElementCount > LOG_MAX) {
+    el.removeChild(el.firstChild);
   }
   el.scrollTop = el.scrollHeight;
 }
 
 // Inject log into db.js so saveGame can use it
 setLogFn(log);
+
+// Wire up multiplayer callbacks
+setMPCallbacks({
+  logFn: (msg) => log(msg, 'c-cyan'),
+  onRemoteMove: (peerId, data) => {
+    updateRemoteDuck(peerId, data.x, data.y, data);
+  },
+  onPeerJoin: async (peerId, data) => {
+    // Host sends world state to new peer
+    if (getIsHost() && conn) {
+      try {
+        const p = await q1('SELECT * FROM player');
+        const clk = await q1('SELECT * FROM game_clock');
+        const worldData = {
+          city: p.city,
+          day: clk.day,
+          hour: clk.hour,
+          hostPlayer: { name: p.name, char: p.char_type, x: p.x, y: p.y, health: p.health, wanted: p.wanted_level }
+        };
+        // Include all currently connected peers' positions
+        const peerPositions = {};
+        for (const [pid, info] of getPeers()) {
+          if (pid !== peerId) {
+            peerPositions[pid] = { name: info.name, char: info.char, x: info.x || 0, y: info.y || 0 };
+          }
+        }
+        worldData.peers = peerPositions;
+        broadcastWorldSync(worldData);
+        log(`Sent world sync to ${data.name || peerId.slice(0, 8)}`, 'c-cyan');
+      } catch (e) {
+        console.error('World sync failed:', e);
+      }
+    }
+  },
+  onPeerLeave: (peerId) => {
+    despawnRemoteDuck(peerId);
+  },
+  onRemoteChat: (peerId, data) => {
+    const name = getPeers().get(peerId)?.name || peerId.slice(0, 8);
+    log(`[${name}] ${data.msg}`, 'c-yellow');
+  },
+  onRemoteAction: (peerId, data) => {
+    // Host broadcast game_start → joiner auto-starts their own game
+    if (data.action === 'game_start' && !getIsHost() && !gameActive) {
+      log('Host started the game!', 'c-cyan');
+      window.startNewGame();
+      return;
+    }
+    // Display remote player actions in the log
+    const name = getPeers().get(peerId)?.name || peerId.slice(0, 8);
+    switch (data.action) {
+      case 'crime': log(`${name} committed ${data.crime || 'a crime'}!`, 'c-red'); break;
+      case 'rob': log(`${name} robbed ${data.place || 'a location'}!`, 'c-red'); break;
+      case 'police': log(`${name} has cops on them!`, 'c-yellow'); break;
+      case 'death': log(`${name} was WASTED!`, 'c-red'); break;
+      case 'npc_kill': log(`${name} killed an NPC nearby!`, 'c-gray'); break;
+      default: log(`${name}: ${data.action}`, 'c-gray');
+    }
+  },
+  onRemoteShoot: async (peerId, data) => {
+    // Check if we are the target
+    const localId = getLocalPeerId();
+    // Match by localId, or accept if we're the only other peer (ID may not be known to self)
+    const isTargeted = data.target === localId || (!localId && data.target && data.target !== peerId);
+    console.log('[PvP] Shot received:', { target: data.target, localId, from: peerId, isTargeted });
+    if (isTargeted) {
+      // H2: Per-peer cooldown — reject shots faster than 200ms
+      const now = Date.now();
+      const lastShot = peerShootTimestamps.get(peerId) || 0;
+      if (now - lastShot < 200) return;
+      peerShootTimestamps.set(peerId, now);
+
+      // H2: Range check — reject if Manhattan distance > 8
+      const peerInfo = getPeers().get(peerId);
+      if (peerInfo) {
+        const p = await q1('SELECT x, y FROM player');
+        const dist = Math.abs((peerInfo.x || 0) - p.x) + Math.abs((peerInfo.y || 0) - p.y);
+        if (dist > 8) return;
+      }
+
+      // H1: Sanitize damage — must be positive integer, clamped 1–50
+      const dmg = Math.max(1, Math.min(Math.floor(Number(data.damage)) || 15, 50));
+      // Armor absorbs damage first, remainder goes to health
+      const p = await q1('SELECT health, armor FROM player');
+      const armorAbsorb = Math.min(p.armor, dmg);
+      const healthDmg = dmg - armorAbsorb;
+      await conn.query(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
+      spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
+      const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
+      log(`${shooterName} shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed by armor)` : ''}`, 'c-red');
+      await checkDeath();
+      await updateHUD();
+    } else {
+      const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
+      log(`${shooterName} opened fire!`, 'c-red');
+    }
+  },
+  onWorldSyncReceived: async (peerId, data) => {
+    // Client receives world state from host
+    if (getIsHost()) return; // host doesn't apply sync from others
+    log(`Received world sync — ${data.city}, Day ${data.day}`, 'c-cyan');
+
+    // Auto-start the client's game if not already running
+    if (!gameActive) {
+      await window.startNewGame();
+    }
+
+    // Spawn host's duck
+    if (data.hostPlayer) {
+      const hp = data.hostPlayer;
+      updateRemoteDuck(peerId, hp.x, hp.y, { name: hp.name, char: hp.char });
+    }
+
+    // Spawn other peers' ducks
+    if (data.peers) {
+      for (const [pid, info] of Object.entries(data.peers)) {
+        updateRemoteDuck(pid, info.x, info.y, info);
+      }
+    }
+  }
+});
 
 // --------------------------------------------------------
 //  ACTIVITY STATUS
@@ -2382,6 +3710,7 @@ async function advanceTime(hours) {
       daysAdvanced.push(d);
       try { await dailyPayout(); } catch (e) { log('Daily payout error: ' + e.message, 'c-red'); }
       try { await decayHeat(); } catch (e) { /* ignore */ }
+      try { await pruneWorldEvents(); } catch (e) { /* ignore */ }
     }
     await conn.query(`UPDATE game_clock SET day=${d}, hour=${h}`);
     if (daysAdvanced.length > 0) {
@@ -2426,6 +3755,13 @@ async function dailyPayout() {
 }
 
 async function decayHeat() { await conn.query(`UPDATE district_heat SET heat = GREATEST(0, heat - 1)`); }
+
+async function pruneWorldEvents() {
+  const count = await qv('SELECT COUNT(*) FROM world_events');
+  if (count > 500) {
+    await conn.query(`DELETE FROM world_events WHERE id IN (SELECT id FROM world_events ORDER BY id ASC LIMIT ${count - 500})`);
+  }
+}
 
 // --------------------------------------------------------
 //  RANDOM HELPERS
@@ -2625,7 +3961,7 @@ async function checkPolice() {
   if (policeEncounterActive) return;
   const p = await q1('SELECT * FROM player');
   if (p.wanted_level <= 0) { clearPoliceNPCs(); return; }
-  if (!chance(p.wanted_level * 20)) return;
+  if (!chance(p.wanted_level * 4)) return;
   await triggerPoliceEncounter(p);
 }
 
@@ -2633,7 +3969,7 @@ async function checkPoliceOnMove() {
   const p = await q1('SELECT * FROM player');
   if (p.wanted_level <= 0) return;
   if (policeEncounterActive) return;
-  const moveChance = p.wanted_level * p.wanted_level * 1.5 + 3;
+  const moveChance = p.wanted_level * 0.6;
   if (!chance(moveChance)) return;
   await triggerPoliceEncounter(p);
 }
@@ -2800,6 +4136,7 @@ async function checkDeath() {
         for (let x = 5; x < MAP_SIZE - 5; x++) {
           if (currentMapGrid[y][x] === T.POI_HOSPITAL) {
             await conn.query(`UPDATE player SET x=${x}, y=${y}`);
+            _cachedPos = { x, y };
             setDuckTarget(x + 0.5, y + 0.5);
             if (duckGroup) { duckGroup.position.x = x + 0.5; duckGroup.position.z = y + 0.5; }
             y = MAP_SIZE; break;
@@ -2816,6 +4153,7 @@ async function checkDeath() {
     log(`║  Lost $200 and ${respLoss} Respect.          ║`, 'c-red');
     log('║  Wanted level cleared.               ║', 'c-red');
     log('╚══════════════════════════════════════╝', 'c-red');
+    if (isMultiplayer()) broadcastAction({ action: 'death', name: (await q1('SELECT name FROM player')).name });
     await updateRank();
     await updateHUD();
 
@@ -2990,11 +4328,28 @@ async function playerShoot() {
     const loot = rand(5, 50);
     await conn.query(`UPDATE player SET cash=cash+${loot}, wanted_level=LEAST(5,wanted_level+1), respect=respect+1`);
     log(`Shot a civilian! Looted $${loot}. +1 Wanted.`, 'c-red');
+    if (isMultiplayer()) broadcastAction({ action: 'npc_kill', name: (await q1('SELECT name FROM player')).name });
     const p = await q1('SELECT district, city FROM player');
     await conn.query(`UPDATE district_heat SET heat=heat+2 WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
     await maybeSkillUp('strength');
     await updateHUD();
     return;
+  }
+
+  // PvP: check for nearby remote player ducks
+  if (isMultiplayer()) {
+    const remoteDuck = getNearestRemoteDuck(7);
+    if (remoteDuck) {
+      fireProjectile(remoteDuck.entry.group.position.x, remoteDuck.entry.group.position.z);
+      spawnParticles(remoteDuck.entry.group.position.x, remoteDuck.entry.group.position.z, 0xff4444, 10, 1.5, 1);
+      const dmg = 15 + gunBonus;
+      // Broadcast the shot to peers — host will validate
+      broadcastShoot({ target: remoteDuck.peerId, damage: dmg, name: (await q1('SELECT name FROM player')).name });
+      log(`Shot at ${getPeers().get(remoteDuck.peerId)?.name || 'player'}!`, 'c-red');
+      await maybeSkillUp('strength');
+      await updateHUD();
+      return;
+    }
   }
 
   // No target — fire bullet in facing direction
@@ -3012,25 +4367,40 @@ async function playerShoot() {
 // --------------------------------------------------------
 //  MOVEMENT
 // --------------------------------------------------------
+// Cached player position (avoids DB read on every move)
+let _cachedPos = null; // { x, y }
+function invalidatePlayerCache() { _cachedPos = null; }
+
 let moveDebounce = false;
 async function movePlayer(dx, dy) {
   if (moveDebounce) return;
   moveDebounce = true;
   setTimeout(() => moveDebounce = false, 80);
 
-  const p = await q1('SELECT x,y FROM player');
-  const nx = p.x + dx;
-  const ny = p.y + dy;
+  if (!_cachedPos) {
+    const p = await q1('SELECT x,y FROM player');
+    _cachedPos = { x: p.x, y: p.y };
+  }
+  const nx = _cachedPos.x + dx;
+  const ny = _cachedPos.y + dy;
   if (nx < 0 || nx >= MAP_SIZE || ny < 0 || ny >= MAP_SIZE) return;
   if (!currentMapGrid) return;
   const tile = currentMapGrid[ny][nx];
   if (tile === T.WALL || tile === T.WATER) return;
+  _cachedPos.x = nx;
+  _cachedPos.y = ny;
   await conn.query(`UPDATE player SET x=${nx}, y=${ny}`);
 
   if (dx !== 0 || dy !== 0) {
     setDuckFacing(Math.atan2(dx, dy));
   }
   setDuckTarget(nx + 0.5, ny + 0.5);
+
+  // Broadcast position to peers (use cached pos + single query for other fields)
+  if (isMultiplayer()) {
+    const mp = await q1('SELECT name, char_type, health, wanted_level FROM player');
+    broadcastMove({ x: nx, y: ny, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level });
+  }
 
   await updateDistrict(nx, ny);
   await checkPOI();
@@ -3152,6 +4522,7 @@ async function menuTravel() {
           if (currentMapGrid[y][x] === T.ROAD_MAIN || currentMapGrid[y][x] === T.ROAD_SIDE) { sx = x; sy = y; y = MAP_SIZE; break; }
         }
         await conn.query(`UPDATE player SET x=${sx}, y=${sy}`);
+        _cachedPos = { x: sx, y: sy };
         setDuckTarget(sx + 0.5, sy + 0.5);
         if (duckGroup) { duckGroup.position.x = sx + 0.5; duckGroup.position.z = sy + 0.5; }
         await advanceTime(2); await processWorldEvents(); await checkPolice();
@@ -3393,6 +4764,7 @@ async function robLocation(placeName, lootMin, lootMax, lootMul, heat) {
     const safeD = p.district.replace(/'/g, "''"); const safeC = p.city.replace(/'/g, "''");
     await conn.query(`UPDATE district_heat SET heat=heat+${heat} WHERE district='${safeD}' AND city='${safeC}'`);
     log(`Robbed ${placeName}! Got $${loot}, +${respect} Respect. +1 Wanted.`, 'c-green');
+    if (isMultiplayer()) broadcastAction({ action: 'rob', place: placeName, name: p.name });
     spawnParticlesAtDuck(0xffdd00, 15, 2, 1.5);
     await maybeSkillUp('stealth'); await updateRank();
   } else {
@@ -4092,9 +5464,9 @@ function menuHelp() {
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
   <button class="btn cam-btn" data-dist="10" data-height="8">Close-Up</button>
   <button class="btn cam-btn" data-dist="18" data-height="14">Medium</button>
-  <button class="btn cam-btn" data-dist="22" data-height="18">Default</button>
-  <button class="btn cam-btn" data-dist="32" data-height="26">Far</button>
-  <button class="btn cam-btn" data-dist="40" data-height="32">Overview</button>
+  <button class="btn cam-btn" data-dist="28" data-height="22">Default</button>
+  <button class="btn cam-btn" data-dist="40" data-height="32">Far</button>
+  <button class="btn cam-btn" data-dist="55" data-height="44">Overview</button>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
   <button class="btn cam-angle-btn" data-angle="0">North</button>
@@ -4204,6 +5576,19 @@ function rebuildActionKeys() {
 }
 rebuildActionKeys();
 
+// Blur buttons after click so keyboard control returns to document
+document.addEventListener('click', (e) => {
+  if (e.target.tagName === 'BUTTON' || e.target.classList.contains('btn')) {
+    setTimeout(() => { if (document.activeElement?.tagName === 'BUTTON') document.activeElement.blur(); }, 0);
+  }
+});
+// Clicking the canvas should also reclaim focus
+document.getElementById('three-canvas')?.addEventListener('click', () => {
+  if (document.activeElement?.tagName === 'BUTTON' || document.activeElement?.tagName === 'INPUT') {
+    document.activeElement.blur();
+  }
+});
+
 document.addEventListener('keydown', async (e) => {
   // Don't capture keys when not in game (e.g. title screen, typing in input)
   if (!gameActive) return;
@@ -4211,8 +5596,8 @@ document.addEventListener('keydown', async (e) => {
 
   if (e.key === 'Escape' || e.key === 'Backspace') {
     e.preventDefault();
+    if (policeEncounterActive) return; // Can't escape police encounters
     stopSiren();
-    if (policeEncounterActive) { clearPoliceNPCs(); policeEncounterActive = false; clearStatus(); }
     hideSubMenu();
     showMainActions();
     return;
@@ -4252,6 +5637,18 @@ document.addEventListener('keydown', async (e) => {
       e.preventDefault();
       currentSubOptions[subMenuSelection].action();
       return;
+    }
+    return;
+  }
+
+  // Multiplayer chat (T key)
+  if (e.key === 't' && isMultiplayer()) {
+    e.preventDefault();
+    const chatInput = $('mp-chat-input');
+    if (chatInput) {
+      chatInput.style.display = 'block';
+      chatInput.value = '';
+      chatInput.focus();
     }
     return;
   }
@@ -4311,6 +5708,7 @@ window.startNewGame = async function() {
   await initPlayer(name, startCity, bonus, charType);
   applyCharacterSkin(charType);
   await initWorld();
+  setCurrentCity(startCity);
   $('title-screen').style.display = 'none';
   $('game-ui').style.display = 'block';
   setGameActive(true);
@@ -4390,6 +5788,72 @@ window.loadGame = async function(slotName) {
         list.appendChild(btn);
       }
     }
+    // Multiplayer handlers
+    window.hostMultiplayer = () => {
+      const card = document.querySelector('.char-card.selected');
+      const charName = card?.dataset.name || 'CJ';
+      const playerName = $('player-name-input').value.trim() || charName;
+      const code = generateRoomCode();
+      hostGame(code, playerName, charName);
+      $('mp-lobby').style.display = 'block';
+      $('mp-room-code').textContent = code;
+      $('mp-start-btn').style.display = 'inline';
+      $('mp-waiting').style.display = 'none';
+    };
+    window.showJoinUI = () => {
+      $('mp-join-ui').style.display = $('mp-join-ui').style.display === 'none' ? 'block' : 'none';
+    };
+    window.joinMultiplayer = () => {
+      const code = $('mp-room-input').value.trim().toUpperCase();
+      if (!code || code.length < 2) return;
+      const card = document.querySelector('.char-card.selected');
+      const charName = card?.dataset.name || 'CJ';
+      const playerName = $('player-name-input').value.trim() || charName;
+      joinGame(code, playerName, charName);
+      $('mp-lobby').style.display = 'block';
+      $('mp-room-code').textContent = code;
+      $('mp-join-ui').style.display = 'none';
+      $('mp-start-btn').style.display = 'none';
+      $('mp-waiting').style.display = 'inline';
+    };
+    window.leaveMultiplayer = () => {
+      leaveGame();
+      $('mp-lobby').style.display = 'none';
+    };
+    window.startMultiplayerGame = () => { window.startNewGame(); };
+
+    // Chat input handlers
+    const chatInput = $('mp-chat-input');
+    if (chatInput) {
+      chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const msg = chatInput.value.trim();
+          if (msg && isMultiplayer()) {
+            const nameEl = $('hud-name');
+            const name = nameEl ? nameEl.textContent : 'You';
+            broadcastChat(msg, name);
+            const logEl = $('event-log');
+            if (logEl) {
+              const div = document.createElement('div');
+              div.className = 'log-entry c-yellow';
+              div.textContent = '[' + name + '] ' + msg;
+              logEl.appendChild(div);
+              logEl.scrollTop = logEl.scrollHeight;
+            }
+          }
+          chatInput.style.display = 'none';
+          chatInput.value = '';
+          chatInput.blur();
+        } else if (e.key === 'Escape') {
+          chatInput.style.display = 'none';
+          chatInput.value = '';
+          chatInput.blur();
+        }
+        e.stopPropagation();
+      });
+    }
+
   } catch (e) {
     $('loading').textContent = 'Failed to load: ' + e.message;
     console.error(e);

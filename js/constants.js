@@ -3,6 +3,7 @@
 // --------------------------------------------------------
 export const T = {
   WALL: '#', ROAD_MAIN: '=', ROAD_SIDE: '-', GROUND: '.', WATER: '~', TREE: 'T', PARK: 'P', SAND: 's',
+  BRIDGE: 'b', DOCK: 'k', INDUSTRIAL: 'I', HIGHWAY: 'H',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
   POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
   POI_STRIP: 'X'
@@ -22,14 +23,18 @@ export const POI_DEFS = {
 };
 
 export const TILE_COLORS = {
-  [T.WALL]:      '#2a2a3a',
-  [T.ROAD_MAIN]: '#3a3a3a',
-  [T.ROAD_SIDE]: '#333333',
-  [T.GROUND]:    '#1a2a1a',
-  [T.WATER]:     '#1a3a5a',
-  [T.TREE]:      '#1a4a1a',
-  [T.PARK]:      '#1a3a1a',
-  [T.SAND]:      '#4a3a1a'
+  [T.WALL]:       '#2a2a3a',
+  [T.ROAD_MAIN]:  '#3a3a3a',
+  [T.ROAD_SIDE]:  '#333333',
+  [T.GROUND]:     '#1a2a1a',
+  [T.WATER]:      '#1a3a5a',
+  [T.TREE]:       '#1a4a1a',
+  [T.PARK]:       '#1a3a1a',
+  [T.SAND]:       '#4a3a1a',
+  [T.BRIDGE]:     '#5a5040',
+  [T.DOCK]:       '#3a3028',
+  [T.INDUSTRIAL]: '#2a2a30',
+  [T.HIGHWAY]:    '#4a4a4a'
 };
 
 // --------------------------------------------------------
