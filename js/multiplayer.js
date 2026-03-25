@@ -54,14 +54,14 @@ export function setCallbacks({ onPeerJoin, onPeerLeave, onRemoteMove, onRemoteSh
   if (logFn) _logFn = logFn;
 }
 
-export function hostGame(roomCode, playerName, charType) {
+export function hostGame(roomCode, playerName, charType, password = '') {
   isHost = true;
-  return _joinRoom(roomCode, playerName, charType);
+  return _joinRoom(roomCode, playerName, charType, password);
 }
 
-export function joinGame(roomCode, playerName, charType) {
+export function joinGame(roomCode, playerName, charType, password = '') {
   isHost = false;
-  return _joinRoom(roomCode, playerName, charType);
+  return _joinRoom(roomCode, playerName, charType, password);
 }
 
 export function leaveGame() {
@@ -116,11 +116,15 @@ export function broadcastAction(data) {
 //  ROOM SETUP (INTERNAL)
 // --------------------------------------------------------
 
-function _joinRoom(roomCode, playerName, charType) {
+function _joinRoom(roomCode, playerName, charType, password = '') {
   const roomId = roomCode.trim().toLowerCase();
 
   try {
-    room = joinRoom({ appId: APP_ID }, roomId);
+    const config = { appId: APP_ID };
+    // Encrypt signaling via Nostr relays if password provided
+    // This prevents MITM attacks and hides SDP from relay operators
+    if (password) config.password = password;
+    room = joinRoom(config, roomId);
   } catch (e) {
     _logFn('[MP] Failed to join room: ' + e.message);
     return false;

@@ -422,6 +422,7 @@ body {
   </div>
   <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
     <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
+    <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
     <button onclick="hostMultiplayer()">Host Game</button>
     <button onclick="showJoinUI()">Join Game</button>
     <div id="mp-join-ui" style="display:none;margin-top:6px">
@@ -556,7 +557,8 @@ const $ = id => document.getElementById(id);
       const charCity = card?.dataset.city || 'Los Santos';
       const playerName = $('player-name-input').value.trim() || charName;
       const code = generateRoomCode();
-      hostGame(code, playerName, charName);
+      const password = $('mp-password').value;
+      hostGame(code, playerName, charName, password);
       $('mp-lobby').style.display = 'block';
       $('mp-room-code').textContent = code;
       $('mp-start-btn').style.display = 'inline';
@@ -573,7 +575,8 @@ const $ = id => document.getElementById(id);
       const card = document.querySelector('.char-card.selected');
       const charName = card?.dataset.name || 'CJ';
       const playerName = $('player-name-input').value.trim() || charName;
-      joinGame(code, playerName, charName);
+      const password = $('mp-password').value;
+      joinGame(code, playerName, charName, password);
       $('mp-lobby').style.display = 'block';
       $('mp-room-code').textContent = code;
       $('mp-join-ui').style.display = 'none';
