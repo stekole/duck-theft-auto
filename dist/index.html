@@ -309,7 +309,7 @@ body {
       </svg></div>
       <div class="char-name">CJ</div>
       <div class="char-city">Los Santos</div>
-      <div class="char-desc">Balanced start. $500 cash.</div>
+      <div class="char-desc">Balanced. $2K, +2 charisma, respect.</div>
     </div>
     <div class="char-card" data-name="Tommy" data-city="Vice City" data-bonus="cash">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -328,7 +328,7 @@ body {
       </svg></div>
       <div class="char-name">Tommy</div>
       <div class="char-city">Vice City</div>
-      <div class="char-desc">Street smart. $750 cash.</div>
+      <div class="char-desc">Street smart. $3.5K, pistol, armor.</div>
     </div>
     <div class="char-card" data-name="Claude" data-city="Liberty City" data-bonus="stealth">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -347,7 +347,7 @@ body {
       </svg></div>
       <div class="char-name">Claude</div>
       <div class="char-city">Liberty City</div>
-      <div class="char-desc">Silent type. +2 stealth.</div>
+      <div class="char-desc">Silent killer. $2.5K, +2 stealth, respect.</div>
     </div>
     <div class="char-card" data-name="Niko" data-city="San Fierro" data-bonus="strength">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -366,7 +366,7 @@ body {
       </svg></div>
       <div class="char-name">Niko</div>
       <div class="char-city">San Fierro</div>
-      <div class="char-desc">Tough immigrant. +2 strength.</div>
+      <div class="char-desc">Tough. $2K, +2 strength, heavy armor.</div>
     </div>
     <div class="char-card" data-name="Catalina" data-city="Las Venturas" data-bonus="driving">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -387,7 +387,7 @@ body {
       </svg></div>
       <div class="char-name">Catalina</div>
       <div class="char-city">Las Venturas</div>
-      <div class="char-desc">Wild card. +2 driving.</div>
+      <div class="char-desc">Wild. $3K, +2 driving, starts with SMG.</div>
     </div>
     <div class="char-card" data-name="Oz" data-city="Liberty City" data-bonus="none" style="border-color:#ff00ff">
       <div class="char-avatar"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -413,7 +413,7 @@ body {
   </div>
   <div style="margin-top:6px"><input type="text" id="player-name-input" value="" maxlength="20" placeholder="Enter your name (optional)"></div>
   <div id="saved-sessions" style="margin-top:8px;display:none">
-    <div style="color:#ffcc00;font-size:12px;margin-bottom:6px">Saved Sessions:</div>
+    <div style="color:#ffcc00;font-size:12px;margin-bottom:6px">Your Saved Games (Local):</div>
     <div id="saved-list" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center"></div>
   </div>
   <div style="margin-top:8px">
@@ -421,8 +421,10 @@ body {
     <button onclick="loadGame()">Load Game</button>
   </div>
   <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
-    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
-    <div id="mp-game-list" style="margin-bottom:6px"></div>
+    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)
+      <button id="mp-show-games-btn" style="font-size:9px;padding:1px 6px;margin-left:6px;background:#222;color:#888;border:1px solid #444;cursor:pointer;border-radius:3px" onclick="var el=document.getElementById('mp-game-list');el.style.display=el.style.display==='none'?'block':'none';this.textContent=el.style.display==='none'?'Show Games':'Hide Games'">Show Games</button>
+    </div>
+    <div id="mp-game-list" style="display:none;margin-bottom:6px"></div>
     <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
     <button onclick="hostMultiplayer()">Host Game</button>
     <button onclick="showJoinUI()">Join Game</button>
@@ -471,6 +473,13 @@ body {
   <div id="sub-menu"></div>
 
   <div id="poi-indicator"></div>
+  <div id="mp-hud-bar" style="display:none;position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:60;background:rgba(0,0,0,0.85);border:1px solid #333;border-top:none;border-radius:0 0 8px 8px;padding:4px 14px;font-size:11px;color:#aaa;font-family:'Courier New',monospace">
+    <span style="color:#00ff00">Room:</span> <span id="mp-hud-code" style="color:#ff6600;cursor:pointer;text-decoration:underline dotted" title="Click to copy"></span>
+    <span style="margin:0 6px;color:#333">|</span>
+    <span style="color:#00ff00">Players:</span> <span id="mp-hud-count" style="color:#ffcc00">1</span>
+    <button id="mp-hud-toggle" style="margin-left:8px;font-size:9px;padding:1px 6px;background:#222;color:#0f0;border:1px solid #333;cursor:pointer;border-radius:3px">Show</button>
+    <div id="mp-hud-players" style="display:none;margin-top:4px;border-top:1px solid #333;padding-top:4px;max-height:200px;overflow-y:auto"></div>
+  </div>
   <input type="text" id="mp-chat-input" maxlength="100" placeholder="Type message... (Enter to send, Esc to cancel)" style="display:none;position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:400px;z-index:50;background:#111;border:1px solid #00ff00;color:#00ff00;font-family:'Courier New',monospace;font-size:13px;padding:6px 10px;outline:none">
 
   <div id="minimap-container">
@@ -509,7 +518,8 @@ const T = {
   BRIDGE: 'b', DOCK: 'k', INDUSTRIAL: 'I', HIGHWAY: 'H',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
   POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
-  POI_STRIP: 'X'
+  POI_STRIP: 'X',
+  PLAZA: 'Z', PARKING: 'L'
 };
 
 const POI_DEFS = {
@@ -537,21 +547,23 @@ const TILE_COLORS = {
   [T.BRIDGE]:     '#5a5040',
   [T.DOCK]:       '#3a3028',
   [T.INDUSTRIAL]: '#2a2a30',
-  [T.HIGHWAY]:    '#4a4a4a'
+  [T.HIGHWAY]:    '#4a4a4a',
+  [T.PLAZA]:      '#3a3a2a',
+  [T.PARKING]:    '#2a2a2a'
 };
 
 // --------------------------------------------------------
 //  CONSTANTS
 // --------------------------------------------------------
-const MAP_SIZE = 80;
+const MAP_SIZE = 120;
 const CELL = 1; // world units per cell
 
 const CITIES = {
-  'Los Santos':   { districts: ['Grove Street','Idlewood','Ganton','Vinewood','Santa Maria Beach','Downtown LS','East LS','Verona Beach','Playa del Seville','Temple'], color: '#44ff44', groundTint: [26, 42, 26], waterSide: 'south' },
-  'San Fierro':   { districts: ['Chinatown','Doherty','Garcia','Hashbury','Queens','Esplanade North','Juniper Hill','Calton Heights','Financial','Ocean Flats'], color: '#4488ff', groundTint: [26, 36, 42], waterSide: 'west' },
-  'Las Venturas': { districts: ['The Strip','Old Venturas','Creek','Redsands West','Redsands East','Camel Toe','Pilson Intersection','Whitewood Estates','Roca Escalante','Royal Casino'], color: '#ff44ff', groundTint: [50, 40, 26], waterSide: null },
-  'Vice City':    { districts: ['Ocean Beach','Washington Beach','Starfish Island','Prawn Island','Little Havana','Little Haiti','Downtown Vice','Vice Point','Escobar International','Hyman Memorial'], color: '#ff8844', groundTint: [42, 36, 26], waterSide: 'surround' },
-  'Liberty City': { districts: ['Portland','Staunton Island','Shoreside Vale','Chinatown LC','Saint Marks','Trenton','Aspatria','Bedford Point','Pike Creek','Cedar Grove'], color: '#ffff44', groundTint: [34, 34, 38], waterSide: 'east' }
+  'Los Santos':   { districts: ['Grove Street','Idlewood','Ganton','Vinewood','Santa Maria Beach','Downtown LS','East LS','Verona Beach','Playa del Seville','Temple','Rodeo','Richman','El Corona','Willowfield','Jefferson','Market','Commerce'], color: '#44ff44', groundTint: [26, 42, 26], waterSide: 'south' },
+  'San Fierro':   { districts: ['Chinatown','Doherty','Garcia','Hashbury','Queens','Esplanade North','Juniper Hill','Calton Heights','Financial','Ocean Flats','Avispa Country Club','Foster Valley','Missionary Hill','Kings','Battery Point','Paradiso','Santa Flora'], color: '#4488ff', groundTint: [26, 36, 42], waterSide: 'west' },
+  'Las Venturas': { districts: ['The Strip','Old Venturas','Creek','Redsands West','Redsands East','Camel Toe','Pilson Intersection','Whitewood Estates','Roca Escalante','Royal Casino','Come-a-Lot','Pirates in Mens Pants','Starfish Casino','Emerald Isle','LV Airport','Randolph Industrial','The Clown Pocket'], color: '#ff44ff', groundTint: [50, 40, 26], waterSide: null },
+  'Vice City':    { districts: ['Ocean Beach','Washington Beach','Starfish Island','Prawn Island','Little Havana','Little Haiti','Downtown Vice','Vice Point','Escobar International','Hyman Memorial','Coral Gables','Leaf Links','Viceport','North Point Mall','Sunshine Autos','Junkyard','Links View'], color: '#ff8844', groundTint: [42, 36, 26], waterSide: 'surround' },
+  'Liberty City': { districts: ['Portland','Staunton Island','Shoreside Vale','Chinatown LC','Saint Marks','Trenton','Aspatria','Bedford Point','Pike Creek','Cedar Grove','Cochrane Dam','Francis International','Fort Staunton','Belleville Park','Wichita Gardens','Callahan Point','Harwood'], color: '#ffff44', groundTint: [34, 34, 38], waterSide: 'east' }
 };
 
 const JOBS = [
@@ -596,22 +608,39 @@ const GUNS = [
   { name: 'AR-7 Assault',    cat: 'Rifle',   price: 750,  bonus: 22 },
   { name: 'Ravager LMG',     cat: 'Heavy',   price: 900,  bonus: 25 },
   { name: 'Diamondback MG',  cat: 'Heavy',   price: 1100, bonus: 28 },
-  { name: 'Ghost Sniper',    cat: 'Sniper',  price: 1000, bonus: 25 }
+  { name: 'Ghost Sniper',    cat: 'Sniper',  price: 1000, bonus: 25 },
+  // Premium weapons
+  { name: 'Rocket Launcher', cat: 'Heavy',   price: 5000,  bonus: 45 },
+  { name: 'Minigun',         cat: 'Heavy',   price: 8000,  bonus: 50 },
+  { name: 'Katana',          cat: 'Melee',   price: 2000,  bonus: 18 },
+  { name: 'Chainsaw',        cat: 'Melee',   price: 3000,  bonus: 22 },
+  { name: 'Golden Desert Eagle', cat: 'Pistol', price: 4000, bonus: 30 },
+  { name: 'Plasma Rifle',    cat: 'Rifle',   price: 15000, bonus: 60 },
+  { name: 'Flamethrower',    cat: 'Heavy',   price: 10000, bonus: 40 }
 ];
 
 const VEHICLES = [
-  { name: 'Rusty Sedan',    price: 2000 },
-  { name: 'Motorcycle',     price: 1500 },
-  { name: 'Pickup Truck',   price: 2500 },
-  { name: 'Sports Car',     price: 5000 },
-  { name: 'Lowrider',       price: 3000 },
-  { name: 'SUV',            price: 3500 },
-  { name: 'Muscle Car',     price: 4000 },
-  { name: 'Convertible',    price: 4500 },
-  { name: 'Delivery Van',   price: 2000 },
-  { name: 'Dirt Bike',      price: 1200 },
-  { name: 'Luxury Sedan',   price: 7000 },
-  { name: 'Taxi Cab',       price: 2500 }
+  { name: 'Rusty Sedan',    price: 2000,  speed: 2 },
+  { name: 'Motorcycle',     price: 1500,  speed: 2 },
+  { name: 'Pickup Truck',   price: 2500,  speed: 2 },
+  { name: 'Sports Car',     price: 5000,  speed: 3 },
+  { name: 'Lowrider',       price: 3000,  speed: 2 },
+  { name: 'SUV',            price: 3500,  speed: 2 },
+  { name: 'Muscle Car',     price: 4000,  speed: 3 },
+  { name: 'Convertible',    price: 4500,  speed: 2 },
+  { name: 'Delivery Van',   price: 2000,  speed: 1 },
+  { name: 'Dirt Bike',      price: 1200,  speed: 2 },
+  { name: 'Luxury Sedan',   price: 7000,  speed: 3 },
+  { name: 'Taxi Cab',       price: 2500,  speed: 2 },
+  // Premium rides
+  { name: 'Race Car',       price: 10000, speed: 4 },
+  { name: 'Lamborduckni',   price: 25000, speed: 5 },
+  { name: 'Monster Truck',  price: 15000, speed: 2 },
+  { name: 'Armored Limo',   price: 20000, speed: 3 },
+  { name: 'Jet Ski',        price: 8000,  speed: 3 },
+  { name: 'Gold Plated SUV',price: 30000, speed: 3 },
+  { name: 'Helicopter',     price: 50000, speed: 6 },
+  { name: 'Tank',           price: 75000, speed: 1 }
 ];
 
 const DRUGS = [
@@ -659,23 +688,51 @@ const ITEMS = {
   'Body Armor': { price: 200, desc: 'Restores 50 armor' },
   'Lockpick Kit': { price: 120, desc: 'Burglary success +10%' },
   'Police Scanner': { price: 300, desc: 'Warns of nearby police' },
-  'Brass Knuckles': { price: 60, desc: 'Mugging success +10%' }
+  'Brass Knuckles': { price: 60, desc: 'Mugging success +10%' },
+  'Bulletproof Vest': { price: 500, desc: 'Restores 100 armor' },
+  'Night Vision Goggles': { price: 1500, desc: 'See NPCs through walls at night' },
+  'Jetpack Fuel': { price: 5000, desc: 'Instant travel to any district' },
+  'Gold Watch': { price: 3000, desc: '+50 Respect' },
+  'Duffle Bag': { price: 800, desc: 'Crime loot +25%' },
+  'Smoke Grenade': { price: 200, desc: 'Escape police instantly once' }
 };
 
 // === city.js ===
 
+
+// Seeded PRNG (mulberry32) for deterministic map generation across peers
+function _seededRNG(seed) {
+  let s = seed | 0;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function _hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  return hash;
+}
 
 // --------------------------------------------------------
 //  CITY MAP GENERATORS
 // --------------------------------------------------------
 const cityMapCache = {};
 let currentMapGrid = null;
+let _mapSeed = 42;
+function setMapSeed(seed) { _mapSeed = seed; cityMapCache[Symbol.for('_clear')] = true; for (const k in cityMapCache) delete cityMapCache[k]; }
 
 function generateCityMap(cityName) {
   if (cityMapCache[cityName]) return cityMapCache[cityName];
+  // Deterministic RNG: same seed + city name = same map on every client
+  const rng = _seededRNG(_mapSeed + _hashString(cityName));
   const S = MAP_SIZE;
   const grid = Array.from({length: S}, () => Array(S).fill(T.GROUND));
   const city = CITIES[cityName];
+  const H = Math.floor(S / 2); // midpoint
 
   for (let i = 0; i < S; i++) {
     grid[0][i] = T.WALL; grid[S-1][i] = T.WALL;
@@ -695,83 +752,141 @@ function generateCityMap(cityName) {
       grid[i][0] = T.WATER; grid[i][1] = T.WATER; grid[i][2] = T.WATER;
       grid[i][S-1] = T.WATER; grid[i][S-2] = T.WATER; grid[i][S-3] = T.WATER;
     }
-    for (let x = 36; x <= 44; x++) { grid[0][x] = T.ROAD_MAIN; grid[1][x] = T.ROAD_MAIN; grid[2][x] = T.ROAD_MAIN; grid[S-1][x] = T.ROAD_MAIN; grid[S-2][x] = T.ROAD_MAIN; grid[S-3][x] = T.ROAD_MAIN; }
-    for (let y = 36; y <= 44; y++) { grid[y][0] = T.ROAD_MAIN; grid[y][1] = T.ROAD_MAIN; grid[y][2] = T.ROAD_MAIN; grid[y][S-1] = T.ROAD_MAIN; grid[y][S-2] = T.ROAD_MAIN; grid[y][S-3] = T.ROAD_MAIN; }
+    for (let x = H-4; x <= H+4; x++) { grid[0][x] = T.ROAD_MAIN; grid[1][x] = T.ROAD_MAIN; grid[2][x] = T.ROAD_MAIN; grid[S-1][x] = T.ROAD_MAIN; grid[S-2][x] = T.ROAD_MAIN; grid[S-3][x] = T.ROAD_MAIN; }
+    for (let y = H-4; y <= H+4; y++) { grid[y][0] = T.ROAD_MAIN; grid[y][1] = T.ROAD_MAIN; grid[y][2] = T.ROAD_MAIN; grid[y][S-1] = T.ROAD_MAIN; grid[y][S-2] = T.ROAD_MAIN; grid[y][S-3] = T.ROAD_MAIN; }
   }
 
+  // Main roads: cross pattern + grid
   if (cityName === 'Los Santos') {
-    for (let i = 1; i < S-1; i++) { grid[40][i] = T.ROAD_MAIN; grid[i][40] = T.ROAD_MAIN; }
-    for (let i = 1; i < S-1; i++) { grid[20][i] = T.ROAD_SIDE; grid[60][i] = T.ROAD_SIDE; grid[i][20] = T.ROAD_SIDE; grid[i][60] = T.ROAD_SIDE; }
-    for (let i = 1; i < S-1; i++) { if (i % 8 === 0) { for (let j = 1; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE; } }
-    // Highway along the top
+    for (let i = 1; i < S-1; i++) { grid[H][i] = T.ROAD_MAIN; grid[i][H] = T.ROAD_MAIN; }
+    const Q = Math.floor(S / 4);
+    for (let i = 1; i < S-1; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Q] = T.ROAD_SIDE; grid[i][S-Q] = T.ROAD_SIDE; }
+    // Extra grid roads every 10
+    for (let i = 1; i < S-1; i++) { if (i % 10 === 0 && i !== H && i !== Q && i !== S-Q) { for (let j = 1; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE; } }
     for (let x = 1; x < S-1; x++) { grid[3][x] = T.HIGHWAY; grid[4][x] = T.HIGHWAY; }
-    // Park with trees
-    for (let y = 5; y <= 14; y++) for (let x = 5; x <= 14; x++) grid[y][x] = T.PARK;
-    grid[10][10] = T.TREE; grid[8][8] = T.TREE; grid[12][12] = T.TREE; grid[6][12] = T.TREE; grid[7][9] = T.TREE; grid[13][7] = T.TREE;
-    // Forest area
-    for (let y = 4; y <= 12; y++) for (let x = 56; x <= 72; x++) if (grid[y][x] === T.GROUND && Math.random() < 0.4) grid[y][x] = T.TREE;
+    // Parks
+    for (let y = 5; y <= 18; y++) for (let x = 5; x <= 18; x++) grid[y][x] = T.PARK;
+    for (let n = 0; n < 10; n++) { const py = 5+Math.floor(rng()*14); const px = 5+Math.floor(rng()*14); grid[py][px] = T.TREE; }
+    // Large park in south-center
+    for (let y = S-25; y <= S-15; y++) for (let x = H-8; x <= H+8; x++) { if (grid[y][x] === T.GROUND) { grid[y][x] = T.PARK; if (rng() < 0.2) grid[y][x] = T.TREE; } }
+    // Forest NE
+    for (let y = 4; y <= 16; y++) for (let x = S-30; x <= S-8; x++) if (grid[y][x] === T.GROUND && rng() < 0.35) grid[y][x] = T.TREE;
     // Docks along the beach
-    for (let x = 20; x <= 30; x++) { grid[S-6][x] = T.DOCK; grid[S-7][x] = T.DOCK; }
-    // Industrial zone east
-    for (let y = 55; y <= 68; y++) for (let x = 62; x <= 75; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
+    for (let x = Q; x <= Q+15; x++) { grid[S-6][x] = T.DOCK; grid[S-7][x] = T.DOCK; }
+    // Industrial east
+    for (let y = S-30; y <= S-12; y++) for (let x = S-25; x <= S-8; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
+    // Second industrial NW
+    for (let y = 20; y <= 35; y++) for (let x = 5; x <= 18; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
   } else if (cityName === 'San Fierro') {
-    for (let i = 4; i < S-1; i++) { grid[40][i] = T.ROAD_MAIN; grid[i][40] = T.ROAD_MAIN; }
-    for (let i = 5; i < S-5; i++) { const j = Math.min(S-2, Math.max(1, i + 10)); if (grid[i][j] !== T.WATER) grid[i][j] = T.ROAD_SIDE; }
-    for (let i = 4; i < S-1; i++) { grid[24][i] = T.ROAD_SIDE; grid[56][i] = T.ROAD_SIDE; grid[i][16] = T.ROAD_SIDE; grid[i][64] = T.ROAD_SIDE; }
-    // Large park with trees
-    for (let y = 28; y <= 36; y++) for (let x = 8; x <= 28; x++) { grid[y][x] = T.PARK; if (Math.random() < 0.3) grid[y][x] = T.TREE; }
-    // Bridge over water on the west side
-    for (let y = 30; y <= 50; y++) { grid[y][4] = T.BRIDGE; grid[y][5] = T.BRIDGE; }
-    // Docks at waterfront
-    for (let y = 55; y <= 65; y++) { grid[y][4] = T.DOCK; grid[y][5] = T.DOCK; grid[y][6] = T.DOCK; }
-    // Industrial near docks
-    for (let y = 55; y <= 68; y++) for (let x = 7; x <= 15; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
-    // Highway across the north
+    for (let i = 4; i < S-1; i++) { grid[H][i] = T.ROAD_MAIN; grid[i][H] = T.ROAD_MAIN; }
+    const Q = Math.floor(S / 4);
+    for (let i = 5; i < S-5; i++) { const j = Math.min(S-2, Math.max(1, i + Math.floor(S/8))); if (grid[i][j] !== T.WATER) grid[i][j] = T.ROAD_SIDE; }
+    for (let i = 4; i < S-1; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Math.floor(S/5)]=T.ROAD_SIDE; grid[i][S-Math.floor(S/5)]=T.ROAD_SIDE; }
+    // Extra roads
+    for (let i = 10; i < S-10; i += 12) for (let j = 4; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE;
+    // Large park
+    for (let y = Q; y <= Q+12; y++) for (let x = 8; x <= Q+4; x++) { grid[y][x] = T.PARK; if (rng() < 0.25) grid[y][x] = T.TREE; }
+    // Bridge west
+    for (let y = Q+5; y <= S-Q-5; y++) { grid[y][4] = T.BRIDGE; grid[y][5] = T.BRIDGE; }
+    // Docks
+    for (let y = S-Q-5; y <= S-10; y++) { grid[y][4] = T.DOCK; grid[y][5] = T.DOCK; grid[y][6] = T.DOCK; }
+    // Industrial
+    for (let y = S-Q-5; y <= S-10; y++) for (let x = 7; x <= 20; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
+    for (let y = 10; y <= 25; y++) for (let x = S-25; x <= S-10; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
     for (let x = 4; x < S-1; x++) { grid[6][x] = T.HIGHWAY; grid[7][x] = T.HIGHWAY; }
+    // Southern park
+    for (let y = S-20; y <= S-10; y++) for (let x = H-6; x <= H+6; x++) if (grid[y][x] === T.GROUND) { grid[y][x] = T.PARK; if (rng()<0.2) grid[y][x]=T.TREE; }
   } else if (cityName === 'Las Venturas') {
-    for (let i = 1; i < S-1; i++) { grid[i][40] = T.ROAD_MAIN; grid[i][41] = T.ROAD_MAIN; }
-    for (let i = 1; i < S-1; i++) { grid[26][i] = T.ROAD_SIDE; grid[54][i] = T.ROAD_SIDE; grid[i][20] = T.ROAD_SIDE; grid[i][60] = T.ROAD_SIDE; }
-    for (let i = 1; i < S-1; i++) { grid[40][i] = T.ROAD_MAIN; }
-    // The Strip — wide boulevard (already main road at 40/41)
+    for (let i = 1; i < S-1; i++) { grid[i][H] = T.ROAD_MAIN; grid[i][H+1] = T.ROAD_MAIN; grid[H][i] = T.ROAD_MAIN; }
+    const Q = Math.floor(S / 4);
+    for (let i = 1; i < S-1; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Q] = T.ROAD_SIDE; grid[i][S-Q] = T.ROAD_SIDE; }
+    // Extra grid
+    for (let i = 12; i < S-12; i += 15) for (let j = 1; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE;
     // Desert edges
-    for (let y = 1; y < S-1; y++) for (let x = 1; x < 7; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
-    for (let y = 1; y < S-1; y++) for (let x = S-7; x < S-1; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
-    // Highway loop around the city
-    for (let x = 1; x < S-1; x++) { grid[8][x] = T.HIGHWAY; grid[S-9][x] = T.HIGHWAY; }
-    for (let y = 8; y <= S-9; y++) { grid[y][8] = T.HIGHWAY; grid[y][S-9] = T.HIGHWAY; }
-    // Park/oasis in the NW
-    for (let y = 12; y <= 18; y++) for (let x = 12; x <= 18; x++) { grid[y][x] = T.PARK; if (Math.random() < 0.25) grid[y][x] = T.TREE; }
+    for (let y = 1; y < S-1; y++) for (let x = 1; x < 8; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
+    for (let y = 1; y < S-1; y++) for (let x = S-8; x < S-1; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
+    for (let y = 1; y < 8; y++) for (let x = 1; x < S-1; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
+    for (let y = S-8; y < S-1; y++) for (let x = 1; x < S-1; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.SAND;
+    // Highway loop
+    for (let x = 1; x < S-1; x++) { grid[10][x] = T.HIGHWAY; grid[S-11][x] = T.HIGHWAY; }
+    for (let y = 10; y <= S-11; y++) { grid[y][10] = T.HIGHWAY; grid[y][S-11] = T.HIGHWAY; }
+    // Park/oasis NW
+    for (let y = 14; y <= 24; y++) for (let x = 14; x <= 24; x++) { grid[y][x] = T.PARK; if (rng()<0.25) grid[y][x]=T.TREE; }
+    // Park SE
+    for (let y = S-28; y <= S-18; y++) for (let x = S-28; x <= S-18; x++) if (grid[y][x]===T.GROUND) { grid[y][x]=T.PARK; if(rng()<0.2) grid[y][x]=T.TREE; }
+    // Industrial south
+    for (let y = S-25; y <= S-14; y++) for (let x = 14; x <= 30; x++) if (grid[y][x]===T.GROUND) grid[y][x]=T.INDUSTRIAL;
   } else if (cityName === 'Vice City') {
-    for (let i = 3; i < S-3; i++) { grid[40][i] = T.ROAD_MAIN; grid[i][40] = T.ROAD_MAIN; }
-    for (let i = 3; i < S-3; i++) { grid[20][i] = T.ROAD_SIDE; grid[60][i] = T.ROAD_SIDE; grid[i][20] = T.ROAD_SIDE; grid[i][60] = T.ROAD_SIDE; }
+    for (let i = 3; i < S-3; i++) { grid[H][i] = T.ROAD_MAIN; grid[i][H] = T.ROAD_MAIN; }
+    const Q = Math.floor(S / 4);
+    for (let i = 3; i < S-3; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Q] = T.ROAD_SIDE; grid[i][S-Q] = T.ROAD_SIDE; }
+    // Extra roads
+    for (let i = 15; i < S-15; i += 12) for (let j = 3; j < S-3; j++) if (grid[i][j]===T.GROUND) grid[i][j]=T.ROAD_SIDE;
+    // Sandy beaches around the water
     for (let y = 3; y < S-3; y++) for (let x = 3; x < S-3; x++) {
-      if (grid[y][x] === T.GROUND && (y <= 6 || y >= S-7 || x <= 6 || x >= S-7)) grid[y][x] = T.SAND;
+      if (grid[y][x] === T.GROUND && (y <= 7 || y >= S-8 || x <= 7 || x >= S-8)) grid[y][x] = T.SAND;
     }
     for (let y = 5; y < S-5; y++) for (let x = 5; x < S-5; x++) {
-      if (grid[y][x] === T.SAND && Math.random() < 0.15) grid[y][x] = T.TREE;
+      if (grid[y][x] === T.SAND && rng() < 0.12) grid[y][x] = T.TREE;
     }
-    // Bridges connecting the island to the edges
-    for (let x = 36; x <= 44; x++) { grid[3][x] = T.BRIDGE; grid[S-4][x] = T.BRIDGE; }
-    for (let y = 36; y <= 44; y++) { grid[y][3] = T.BRIDGE; grid[y][S-4] = T.BRIDGE; }
+    // Bridges
+    for (let x = H-4; x <= H+4; x++) { grid[3][x] = T.BRIDGE; grid[S-4][x] = T.BRIDGE; }
+    for (let y = H-4; y <= H+4; y++) { grid[y][3] = T.BRIDGE; grid[y][S-4] = T.BRIDGE; }
     // Marina/docks
-    for (let x = 55; x <= 68; x++) { grid[4][x] = T.DOCK; grid[5][x] = T.DOCK; }
+    for (let x = S-Q; x <= S-Q+15; x++) { if (x<S-1) { grid[4][x] = T.DOCK; grid[5][x] = T.DOCK; } }
+    for (let y = S-Q; y <= S-Q+10; y++) { if (y<S-1) { grid[y][4] = T.DOCK; grid[y][5] = T.DOCK; } }
     // Highway ring
-    for (let x = 8; x < S-8; x++) { grid[10][x] = T.HIGHWAY; grid[S-11][x] = T.HIGHWAY; }
+    for (let x = 10; x < S-10; x++) { grid[12][x] = T.HIGHWAY; grid[S-13][x] = T.HIGHWAY; }
+    // Central park
+    for (let y = H-8; y <= H-2; y++) for (let x = H-8; x <= H-2; x++) if (grid[y][x]===T.GROUND) { grid[y][x]=T.PARK; if (rng()<0.2) grid[y][x]=T.TREE; }
   } else if (cityName === 'Liberty City') {
-    for (let i = 1; i < S-1; i++) { grid[i][40] = T.ROAD_MAIN; grid[40][i] = T.ROAD_MAIN; }
+    for (let i = 1; i < S-1; i++) { grid[i][H] = T.ROAD_MAIN; grid[H][i] = T.ROAD_MAIN; }
+    // Dense grid
     for (let r = 6; r < S-1; r += 6) for (let i = 1; i < S-1; i++) { if (grid[r][i] === T.GROUND) grid[r][i] = T.ROAD_SIDE; }
     for (let c = 6; c < S-1; c += 6) for (let i = 1; i < S-1; i++) { if (grid[i][c] === T.GROUND) grid[i][c] = T.ROAD_SIDE; }
-    // Dense high-rise core (east side)
-    for (let y = 20; y <= 60; y++) for (let x = S-9; x < S-4; x++) { if (grid[y][x] === T.GROUND) grid[y][x] = T.WALL; }
-    // Bridge over the east river
-    for (let y = 35; y <= 45; y++) { grid[y][S-4] = T.BRIDGE; grid[y][S-3] = T.BRIDGE; grid[y][S-2] = T.BRIDGE; }
+    // Dense high-rise core (east side near water)
+    for (let y = Q; y <= S-Q; y++) for (let x = S-12; x < S-4; x++) { if (grid[y][x] === T.GROUND) grid[y][x] = T.WALL; }
+    // Bridge over east river
+    for (let y = H-6; y <= H+6; y++) { grid[y][S-4] = T.BRIDGE; grid[y][S-3] = T.BRIDGE; grid[y][S-2] = T.BRIDGE; }
     // Industrial docks north
-    for (let x = 5; x <= 20; x++) for (let y = 3; y <= 8; y++) { if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL; }
-    for (let x = 5; x <= 15; x++) { grid[3][x] = T.DOCK; grid[4][x] = T.DOCK; }
+    for (let x = 5; x <= 30; x++) for (let y = 3; y <= 10; y++) { if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL; }
+    for (let x = 5; x <= 20; x++) { grid[3][x] = T.DOCK; grid[4][x] = T.DOCK; }
+    // Industrial south
+    for (let x = 5; x <= 25; x++) for (let y = S-12; y <= S-5; y++) if (grid[y][x]===T.GROUND) grid[y][x]=T.INDUSTRIAL;
     // Highway
-    for (let y = 1; y < S-1; y++) { grid[y][10] = T.HIGHWAY; }
-    // Park in the center
-    for (let y = 30; y <= 38; y++) for (let x = 25; x <= 35; x++) { grid[y][x] = T.PARK; if (Math.random() < 0.2) grid[y][x] = T.TREE; }
+    for (let y = 1; y < S-1; y++) { grid[y][12] = T.HIGHWAY; }
+    for (let x = 12; x < S-4; x++) { grid[S-14][x] = T.HIGHWAY; }
+    // Parks
+    for (let y = H-6; y <= H+4; y++) for (let x = H-8; x <= H-1; x++) { if (grid[y][x]===T.GROUND) { grid[y][x]=T.PARK; if (rng()<0.2) grid[y][x]=T.TREE; } }
+    for (let y = 14; y <= 22; y++) for (let x = H+5; x <= H+14; x++) if (grid[y][x]===T.GROUND) { grid[y][x]=T.PARK; if (rng()<0.15) grid[y][x]=T.TREE; }
+  }
+
+  // Add open plazas (flat walkable spaces between buildings)
+  const plazaCount = 6 + Math.floor(rng() * 6);
+  for (let p = 0; p < plazaCount; p++) {
+    const cx = 10 + Math.floor(rng() * (S - 20));
+    const cy = 10 + Math.floor(rng() * (S - 20));
+    const w = 3 + Math.floor(rng() * 5);
+    const h = 3 + Math.floor(rng() * 5);
+    for (let y = cy; y < cy + h && y < S - 2; y++) {
+      for (let x = cx; x < cx + w && x < S - 2; x++) {
+        if (grid[y][x] === T.GROUND) grid[y][x] = T.PLAZA;
+      }
+    }
+  }
+
+  // Add parking lots near roads
+  const parkingCount = 5 + Math.floor(rng() * 4);
+  for (let p = 0; p < parkingCount; p++) {
+    const cx = 8 + Math.floor(rng() * (S - 16));
+    const cy = 8 + Math.floor(rng() * (S - 16));
+    const w = 3 + Math.floor(rng() * 4);
+    const h = 2 + Math.floor(rng() * 3);
+    for (let y = cy; y < cy + h && y < S - 2; y++) {
+      for (let x = cx; x < cx + w && x < S - 2; x++) {
+        if (grid[y][x] === T.GROUND) grid[y][x] = T.PARKING;
+      }
+    }
   }
 
   const isRoad = t => t === T.ROAD_MAIN || t === T.ROAD_SIDE || t === T.HIGHWAY;
@@ -779,7 +894,7 @@ function generateCityMap(cityName) {
     for (let x = 2; x < S-2; x++) {
       if (grid[y][x] !== T.GROUND) continue;
       const isInterior = !isRoad(grid[y-1][x]) && !isRoad(grid[y+1][x]) && !isRoad(grid[y][x-1]) && !isRoad(grid[y][x+1]);
-      if (isInterior && Math.random() < 0.55) grid[y][x] = T.WALL;
+      if (isInterior && rng() < 0.30) grid[y][x] = T.WALL;
     }
   }
 
@@ -787,13 +902,13 @@ function generateCityMap(cityName) {
   const roadAdjacentSpots = [];
   for (let y = 2; y < S-2; y++) {
     for (let x = 2; x < S-2; x++) {
-      if (grid[y][x] !== T.GROUND && grid[y][x] !== T.SAND) continue;
+      if (grid[y][x] !== T.GROUND && grid[y][x] !== T.SAND && grid[y][x] !== T.PLAZA) continue;
       const adjRoad = [grid[y-1][x], grid[y+1][x], grid[y][x-1], grid[y][x+1]].some(t => isRoad(t));
       if (adjRoad) roadAdjacentSpots.push([x, y]);
     }
   }
   for (let i = roadAdjacentSpots.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [roadAdjacentSpots[i], roadAdjacentSpots[j]] = [roadAdjacentSpots[j], roadAdjacentSpots[i]];
   }
   let spotIdx = 0;
@@ -801,14 +916,23 @@ function generateCityMap(cityName) {
   for (const poi of poiTypes) {
     if (spotIdx < roadAdjacentSpots.length) { const [px, py] = roadAdjacentSpots[spotIdx++]; grid[py][px] = poi; }
   }
-  // Place 2 more of each POI type (3 total per type = 30)
-  for (let round = 0; round < 2; round++) {
+  // Place 3 more of each POI type (4 total per type = 40)
+  for (let round = 0; round < 3; round++) {
     for (const poi of poiTypes) {
       if (spotIdx < roadAdjacentSpots.length) { const [px, py] = roadAdjacentSpots[spotIdx++]; grid[py][px] = poi; }
     }
   }
-  // Extra copies of common POIs (~15 more, total ~45)
-  const commonPOIs = [T.POI_SHOP, T.POI_SHOP, T.POI_SHOP, T.POI_WORK, T.POI_WORK, T.POI_WORK, T.POI_DRUG, T.POI_DRUG, T.POI_HOOKER, T.POI_HOOKER, T.POI_GAMBLING, T.POI_GAMBLING, T.POI_AMMO, T.POI_HOSPITAL, T.POI_VEHICLE];
+  // Extra copies of common POIs (~25 more, total ~65)
+  const commonPOIs = [
+    T.POI_SHOP, T.POI_SHOP, T.POI_SHOP, T.POI_SHOP, T.POI_SHOP,
+    T.POI_WORK, T.POI_WORK, T.POI_WORK, T.POI_WORK,
+    T.POI_DRUG, T.POI_DRUG, T.POI_DRUG,
+    T.POI_HOOKER, T.POI_HOOKER, T.POI_HOOKER,
+    T.POI_GAMBLING, T.POI_GAMBLING, T.POI_GAMBLING,
+    T.POI_AMMO, T.POI_AMMO, T.POI_AMMO,
+    T.POI_HOSPITAL, T.POI_HOSPITAL,
+    T.POI_VEHICLE, T.POI_VEHICLE
+  ];
   for (const poi of commonPOIs) {
     if (spotIdx < roadAdjacentSpots.length) { const [px, py] = roadAdjacentSpots[spotIdx++]; grid[py][px] = poi; }
   }
@@ -1039,115 +1163,155 @@ function applyCharacterSkin(charName) {
   const name = (charName || '').toLowerCase();
 
   if (name === 'cj') {
-    // Green bandana replacing hat
+    // Green bandana with glow
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
     const bandanaGeo = new THREE.BoxGeometry(0.36, 0.06, 0.28);
-    const bandanaMat = new THREE.MeshStandardMaterial({ color: 0x44ff44 });
+    const bandanaMat = new THREE.MeshStandardMaterial({ color: 0x44ff44, emissive: 0x22aa22, emissiveIntensity: 0.3 });
     const bandana = new THREE.Mesh(bandanaGeo, bandanaMat);
     bandana.position.set(0, 0.7, 0.1);
-    duckGroup.add(bandana);
-    characterAccessories.push(bandana);
-    // Gold chain
-    const chainGeo = new THREE.TorusGeometry(0.12, 0.015, 8, 16);
-    const chainMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 });
+    duckGroup.add(bandana); characterAccessories.push(bandana);
+    // Bandana tail
+    const tailGeo = new THREE.BoxGeometry(0.12, 0.03, 0.2);
+    const tail = new THREE.Mesh(tailGeo, bandanaMat);
+    tail.position.set(0, 0.67, -0.1); tail.rotation.x = 0.3;
+    duckGroup.add(tail); characterAccessories.push(tail);
+    // Big gold chain with pendant
+    const chainGeo = new THREE.TorusGeometry(0.14, 0.02, 8, 20);
+    const chainMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.3 });
     const chain = new THREE.Mesh(chainGeo, chainMat);
-    chain.rotation.x = Math.PI / 2;
-    chain.position.set(0, 0.35, 0.2);
-    duckGroup.add(chain);
-    characterAccessories.push(chain);
+    chain.rotation.x = Math.PI / 2; chain.position.set(0, 0.35, 0.2);
+    duckGroup.add(chain); characterAccessories.push(chain);
+    // Dollar sign pendant
+    const pendantGeo = new THREE.SphereGeometry(0.04, 8, 8);
+    const pendant = new THREE.Mesh(pendantGeo, chainMat);
+    pendant.position.set(0, 0.22, 0.32);
+    duckGroup.add(pendant); characterAccessories.push(pendant);
 
   } else if (name === 'tommy') {
-    // Sunglasses
+    // Reflective aviator sunglasses
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const glassGeo = new THREE.BoxGeometry(0.28, 0.05, 0.04);
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.5 });
+    const glassGeo = new THREE.BoxGeometry(0.3, 0.06, 0.04);
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.05, envMapIntensity: 2.0 });
     const glasses = new THREE.Mesh(glassGeo, glassMat);
     glasses.position.set(0, 0.6, 0.32);
-    duckGroup.add(glasses);
-    characterAccessories.push(glasses);
-    // Hawaiian shirt color on body
-    const shirtGeo = new THREE.BoxGeometry(0.35, 0.15, 0.25);
-    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff4488 });
+    duckGroup.add(glasses); characterAccessories.push(glasses);
+    // Lens glare
+    const lensGeo = new THREE.BoxGeometry(0.1, 0.04, 0.01);
+    const lensMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, emissive: 0x2244aa, emissiveIntensity: 0.6, transparent: true, opacity: 0.7 });
+    for (const sx of [-0.07, 0.07]) {
+      const lens = new THREE.Mesh(lensGeo, lensMat);
+      lens.position.set(sx, 0.6, 0.35); duckGroup.add(lens); characterAccessories.push(lens);
+    }
+    // Hawaiian shirt with flowers
+    const shirtGeo = new THREE.BoxGeometry(0.36, 0.18, 0.28);
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff4488, emissive: 0x882244, emissiveIntensity: 0.15 });
     const shirt = new THREE.Mesh(shirtGeo, shirtMat);
     shirt.position.set(0, 0.2, 0.05);
-    duckGroup.add(shirt);
-    characterAccessories.push(shirt);
-
-  } else if (name === 'claude') {
-    // Leather jacket collar
-    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const collarGeo = new THREE.BoxGeometry(0.38, 0.08, 0.3);
-    const collarMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3 });
-    const collar = new THREE.Mesh(collarGeo, collarMat);
-    collar.position.set(0, 0.42, 0.05);
-    duckGroup.add(collar);
-    characterAccessories.push(collar);
-
-  } else if (name === 'niko') {
-    // Military cap (olive) replacing default hat
-    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const capBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
-    const capMat = new THREE.MeshStandardMaterial({ color: 0x556644 });
-    const capBrim = new THREE.Mesh(capBrimGeo, capMat);
-    capBrim.position.set(0, 0.72, 0.1);
-    duckGroup.add(capBrim);
-    characterAccessories.push(capBrim);
-    const capTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
-    const capTop = new THREE.Mesh(capTopGeo, capMat);
-    capTop.position.set(0, 0.78, 0.1);
-    duckGroup.add(capTop);
-    characterAccessories.push(capTop);
-    // Scar on face
-    const scarGeo = new THREE.BoxGeometry(0.01, 0.12, 0.01);
-    const scarMat = new THREE.MeshStandardMaterial({ color: 0xcc6644 });
-    const scar = new THREE.Mesh(scarGeo, scarMat);
-    scar.position.set(0.15, 0.58, 0.3);
-    scar.rotation.z = 0.3;
-    duckGroup.add(scar);
-    characterAccessories.push(scar);
-
-  } else if (name === 'catalina') {
-    // Red beret replacing hat
-    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const beretGeo = new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-    const beretMat = new THREE.MeshStandardMaterial({ color: 0xcc2222 });
-    const beret = new THREE.Mesh(beretGeo, beretMat);
-    beret.position.set(0, 0.72, 0.1);
-    duckGroup.add(beret);
-    characterAccessories.push(beret);
-    // Hoop earrings
-    const earGeo = new THREE.TorusGeometry(0.06, 0.01, 8, 12);
-    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1 });
-    for (const sx of [-0.2, 0.2]) {
-      const earring = new THREE.Mesh(earGeo, earMat);
-      earring.position.set(sx, 0.5, 0.2);
-      duckGroup.add(earring);
-      characterAccessories.push(earring);
+    duckGroup.add(shirt); characterAccessories.push(shirt);
+    // Flower details
+    const flowerMat = new THREE.MeshStandardMaterial({ color: 0x44ddff, emissive: 0x44ddff, emissiveIntensity: 0.5 });
+    for (const [fx,fy,fz] of [[0.1,0.25,0.18],[-0.08,0.18,0.19],[0.05,0.13,0.2]]) {
+      const flower = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), flowerMat);
+      flower.position.set(fx, fy, fz); duckGroup.add(flower); characterAccessories.push(flower);
     }
 
-  } else if (name === 'oz') {
-    // Hoodie over head
+  } else if (name === 'claude') {
+    // Leather jacket with zipper + collar pop
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const hoodGeo = new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.6);
-    const hoodMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
-    const hood = new THREE.Mesh(hoodGeo, hoodMat);
-    hood.position.set(0, 0.6, 0.08);
-    duckGroup.add(hood);
-    characterAccessories.push(hood);
-    // Glowing green glasses
-    const cyberGeo = new THREE.BoxGeometry(0.28, 0.04, 0.04);
-    const cyberMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.8 });
-    const cyber = new THREE.Mesh(cyberGeo, cyberMat);
-    cyber.position.set(0, 0.6, 0.33);
-    duckGroup.add(cyber);
-    characterAccessories.push(cyber);
-    // Glow light
-    const glow = new THREE.PointLight(0x00ff00, 0.5, 2);
-    glow.position.set(0, 0.6, 0.4);
-    duckGroup.add(glow);
-    characterAccessories.push(glow);
+    const collarGeo = new THREE.BoxGeometry(0.38, 0.1, 0.3);
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.4 });
+    const collar = new THREE.Mesh(collarGeo, collarMat);
+    collar.position.set(0, 0.42, 0.05);
+    duckGroup.add(collar); characterAccessories.push(collar);
+    // Zipper
+    const zipGeo = new THREE.BoxGeometry(0.02, 0.1, 0.01);
+    const zipMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9, roughness: 0.1 });
+    const zip = new THREE.Mesh(zipGeo, zipMat);
+    zip.position.set(0, 0.42, 0.2);
+    duckGroup.add(zip); characterAccessories.push(zip);
+    // Popped collar tips
+    for (const sx of [-0.15, 0.15]) {
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.04), collarMat);
+      tip.position.set(sx, 0.48, 0.15); tip.rotation.z = sx > 0 ? -0.3 : 0.3;
+      duckGroup.add(tip); characterAccessories.push(tip);
+    }
+
+  } else if (name === 'niko') {
+    // Military cap with insignia
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x556644, roughness: 0.8 });
+    const capBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.02, 16), capMat);
+    capBrim.position.set(0, 0.72, 0.12); duckGroup.add(capBrim); characterAccessories.push(capBrim);
+    const capTop = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.12, 16), capMat);
+    capTop.position.set(0, 0.8, 0.1); duckGroup.add(capTop); characterAccessories.push(capTop);
+    // Cap insignia (star)
+    const insignia = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, emissive: 0xaa8800, emissiveIntensity: 0.5 }));
+    insignia.position.set(0, 0.82, 0.22); duckGroup.add(insignia); characterAccessories.push(insignia);
+    // Battle scar (thicker, glowing)
+    const scarMat = new THREE.MeshStandardMaterial({ color: 0xcc6644, emissive: 0x662222, emissiveIntensity: 0.4 });
+    const scar = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.14, 0.01), scarMat);
+    scar.position.set(0.15, 0.58, 0.3); scar.rotation.z = 0.3;
+    duckGroup.add(scar); characterAccessories.push(scar);
+    // Dog tags
+    const tagMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+    const tag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.01), tagMat);
+    tag.position.set(0.05, 0.28, 0.25); duckGroup.add(tag); characterAccessories.push(tag);
+
+  } else if (name === 'catalina') {
+    // Red beret with attitude
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const beretMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, emissive: 0x661111, emissiveIntensity: 0.2 });
+    const beret = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8, 0, Math.PI*2, 0, Math.PI/2), beretMat);
+    beret.position.set(0.03, 0.72, 0.1); beret.rotation.z = 0.15;
+    duckGroup.add(beret); characterAccessories.push(beret);
+    // Large gold hoop earrings
+    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.4 });
+    for (const sx of [-0.22, 0.22]) {
+      const earring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 8, 16), earMat);
+      earring.position.set(sx, 0.48, 0.18);
+      duckGroup.add(earring); characterAccessories.push(earring);
+    }
+    // Red lipstick on beak (small red accent)
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.02), new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff2222, emissiveIntensity: 0.3 }));
+    lip.position.set(0, 0.5, 0.36); duckGroup.add(lip); characterAccessories.push(lip);
+
+  } else if (name === 'oz') {
+    // Dark hoodie over head
+    for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
+    const hoodMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18 });
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 8, 0, Math.PI*2, 0, Math.PI*0.6), hoodMat);
+    hood.position.set(0, 0.6, 0.06); duckGroup.add(hood); characterAccessories.push(hood);
+    // Glowing cyber visor
+    const cyberMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.2 });
+    const cyber = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.045, 0.04), cyberMat);
+    cyber.position.set(0, 0.6, 0.33); duckGroup.add(cyber); characterAccessories.push(cyber);
+    // Matrix-style code drip (small glowing dots)
+    const dotMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.5 });
+    for (const [dx,dy] of [[-0.1,0.55],[0.08,0.53],[0.0,0.5],[-0.05,0.47],[0.12,0.48]]) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 4, 4), dotMat);
+      dot.position.set(dx, dy, 0.34); duckGroup.add(dot); characterAccessories.push(dot);
+    }
+    // Green glow light
+    const glow = new THREE.PointLight(0x00ff00, 0.8, 3);
+    glow.position.set(0, 0.6, 0.4); duckGroup.add(glow); characterAccessories.push(glow);
+    // Hoodie body
+    const hoodBody = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.28), new THREE.MeshStandardMaterial({ color: 0x0a0a18 }));
+    hoodBody.position.set(0, 0.2, 0.05); duckGroup.add(hoodBody); characterAccessories.push(hoodBody);
   }
   // Default (unknown names) keep the standard hat — no changes
+
+  // Character glow ring — colored halo under the duck for visibility
+  const glowColors = { cj: 0x44ff44, tommy: 0xff4488, claude: 0x8888aa, niko: 0x88aa44, catalina: 0xff2244, oz: 0x00ff00 };
+  const ringColor = glowColors[name];
+  if (ringColor) {
+    const ringGeo = new THREE.RingGeometry(0.35, 0.5, 24);
+    const ringMat = new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.8, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    duckGroup.add(ring);
+    characterAccessories.push(ring);
+  }
 }
 
 // --------------------------------------------------------
@@ -1164,9 +1328,28 @@ function buildCity3D() {
 
   if (!currentMapGrid) return;
 
-  // Ground plane
+  // Seeded RNG for deterministic world objects (parked cars, dock posts, etc.)
+  const _cityRng = _seededRNG(_npcSeed + 7919);
+
+  // Ground plane with procedural noise texture
   const groundGeo = new THREE.PlaneGeometry(MAP_SIZE + 4, MAP_SIZE + 4);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2a1a, roughness: 1 });
+  const gtCanvas = document.createElement('canvas');
+  gtCanvas.width = 256; gtCanvas.height = 256;
+  const gtCtx = gtCanvas.getContext('2d');
+  gtCtx.fillStyle = '#1a2a1a';
+  gtCtx.fillRect(0, 0, 256, 256);
+  for (let py = 0; py < 256; py++) {
+    for (let px = 0; px < 256; px++) {
+      const n = (Math.sin(px * 0.3) * Math.cos(py * 0.3) + Math.random() * 0.4) * 12;
+      const r = 26 + n, g = 42 + n, b = 26 + n * 0.5;
+      gtCtx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+      gtCtx.fillRect(px, py, 1, 1);
+    }
+  }
+  const groundTex = new THREE.CanvasTexture(gtCanvas);
+  groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+  groundTex.repeat.set(8, 8);
+  const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(MAP_SIZE / 2, -0.01, MAP_SIZE / 2);
@@ -1184,6 +1367,8 @@ function buildCity3D() {
   const dockPositions = [];
   const industrialPositions = [];
   const highwayPositions = [];
+  const plazaPositions = [];
+  const parkingPositions = [];
   const roadMarkPositions = []; // every 8th main road tile
   // Buildings grouped by material index
   const buildingGroups = new Map(); // matIdx -> [{x, z, height}]
@@ -1208,7 +1393,7 @@ function buildCity3D() {
         roadSidePositions.push({ x: wx, z: wz });
       } else if (tile === T.WALL) {
         const heightSeed = (x * 7 + y * 13) % 10;
-        const height = 0.8 + heightSeed * 0.4;
+        const height = 0.5 + heightSeed * 0.2;
         const matIdx = heightSeed % 8;
         buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
 
@@ -1245,6 +1430,10 @@ function buildCity3D() {
         buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
       } else if (tile === T.HIGHWAY) {
         highwayPositions.push({ x: wx, z: wz });
+      } else if (tile === T.PLAZA) {
+        plazaPositions.push({ x: wx, z: wz });
+      } else if (tile === T.PARKING) {
+        parkingPositions.push({ x: wx, z: wz });
       }
 
       if (POI_DEFS[tile]) {
@@ -1257,9 +1446,23 @@ function buildCity3D() {
   const dummy = new THREE.Object3D();
   const flatGeo = new THREE.BoxGeometry(1, 0.02, 1);
 
+  // Shared asphalt texture for roads
+  const asphaltCanvas = document.createElement('canvas');
+  asphaltCanvas.width = 64; asphaltCanvas.height = 64;
+  const asCtx = asphaltCanvas.getContext('2d');
+  asCtx.fillStyle = '#444';
+  asCtx.fillRect(0, 0, 64, 64);
+  for (let py = 0; py < 64; py++) for (let px = 0; px < 64; px++) {
+    const n = (Math.random() - 0.5) * 20;
+    asCtx.fillStyle = `rgb(${68+n|0},${68+n|0},${68+n|0})`;
+    asCtx.fillRect(px, py, 1, 1);
+  }
+  const asphaltTex = new THREE.CanvasTexture(asphaltCanvas);
+  asphaltTex.wrapS = asphaltTex.wrapT = THREE.RepeatWrapping;
+
   // Road main
   if (roadMainPositions.length > 0) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 });
+    const mat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.9 });
     const inst = new THREE.InstancedMesh(flatGeo, mat, roadMainPositions.length);
     inst.receiveShadow = true;
     inst.castShadow = false;
@@ -1275,7 +1478,7 @@ function buildCity3D() {
 
   // Road side
   if (roadSidePositions.length > 0) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+    const mat = new THREE.MeshStandardMaterial({ map: asphaltTex.clone(), color: 0xdddddd, roughness: 0.9 });
     const inst = new THREE.InstancedMesh(flatGeo, mat, roadSidePositions.length);
     inst.receiveShadow = true;
     inst.castShadow = false;
@@ -1408,7 +1611,7 @@ function buildCity3D() {
     const postMat = new THREE.MeshStandardMaterial({ color: 0x443322 });
     const posts = [];
     dockPositions.forEach(pos => {
-      if (Math.random() < 0.3) posts.push(pos);
+      if (_cityRng() < 0.3) posts.push(pos);
     });
     if (posts.length > 0) {
       const postInst = new THREE.InstancedMesh(postGeo, postMat, posts.length);
@@ -1457,11 +1660,130 @@ function buildCity3D() {
     }
   }
 
+  // Plaza (flat open spaces with subtle pattern)
+  if (plazaPositions.length > 0) {
+    const plazaMat = new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.95 });
+    const inst = new THREE.InstancedMesh(flatGeo, plazaMat, plazaPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    plazaPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.015, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Parking lots (dark asphalt with line markings)
+  if (parkingPositions.length > 0) {
+    const parkingMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, parkingMat, parkingPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    parkingPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.012, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Parking space line markings
+    const lineGeo = new THREE.BoxGeometry(0.04, 0.02, 0.6);
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+    const lines = parkingPositions.filter((_, i) => i % 2 === 0);
+    if (lines.length > 0) {
+      const lineInst = new THREE.InstancedMesh(lineGeo, lineMat, lines.length);
+      lineInst.castShadow = false;
+      lines.forEach((pos, i) => {
+        dummy.position.set(pos.x + 0.3, 0.02, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        lineInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(lineInst);
+    }
+  }
+
+  // ---- Sidewalks along roads ----
+  const sidewalkPositions = [];
+  for (let y = 1; y < MAP_SIZE - 1; y++) {
+    for (let x = 1; x < MAP_SIZE - 1; x++) {
+      const t = currentMapGrid[y][x];
+      if (t !== T.GROUND && t !== T.PLAZA && t !== T.SAND) continue;
+      const adj = [currentMapGrid[y-1]?.[x], currentMapGrid[y+1]?.[x], currentMapGrid[y]?.[x-1], currentMapGrid[y]?.[x+1]];
+      if (adj.some(a => a === T.ROAD_MAIN || a === T.ROAD_SIDE)) {
+        sidewalkPositions.push({ x: x + 0.5, z: y + 0.5 });
+      }
+    }
+  }
+  if (sidewalkPositions.length > 0) {
+    const swMat = new THREE.MeshStandardMaterial({ color: 0x999088, roughness: 0.95 });
+    const swGeo = new THREE.BoxGeometry(1, 0.04, 1);
+    const swInst = new THREE.InstancedMesh(swGeo, swMat, sidewalkPositions.length);
+    swInst.receiveShadow = true; swInst.castShadow = false;
+    sidewalkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.02, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); swInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(swInst);
+    // Curb strips (thin raised edge between sidewalk and road)
+    const curbGeo = new THREE.BoxGeometry(1, 0.06, 0.08);
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0xaaa898 });
+    const curbCount = Math.min(sidewalkPositions.length, 800);
+    const curbInst = new THREE.InstancedMesh(curbGeo, curbMat, curbCount);
+    curbInst.castShadow = false;
+    for (let i = 0; i < curbCount; i++) {
+      dummy.position.set(sidewalkPositions[i].x, 0.05, sidewalkPositions[i].z + 0.46);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); curbInst.setMatrixAt(i, dummy.matrix);
+    }
+    cityGroup.add(curbInst);
+  }
+
+  // ---- Crosswalks at road intersections ----
+  const crosswalkPositions = [];
+  for (let y = 2; y < MAP_SIZE - 2; y++) {
+    for (let x = 2; x < MAP_SIZE - 2; x++) {
+      if (currentMapGrid[y][x] !== T.ROAD_MAIN) continue;
+      // Intersection: road in all 4 directions
+      const n = currentMapGrid[y-1]?.[x], s = currentMapGrid[y+1]?.[x];
+      const w = currentMapGrid[y]?.[x-1], e = currentMapGrid[y]?.[x+1];
+      const isRoadTile = t => t === T.ROAD_MAIN || t === T.ROAD_SIDE;
+      if (isRoadTile(n) && isRoadTile(s) && isRoadTile(w) && isRoadTile(e)) {
+        crosswalkPositions.push({ x: x + 0.5, z: y + 0.5 });
+      }
+    }
+  }
+  if (crosswalkPositions.length > 0) {
+    const cwGeo = new THREE.BoxGeometry(0.6, 0.025, 0.08);
+    const cwMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+    const stripes = Math.min(crosswalkPositions.length * 4, 2000);
+    const cwInst = new THREE.InstancedMesh(cwGeo, cwMat, stripes);
+    cwInst.castShadow = false;
+    let ci = 0;
+    for (const pos of crosswalkPositions) {
+      for (let s = -2; s <= 1; s++) {
+        if (ci >= stripes) break;
+        dummy.position.set(pos.x, 0.025, pos.z + s * 0.15);
+        dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix(); cwInst.setMatrixAt(ci++, dummy.matrix);
+      }
+    }
+    cwInst.count = ci;
+    cityGroup.add(cwInst);
+  }
+
   // ---- Buildings: InstancedMesh per material group ----
   const buildingMats = [];
   for (let i = 0; i < 8; i++) {
     const shade = 40 + i * 12;
-    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+10},${shade+10},${shade+20})`), roughness: 0.8 }));
+    const hue = [10, 8, 12, 6, 15, 5, 20, 10][i]; // varied warm/cool tints
+    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+hue},${shade+hue-2},${shade+20})`), roughness: 0.85, metalness: 0.05 }));
   }
   // Base building geo is 0.9 x 1.0 x 0.9 (height=1 will be scaled per instance)
   const buildGeo = new THREE.BoxGeometry(0.9, 1, 0.9);
@@ -1495,6 +1817,55 @@ function buildCity3D() {
       inst.setMatrixAt(i, dummy.matrix);
     });
     cityGroup.add(inst);
+  }
+
+  // ---- Rooftop details: AC units, antennas on taller buildings ----
+  const rooftopPositions = [];
+  const antennaPositions = [];
+  for (let matIdx = 0; matIdx < 8; matIdx++) {
+    for (const b of buildingGroups.get(matIdx)) {
+      if (b.height > 1.2 && ((b.x * 7 + b.z * 11) | 0) % 3 === 0) {
+        rooftopPositions.push({ x: b.x + 0.15, y: b.height + 0.05, z: b.z + 0.15 });
+      }
+      if (b.height > 1.5 && ((b.x * 13 + b.z * 3) | 0) % 5 === 0) {
+        antennaPositions.push({ x: b.x, y: b.height, z: b.z });
+      }
+    }
+  }
+  if (rooftopPositions.length > 0) {
+    const acGeo = new THREE.BoxGeometry(0.18, 0.1, 0.18);
+    const acMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6, metalness: 0.3 });
+    const acInst = new THREE.InstancedMesh(acGeo, acMat, rooftopPositions.length);
+    acInst.castShadow = false;
+    rooftopPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); acInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(acInst);
+  }
+  if (antennaPositions.length > 0) {
+    const antGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4);
+    const antMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.7 });
+    const antInst = new THREE.InstancedMesh(antGeo, antMat, antennaPositions.length);
+    antInst.castShadow = false;
+    antennaPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y + 0.25, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); antInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(antInst);
+    // Red beacon lights on antennas
+    const beaconGeo = new THREE.SphereGeometry(0.025, 4, 4);
+    const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.0 });
+    const beaconInst = new THREE.InstancedMesh(beaconGeo, beaconMat, antennaPositions.length);
+    beaconInst.castShadow = false;
+    antennaPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y + 0.5, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); beaconInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(beaconInst);
   }
 
   // ---- Trees: 2 InstancedMeshes (trunk + canopy) ----
@@ -1623,14 +1994,14 @@ function buildCity3D() {
   for (let y = 2; y < MAP_SIZE - 2 && carCount < 40; y++) {
     for (let x = 2; x < MAP_SIZE - 2 && carCount < 40; x++) {
       if (currentMapGrid[y][x] !== T.ROAD_SIDE) continue;
-      if (Math.random() > 0.06) continue;
+      if (_cityRng() > 0.06) continue;
       const adjWall = [[1,0],[-1,0],[0,1],[0,-1]].some(([ox,oz]) => {
         const t = currentMapGrid[y+oz]?.[x+ox];
         return t === T.WALL;
       });
       if (!adjWall) continue;
       const wx = x + 0.5, wz = y + 0.5;
-      const colorIdx = Math.floor(Math.random() * carColors.length);
+      const colorIdx = Math.floor(_cityRng() * carColors.length);
       carBodyPositions.push({ x: wx, z: wz, colorIdx });
       carTopPositions.push({ x: wx, z: wz - 0.05, colorIdx });
       for (const [sx, sz] of [[-0.18, -0.2], [0.18, -0.2], [-0.18, 0.2], [0.18, 0.2]]) {
@@ -1698,7 +2069,8 @@ function buildCity3D() {
     cityGroup.add(wheelInst);
   }
 
-  // NPC cars on main roads (stealable)
+  // NPC cars on main roads (stealable) — seeded for multiplayer sync
+  const _carRng = _seededRNG(_npcSeed + 1337);
   npcCars = [];
   const npcCarColors = [
     0xff00ff, 0x00ffff, 0xff4400, 0x44ff00, 0xffff00, 0xff0066,
@@ -1717,15 +2089,15 @@ function buildCity3D() {
   }
   const npcCarCount = Math.min(18, Math.floor(mainRoadTiles.length / 30));
   for (let i = 0; i < npcCarCount; i++) {
-    const rt = mainRoadTiles[Math.floor(Math.random() * mainRoadTiles.length)];
-    const colorIdx = Math.floor(Math.random() * npcCarColors.length);
+    const rt = mainRoadTiles[Math.floor(_carRng() * mainRoadTiles.length)];
+    const colorIdx = Math.floor(_carRng() * npcCarColors.length);
     const color = npcCarColors[colorIdx];
     const vName = npcCarNames[colorIdx];
     const wx = rt.x + 0.5, wz = rt.y + 0.5;
     const carGroup = new THREE.Group();
     // Wider/sportier body
-    const bodyW = 0.3 + Math.random() * 0.15;
-    const bodyL = 0.6 + Math.random() * 0.2;
+    const bodyW = 0.3 + _carRng() * 0.15;
+    const bodyL = 0.6 + _carRng() * 0.2;
     const cBodyGeo = new THREE.BoxGeometry(bodyW, 0.2, bodyL);
     const cBodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0.5 });
     const cBody = new THREE.Mesh(cBodyGeo, cBodyMat);
@@ -1762,8 +2134,8 @@ function buildCity3D() {
       carGroup.add(hl);
     }
     carGroup.position.set(wx, 0, wz);
-    const driveAxis = Math.random() < 0.5 ? 'x' : 'z';
-    const driveDir = Math.random() < 0.5 ? 1 : -1;
+    const driveAxis = _carRng() < 0.5 ? 'x' : 'z';
+    const driveDir = _carRng() < 0.5 ? 1 : -1;
     // Align car rotation with drive direction
     if (driveAxis === 'x') {
       carGroup.rotation.y = driveDir > 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -1775,10 +2147,10 @@ function buildCity3D() {
       group: carGroup, x: wx, z: wz, name: vName,
       color: '#' + color.toString(16).padStart(6, '0'),
       dir: driveDir,
-      speed: 0.5 + Math.random() * 0.8,
+      speed: 0.5 + _carRng() * 0.8,
       startX: wx, startZ: wz,
       driveAxis,
-      driveDist: 6 + Math.random() * 14,
+      driveDist: 6 + _carRng() * 14,
       driven: 0
     });
   }
@@ -1814,13 +2186,29 @@ function buildCity3D() {
   scene.add(cityGroup);
 }
 
+// Seeded PRNG (mulberry32) for deterministic NPC spawning across peers
+function _seededRNG(seed) {
+  let s = seed | 0;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // --------------------------------------------------------
 //  NPC PEDESTRIANS
 // --------------------------------------------------------
+let _npcSeed = 42;
+function setNPCSeed(seed) { _npcSeed = seed; }
 function spawnNPCs() {
   for (const npc of npcs) { scene.remove(npc.group); }
   npcs = [];
   if (!currentMapGrid) { console.warn('spawnNPCs: no map grid'); return; }
+
+  // Use seeded RNG so all multiplayer peers get identical NPC placement
+  const rng = _seededRNG(_npcSeed);
 
   const npcColors = [0xcc4444, 0x4444cc, 0x44cc44, 0xcccc44, 0xcc44cc, 0x44cccc, 0xff8844, 0x884422, 0xffffff, 0x888888];
   const roadTiles = [];
@@ -1831,10 +2219,10 @@ function spawnNPCs() {
   }
 
   const count = Math.max(25, Math.min(50, Math.floor(roadTiles.length / 30)));
-  console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs`);
+  console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs (seed: ${_npcSeed})`);
   for (let i = 0; i < count; i++) {
-    const rt = roadTiles[Math.floor(Math.random() * roadTiles.length)];
-    const color = npcColors[Math.floor(Math.random() * npcColors.length)];
+    const rt = roadTiles[Math.floor(rng() * roadTiles.length)];
+    const color = npcColors[Math.floor(rng() * npcColors.length)];
     const group = new THREE.Group();
 
     // Body - bigger and more visible
@@ -1848,7 +2236,7 @@ function spawnNPCs() {
 
     // Head - bigger
     const headGeo = new THREE.SphereGeometry(0.1, 8, 6);
-    const skinColor = Math.random() < 0.5 ? 0xddaa77 : 0x885533;
+    const skinColor = rng() < 0.5 ? 0xddaa77 : 0x885533;
     const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6, emissive: 0xffddaa, emissiveIntensity: 0.1 });
     const head = new THREE.Mesh(headGeo, headMat);
     head.position.y = 0.65;
@@ -1868,7 +2256,7 @@ function spawnNPCs() {
 
     // Small marker light above NPC head so they're always visible
     const markerGeo = new THREE.SphereGeometry(0.04, 6, 6);
-    const isHostile = Math.random() < 0.25;
+    const isHostile = rng() < 0.25;
     const markerColor = isHostile ? 0xff4444 : 0x44ff44;
     const markerMat = new THREE.MeshStandardMaterial({ color: markerColor, emissive: markerColor, emissiveIntensity: 1.0 });
     const marker = new THREE.Mesh(markerGeo, markerMat);
@@ -1878,16 +2266,16 @@ function spawnNPCs() {
     group.position.set(rt.x + 0.5, 0, rt.y + 0.5);
     scene.add(group);
 
-    const dir = Math.random() < 0.5 ? 'x' : 'z';
-    const speed = 0.3 + Math.random() * 0.4;
-    const facing = Math.random() < 0.5 ? 1 : -1;
+    const dir = rng() < 0.5 ? 'x' : 'z';
+    const speed = 0.3 + rng() * 0.4;
+    const facing = rng() < 0.5 ? 1 : -1;
     group.rotation.y = dir === 'x' ? (facing > 0 ? Math.PI / 2 : -Math.PI / 2) : (facing > 0 ? 0 : Math.PI);
 
     npcs.push({
-      group, dir, speed, facing,
+      group, dir, speed, facing, id: i,
       startX: rt.x + 0.5, startZ: rt.y + 0.5,
-      walkDist: 3 + Math.random() * 6,
-      walked: 0, phase: Math.random() * Math.PI * 2,
+      walkDist: 3 + rng() * 6,
+      walked: 0, phase: rng() * Math.PI * 2,
       hostile: isHostile,
       // Cached child references (avoid per-frame getObjectByName)
       _legL: legL, _legR: legR, _body: body, _head: head
@@ -1925,11 +2313,18 @@ function getNearestPoliceNPC(maxDist = 5) {
 
 function killNPC(npc) {
   const pos = { x: npc.group.position.x, z: npc.group.position.z };
+  const npcId = npc.id;
   scene.remove(npc.group);
   npc.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
   const idx = npcs.indexOf(npc);
   if (idx >= 0) npcs.splice(idx, 1);
-  return pos;
+  return { ...pos, id: npcId };
+}
+
+function killNPCById(npcId) {
+  const npc = npcs.find(n => n.id === npcId);
+  if (npc) return killNPC(npc);
+  return null;
 }
 
 function damagePoliceNPC(cop, dmg) {
@@ -2000,11 +2395,11 @@ function spawnMuzzleFlash() {
   }, 100);
 }
 
-function fireProjectile(targetX, targetZ) {
-  if (!duckGroup) return;
-  const startX = duckGroup.position.x;
-  const startZ = duckGroup.position.z;
+function fireProjectile(targetX, targetZ, srcX, srcZ, color) {
+  const startX = srcX != null ? srcX : (duckGroup ? duckGroup.position.x : 0);
+  const startZ = srcZ != null ? srcZ : (duckGroup ? duckGroup.position.z : 0);
   const startY = 0.45;
+  const bulletColor = color || 0xffff00;
 
   const dx = targetX - startX;
   const dz = targetZ - startZ;
@@ -2016,13 +2411,13 @@ function fireProjectile(targetX, targetZ) {
 
   // Main bullet — bright glowing orb
   const bulletGeo = new THREE.SphereGeometry(0.08, 6, 6);
-  const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 1 });
+  const bulletMat = new THREE.MeshBasicMaterial({ color: bulletColor, transparent: true, opacity: 1 });
   const bullet = new THREE.Mesh(bulletGeo, bulletMat);
   bullet.position.set(startX + nx * 0.5, startY, startZ + nz * 0.5);
   scene.add(bullet);
 
   // Bullet glow light
-  const bulletLight = new THREE.PointLight(0xffaa00, 2, 3);
+  const bulletLight = new THREE.PointLight(bulletColor, 2, 3);
   bulletLight.position.copy(bullet.position);
   scene.add(bulletLight);
 
@@ -2187,16 +2582,20 @@ function spawnPoliceNPC(nearX, nearZ) {
   siren.name = 'siren';
   group.add(siren);
 
-  // Spawn offset from player
+  // Spawn further from player so they're visible approaching
   const angle = Math.random() * Math.PI * 2;
-  const dist = 3 + Math.random() * 3;
+  const dist = 10 + Math.random() * 5;
   group.position.set(nearX + Math.cos(angle) * dist, 0, nearZ + Math.sin(angle) * dist);
 
   scene.add(group);
   policeNPCs.push({
     group, phase: Math.random() * Math.PI * 2,
-    speed: 1.2 + Math.random() * 0.6,
+    speed: 0.8 + Math.random() * 0.5,
     health: 100, alive: true,
+    // Shoot timer: cops fire every 2.5-4s when in range
+    nextShootTime: performance.now() + 3000 + Math.random() * 3000,
+    // Melee contact timer (beat player when touching)
+    lastMeleeTime: 0,
     // Cached child references
     _legL: legL, _legR: legR, _siren: siren
   });
@@ -2212,6 +2611,10 @@ function clearPoliceNPCs() {
 }
 
 function getPoliceNPCs() { return policeNPCs; }
+
+// Callback for police attacks (set by game.js)
+let _onPoliceAttack = null;
+function setPoliceAttackCallback(fn) { _onPoliceAttack = fn; }
 
 function removePoliceNPC(cop) {
   scene.remove(cop.group);
@@ -2405,15 +2808,67 @@ function spawnRemoteDuck(peerId, charType, name) {
 }
 
 function _applyRemoteSkin(group, charName) {
-  // Simplified skin: just tint the body based on character
-  const skinColors = {
-    cj: 0x44aa44, tommy: 0x4488ff, claude: 0x888888,
-    niko: 0xaa6644, catalina: 0xff4488, oz: 0xaa44ff
-  };
-  const color = skinColors[charName.toLowerCase()] || 0xffdd00;
-  const body = group.children[0]; // first child is body
-  if (body && body.material) {
-    body.material.color.setHex(color);
+  const name = (charName || '').toLowerCase();
+  // Remove default hat
+  const defaultHat = group.children.filter(c =>
+    c.geometry && c.geometry.type === 'CylinderGeometry' && c.position.y > 0.7
+  );
+
+  function _add(mesh) { group.add(mesh); }
+
+  if (name === 'cj') {
+    for (const h of defaultHat) group.remove(h);
+    const bandana = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.28), new THREE.MeshStandardMaterial({ color: 0x44ff44, emissive: 0x22aa22, emissiveIntensity: 0.3 }));
+    bandana.position.set(0, 0.7, 0.1); _add(bandana);
+    const chain = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.02, 8, 16), new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1, emissive: 0xaa8800, emissiveIntensity: 0.3 }));
+    chain.rotation.x = Math.PI / 2; chain.position.set(0, 0.35, 0.2); _add(chain);
+  } else if (name === 'tommy') {
+    for (const h of defaultHat) group.remove(h);
+    const glasses = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 0.04), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.1 }));
+    glasses.position.set(0, 0.6, 0.32); _add(glasses);
+    const shirt = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.25), new THREE.MeshStandardMaterial({ color: 0xff4488, emissive: 0x882244, emissiveIntensity: 0.2 }));
+    shirt.position.set(0, 0.2, 0.05); _add(shirt);
+  } else if (name === 'claude') {
+    for (const h of defaultHat) group.remove(h);
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.1, 0.3), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.4 }));
+    collar.position.set(0, 0.42, 0.05); _add(collar);
+    const zipper = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.1, 0.01), new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 }));
+    zipper.position.set(0, 0.42, 0.2); _add(zipper);
+  } else if (name === 'niko') {
+    for (const h of defaultHat) group.remove(h);
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x556644 });
+    const capBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16), capMat);
+    capBrim.position.set(0, 0.72, 0.1); _add(capBrim);
+    const capTop = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16), capMat);
+    capTop.position.set(0, 0.78, 0.1); _add(capTop);
+    const scar = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.12, 0.01), new THREE.MeshStandardMaterial({ color: 0xcc6644, emissive: 0x662222, emissiveIntensity: 0.3 }));
+    scar.position.set(0.15, 0.58, 0.3); scar.rotation.z = 0.3; _add(scar);
+  } else if (name === 'catalina') {
+    for (const h of defaultHat) group.remove(h);
+    const beret = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI*2, 0, Math.PI/2), new THREE.MeshStandardMaterial({ color: 0xcc2222, emissive: 0x661111, emissiveIntensity: 0.2 }));
+    beret.position.set(0, 0.72, 0.1); _add(beret);
+    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.3 });
+    for (const sx of [-0.2, 0.2]) {
+      const ear = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 12), earMat);
+      ear.position.set(sx, 0.5, 0.2); _add(ear);
+    }
+  } else if (name === 'oz') {
+    for (const h of defaultHat) group.remove(h);
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI*2, 0, Math.PI*0.6), new THREE.MeshStandardMaterial({ color: 0x1a1a2e }));
+    hood.position.set(0, 0.6, 0.08); _add(hood);
+    const cyber = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.04), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.0 }));
+    cyber.position.set(0, 0.6, 0.33); _add(cyber);
+  }
+
+  // Glow ring for remote ducks — colored halo for character identification
+  const _remoteGlowColors = { cj: 0x44ff44, tommy: 0xff4488, claude: 0x8888aa, niko: 0x88aa44, catalina: 0xff2244, oz: 0x00ff00 };
+  const rc = _remoteGlowColors[name];
+  if (rc) {
+    const rGeo = new THREE.RingGeometry(0.35, 0.5, 24);
+    const rMat = new THREE.MeshStandardMaterial({ color: rc, emissive: rc, emissiveIntensity: 0.8, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const rRing = new THREE.Mesh(rGeo, rMat);
+    rRing.rotation.x = -Math.PI / 2; rRing.position.y = 0.02;
+    _add(rRing);
   }
 }
 
@@ -2424,6 +2879,41 @@ function updateRemoteDuck(peerId, x, y, data) {
   }
   entry.targetX = x + 0.5;
   entry.targetZ = y + 0.5;
+
+  // Apply character skin if not yet applied (or char type changed)
+  if (data?.char && data.char !== entry._appliedChar) {
+    entry._appliedChar = data.char;
+    _applyRemoteSkin(entry.group, data.char);
+  }
+
+  // Update wanted stars indicator
+  const wanted = data?.wanted || 0;
+  if (wanted !== (entry._lastWanted || 0)) {
+    entry._lastWanted = wanted;
+    // Remove old indicator
+    if (entry._wantedSprite) {
+      entry.group.remove(entry._wantedSprite);
+      if (entry._wantedSprite.material.map) entry._wantedSprite.material.map.dispose();
+      entry._wantedSprite.material.dispose();
+      entry._wantedSprite = null;
+    }
+    if (wanted > 0) {
+      const wCanvas = document.createElement('canvas');
+      wCanvas.width = 128; wCanvas.height = 32;
+      const wCtx = wCanvas.getContext('2d');
+      wCtx.fillStyle = '#ff2222';
+      wCtx.font = '24px sans-serif';
+      wCtx.textAlign = 'center';
+      wCtx.fillText('\u2605'.repeat(wanted), 64, 24);
+      const wTex = new THREE.CanvasTexture(wCanvas);
+      const wMat = new THREE.SpriteMaterial({ map: wTex, transparent: true, depthTest: false });
+      const wSprite = new THREE.Sprite(wMat);
+      wSprite.position.set(0, 1.4, 0);
+      wSprite.scale.set(1.2, 0.3, 1);
+      entry.group.add(wSprite);
+      entry._wantedSprite = wSprite;
+    }
+  }
 }
 
 function _disposeGroup(group) {
@@ -2578,7 +3068,7 @@ function gameLoop() {
     if (npc._head) npc._head.material.emissiveIntensity = nightGlow;
   }
 
-  // NPC car driving
+  // NPC car driving — stay on roads only
   for (const car of npcCars) {
     const step = car.speed * dt;
     if (car.driveAxis === 'x') {
@@ -2587,17 +3077,25 @@ function gameLoop() {
       car.group.position.z += car.dir * step;
     }
     car.driven += step;
-    if (car.driven >= car.driveDist) {
-      car.dir *= -1;
-      car.driven = 0;
-      car.group.rotation.y += Math.PI;
-    }
     const gx = Math.floor(car.group.position.x);
     const gz = Math.floor(car.group.position.z);
+    // Reverse if off-road, at map edge, or past drive distance
+    let shouldReverse = car.driven >= car.driveDist;
     if (gx < 2 || gx >= MAP_SIZE - 2 || gz < 2 || gz >= MAP_SIZE - 2) {
+      shouldReverse = true;
+    } else if (currentMapGrid) {
+      const tile = currentMapGrid[gz]?.[gx];
+      if (tile !== T.ROAD_MAIN && tile !== T.ROAD_SIDE && tile !== T.HIGHWAY) {
+        shouldReverse = true;
+      }
+    }
+    if (shouldReverse) {
       car.dir *= -1;
       car.driven = 0;
       car.group.rotation.y += Math.PI;
+      // Nudge back onto road
+      if (car.driveAxis === 'x') car.group.position.x += car.dir * 0.5;
+      else car.group.position.z += car.dir * 0.5;
     }
   }
 
@@ -2622,18 +3120,40 @@ function gameLoop() {
     sirenLights[1].intensity = Math.sin(elapsed * 12) > 0 ? 0 : 3;
   }
 
-  // Police NPC chase + siren flash
+  // Police NPC chase + shoot + melee
+  const now = performance.now();
   for (const cop of policeNPCs) {
     if (!cop.alive || !duckGroup) continue;
     const dx = duckGroup.position.x - cop.group.position.x;
     const dz = duckGroup.position.z - cop.group.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist > 0.5) {
+
+    // Chase player (zombie-walk toward them)
+    if (dist > 0.6) {
       const nx = dx / dist, nz = dz / dist;
       cop.group.position.x += nx * cop.speed * dt;
       cop.group.position.z += nz * cop.speed * dt;
       cop.group.rotation.y = Math.atan2(nx, nz);
     }
+
+    // Melee: beat player when touching (within 0.8 units)
+    if (dist < 0.8 && now - cop.lastMeleeTime > 1200) {
+      cop.lastMeleeTime = now;
+      if (_onPoliceAttack) _onPoliceAttack('melee', cop, 0);
+    }
+
+    // Ranged: fire projectile when within 8 units, every 2.5-4s
+    if (dist < 8 && dist > 0.8 && now > cop.nextShootTime) {
+      cop.nextShootTime = now + 2500 + Math.random() * 1500;
+      // Fire visible projectile toward the player
+      fireProjectile(
+        duckGroup.position.x + (Math.random() - 0.5) * 1.5,
+        duckGroup.position.z + (Math.random() - 0.5) * 1.5,
+        cop.group.position.x, cop.group.position.z, 0x4444ff
+      );
+      if (_onPoliceAttack) _onPoliceAttack('shoot', cop, dist);
+    }
+
     cop.phase += dt * 8;
     if (cop._legL) cop._legL.rotation.x = Math.sin(cop.phase) * 0.5;
     if (cop._legR) cop._legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
@@ -2769,7 +3289,14 @@ async function loadCityMap(cityName) {
 
 async function initPlayer(name, startCity = 'Los Santos', bonus = 'none', charType = '') {
   const isOz = (charType || name).toLowerCase() === 'oz';
-  let cash = isOz ? 1000000 : bonus === 'cash' ? 750 : 500;
+  const ct = (charType || '').toLowerCase();
+
+  // Character-specific starting cash (moderately generous)
+  const CHAR_CASH = {
+    cj: 2000, tommy: 3500, claude: 2500, niko: 2000, catalina: 3000
+  };
+  let cash = isOz ? 1000000 : CHAR_CASH[ct] || (bonus === 'cash' ? 3500 : 2000);
+
   const safeName = name.replace(/'/g, "''");
   const safeCity = startCity.replace(/'/g, "''");
   const district = (CITIES[startCity]?.districts[0] || 'Grove Street').replace(/'/g, "''");
@@ -2784,6 +3311,36 @@ async function initPlayer(name, startCity = 'Los Santos', bonus = 'none', charTy
   if (bonus !== 'none' && bonus !== 'cash') {
     await conn.query(`UPDATE skills SET level = level + 2 WHERE name='${bonus}'`);
   }
+
+  // Character-specific starting perks & gear
+  if (!isOz) {
+    switch (ct) {
+      case 'cj':
+        // CJ: balanced — +2 charisma, starts with brass knuckles respect
+        await conn.query(`UPDATE skills SET level = level + 2 WHERE name='charisma'`);
+        await conn.query(`UPDATE player SET respect = 50`);
+        break;
+      case 'tommy':
+        // Tommy: street smart — starts with a pistol and body armor
+        await conn.query(`INSERT INTO guns VALUES ('Hawk 9','Pistol',5) ON CONFLICT DO NOTHING`);
+        await conn.query(`UPDATE player SET armor = 50`);
+        break;
+      case 'claude':
+        // Claude: silent killer — +2 stealth (from bonus) + lockpick kit boost + extra respect
+        await conn.query(`UPDATE player SET respect = 100`);
+        break;
+      case 'niko':
+        // Niko: tough — +2 strength (from bonus) + starts with body armor and extra HP via respect
+        await conn.query(`UPDATE player SET armor = 75, respect = 75`);
+        break;
+      case 'catalina':
+        // Catalina: wild — +2 driving (from bonus) + starts with an SMG
+        await conn.query(`INSERT INTO guns VALUES ('Viper SMG','SMG',16) ON CONFLICT DO NOTHING`);
+        await conn.query(`UPDATE player SET respect = 25`);
+        break;
+    }
+  }
+
   // Oz hacker: all weapons, max skills, armor
   if (isOz) {
     for (const gun of GUNS) {
@@ -3066,6 +3623,7 @@ function _startLobbyAnnouncing() {
 
 let _currentRoomCode = '';
 let _currentPlayerName = '';
+let _currentCharType = '';
 let _currentHasPassword = false;
 let _currentCity = '';
 
@@ -3119,6 +3677,7 @@ function hostGame(roomCode, playerName, charType, password = '') {
   isHost = true;
   _currentRoomCode = roomCode;
   _currentPlayerName = playerName;
+  _currentCharType = charType;
   _currentHasPassword = !!password;
   const result = _joinRoom(roomCode, playerName, charType, password);
   if (result) _startLobbyAnnouncing();
@@ -3127,6 +3686,7 @@ function hostGame(roomCode, playerName, charType, password = '') {
 
 function joinGame(roomCode, playerName, charType, password = '') {
   isHost = false;
+  _currentCharType = charType;
   return _joinRoom(roomCode, playerName, charType, password);
 }
 
@@ -3352,6 +3912,7 @@ function _updatePeerData(peerId, data) {
     y: data.y ?? existing.y,
     health: data.health ?? existing.health,
     wanted: data.wanted ?? existing.wanted,
+    gang: data.gang ?? existing.gang ?? '',
     lastUpdate: Date.now()
   });
 }
@@ -3385,7 +3946,61 @@ async function _logConnectionEvent(peerId, event) {
 //  LOBBY UI
 // --------------------------------------------------------
 
+function _updateMPHud() {
+  const bar = document.getElementById('mp-hud-bar');
+  if (!bar || !room) { if (bar) bar.style.display = 'none'; return; }
+  bar.style.display = 'block';
+  const codeEl = document.getElementById('mp-hud-code');
+  const countEl = document.getElementById('mp-hud-count');
+  const playersEl = document.getElementById('mp-hud-players');
+  if (codeEl) codeEl.textContent = _currentRoomCode;
+  if (countEl) countEl.textContent = peers.size + 1;
+  if (playersEl) {
+    playersEl.innerHTML = '';
+    // Self
+    const selfDiv = document.createElement('div');
+    selfDiv.style.cssText = 'color:#00ff00;font-size:10px;padding:1px 0';
+    selfDiv.textContent = `${_currentPlayerName || 'You'} (${_currentCharType || '?'}) ${isHost ? '- Host' : ''}`;
+    playersEl.appendChild(selfDiv);
+    // Peers
+    const charColors = { CJ:'#44ff44', Tommy:'#ff4488', Claude:'#aaa', Niko:'#556644', Catalina:'#cc2222', Oz:'#ff00ff' };
+    for (const [, info] of peers) {
+      const div = document.createElement('div');
+      div.style.cssText = `color:${charColors[info.char] || '#ffcc00'};font-size:10px;padding:1px 0`;
+      let txt = `${info.name || '?'} (${info.char || '?'})`;
+      if (info.gang) txt += ` [${info.gang}]`;
+      if (info.health != null) txt += ` ${info.health}HP`;
+      if (info.wanted > 0) txt += ' ' + '\u2605'.repeat(info.wanted);
+      div.textContent = txt;
+      playersEl.appendChild(div);
+    }
+  }
+  // Wire toggle button once
+  const toggleBtn = document.getElementById('mp-hud-toggle');
+  if (toggleBtn && !toggleBtn._wired) {
+    toggleBtn._wired = true;
+    toggleBtn.addEventListener('click', () => {
+      const pl = document.getElementById('mp-hud-players');
+      if (pl) {
+        const show = pl.style.display === 'none';
+        pl.style.display = show ? 'block' : 'none';
+        toggleBtn.textContent = show ? 'Hide' : 'Show';
+      }
+    });
+    // Copy room code
+    const codeEl2 = document.getElementById('mp-hud-code');
+    if (codeEl2) codeEl2.addEventListener('click', () => {
+      navigator.clipboard.writeText(codeEl2.textContent).then(() => {
+        const orig = codeEl2.textContent;
+        codeEl2.textContent = 'Copied!'; codeEl2.style.color = '#44ff44';
+        setTimeout(() => { codeEl2.textContent = orig; codeEl2.style.color = '#ff6600'; }, 1200);
+      });
+    });
+  }
+}
+
 function _updateLobbyUI() {
+  _updateMPHud();
   const lobbyEl = document.getElementById('mp-lobby');
   if (!lobbyEl) return;
 
@@ -3394,17 +4009,57 @@ function _updateLobbyUI() {
 
   playerList.innerHTML = '';
 
-  // Show self
+  // Show self with character badge
+  const selfCharColors = { CJ: '#44ff44', Tommy: '#ff4488', Claude: '#aaaaaa', Niko: '#556644', Catalina: '#cc2222', Oz: '#ff00ff' };
   const selfEl = document.createElement('div');
-  selfEl.style.cssText = 'color:#00ff00;font-size:11px;padding:2px 0';
-  selfEl.textContent = `You ${isHost ? '(Host)' : '(Client)'}`;
+  selfEl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;padding:2px 0';
+  const selfName = document.createElement('span');
+  selfName.style.color = '#00ff00';
+  selfName.textContent = `${_currentPlayerName || 'You'} ${isHost ? '(Host)' : '(Client)'}`;
+  selfEl.appendChild(selfName);
+  if (_currentCharType) {
+    const selfChar = document.createElement('span');
+    const sc = selfCharColors[_currentCharType] || '#ffcc00';
+    selfChar.style.cssText = `color:${sc};font-size:10px;border:1px solid ${sc};padding:0 3px;border-radius:3px`;
+    selfChar.textContent = _currentCharType;
+    selfEl.appendChild(selfChar);
+  }
   playerList.appendChild(selfEl);
 
-  // Show peers
+  // Show peers with character type
+  const charColors = { CJ: '#44ff44', Tommy: '#ff4488', Claude: '#aaaaaa', Niko: '#556644', Catalina: '#cc2222', Oz: '#ff00ff' };
   for (const [peerId, info] of peers) {
     const el = document.createElement('div');
-    el.style.cssText = 'color:#ffcc00;font-size:11px;padding:2px 0';
-    el.textContent = `${info.name || peerId.slice(0, 8)} - ${info.char || '?'}`;
+    el.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;padding:2px 0';
+    const charName = info.char || '?';
+    const charColor = charColors[charName] || '#ffcc00';
+    const nameSpan = document.createElement('span');
+    nameSpan.style.color = '#ffcc00';
+    nameSpan.textContent = info.name || peerId.slice(0, 8);
+    const charSpan = document.createElement('span');
+    charSpan.style.cssText = `color:${charColor};font-size:10px;border:1px solid ${charColor};padding:0 3px;border-radius:3px`;
+    charSpan.textContent = charName;
+    el.appendChild(nameSpan);
+    el.appendChild(charSpan);
+    // Show health/wanted if available
+    if (info.health != null) {
+      const hpSpan = document.createElement('span');
+      hpSpan.style.cssText = `color:${info.health > 50 ? '#44ff44' : info.health > 25 ? '#ffcc00' : '#ff4444'};font-size:9px`;
+      hpSpan.textContent = `${info.health}HP`;
+      el.appendChild(hpSpan);
+    }
+    if (info.gang) {
+      const gSpan = document.createElement('span');
+      gSpan.style.cssText = 'color:#aa44ff;font-size:9px';
+      gSpan.textContent = info.gang;
+      el.appendChild(gSpan);
+    }
+    if (info.wanted > 0) {
+      const wSpan = document.createElement('span');
+      wSpan.style.cssText = 'color:#ff4444;font-size:9px';
+      wSpan.textContent = '\u2605'.repeat(info.wanted);
+      el.appendChild(wSpan);
+    }
     playerList.appendChild(el);
   }
 
@@ -3509,8 +4164,9 @@ function _validateMove(peerId, data) {
   if (!peer || peer.x === undefined) return true; // first move, allow
   const dx = Math.abs((data.x || 0) - (peer.x || 0));
   const dy = Math.abs((data.y || 0) - (peer.y || 0));
-  // Reject teleporting (more than 3 tiles per move)
-  if (dx > 3 || dy > 3) {
+  // Allow up to 8 tiles per move (vehicles can move 6, plus local travel teleports)
+  // Only reject truly absurd jumps that indicate cheating
+  if (dx > 120 || dy > 120) {
     _logFn(`[SEC] Suspicious move from ${peer.name || peerId.slice(0, 8)}: dx=${dx} dy=${dy}`);
     return false;
   }
@@ -3527,6 +4183,10 @@ function _validateMove(peerId, data) {
 
 // Per-peer cooldown map for incoming PvP shots (H2 security fix)
 const peerShootTimestamps = new Map();
+
+// NPC seed for deterministic spawning across multiplayer peers
+let _npcSeedValue = Math.floor(Math.random() * 2147483647);
+window._npcSeedValue = _npcSeedValue;
 
 // --------------------------------------------------------
 //  EVENT LOG
@@ -3548,6 +4208,80 @@ function log(msg, cls = 'c-white') {
 // Inject log into db.js so saveGame can use it
 setLogFn(log);
 
+// --------------------------------------------------------
+//  ENCRYPTED CHEAT CODE SYSTEM
+//  Codes are AES-GCM encrypted — the cheat code IS the key.
+//  Use: node tools/encrypt-cheat.mjs <CODE> <js-code>
+// --------------------------------------------------------
+const CHEAT_BLOBS = [
+  'DPvFaprnmEcf54KgzruPMOd+axll5TjACZGWroyeYxZZC7qia52SOHXrlNhlqvl9gd8FAIGrt/KPmPdARGqc4UmqmoIg1avfmbd8Ja0doZAtCtPK+ZxSQGt/DFijpvRhAQElSOSRRu2eTXVRFkFBPxraFOoETY9DTEhXWa7BgtRdQVvQPnEUcl9jKMNkpyYjwAppYOT1mBx83TN44Lg=',
+  '3JBQt9Rdnwp3TzxY/CjNk7HrxhxxQYTZnSL/mWWM+1REylDPs/V3A74YZHMBb/dS8q0rkyQlWMQK3Ra5Dr1Lhcl/6dKAz93WNRjszicXmvrbbImkvUnt7ZlHLwnRvAUIBqwO3XW5XfuvngZGTIAzrIBYsW0fF3/p4Y8BWQSTPv+QT+dFjyHWifOJC82GMV/2t3LgumpgbhuzgDZPYSJL0d36RzGYgvpdljGdIrL4PUG4zH4s30Mj0F4Zug==',
+  '+/Gl2Utg7YsPETQQdIflp8LEHsMLBAD0HJwyWZcFr4RsvoMcCv1dnVp78gpjY3xgnn7ZxDtDWOwIVKX9RfFZYNZlRMM95fk26j+iKH3ImcNW9536XMHW9XoUFA6RbLhs78ddQ3godorcZjwKnruipX/VfPv8ou4BFeblKQgfv7r0CnySTts3A5hmPYu91TmCJaAB3MkIxIzWWQL5mLB39QamsDIpAmR8irOBlotqxGsHkTj4UlGMY41QCxKf4KOrRXhiI5ri4/1G7oB/8gjdbmRCq400Z5Iwautbr9/lEPhHV7Nro4npkIBxS7mG91Sqrjflq2CFxPOw09QzLVDMM43UHBVMZl2dncgSn/aoHBm4HHhPkaFHEjHCFFCwlcqa+SD7z8pgiET8rYEgCbePH8dhE6U=',
+  'GJ5l5S8nU4oVAtPHrgGPn34qSjB8sLBe8FlFgsIfc2nThNgBEOzouDnY/SQpgHAu/F4WwrRUr6rG3Wieaax691WYM3czhzxTjl7EvO/WiiX2gekQgoMfMZoWRnzE73yg+8Ob+NZNwJuNaY8iZ4M+KUSkbnm9OonhWotCGYieLDkkjsBuvb7c5jN30wMejJ9nSYVJYne7f8pvN7r2vjQk9/HCpam2cdhm1R8D6yjEdimC0PjO3Y7gywzkWNXuD8WWnfCl9aD2OdHqYEwvMP1cThbnIiJwmM8HSHQ=',
+  'TWOlyP1ZUbKcumHd2U1IFISkcF24pt9Gr+88nnAPEIQXYYMJ91hxbfUZHoz/izpoFgAVUPeacvnNCRf2tqa+iahT5cf/js5emgbcIxglwtm8ulRmwAjHJc+3KlcYRw3umdxIANpA+UjGF96vg4Z63TiOteq3otGOq6/qXJ0FbwIEcOKPFiDxDk36rFA='
+];
+
+async function _deriveCheatKey(password) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('duck-theft-auto-salt'), iterations: 100000, hash: 'SHA-256' },
+    keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+  );
+}
+
+async function _tryCheatCode(code) {
+  const upper = code.toUpperCase().trim();
+  if (!upper) return false;
+  const key = await _deriveCheatKey(upper);
+  for (const blob of CHEAT_BLOBS) {
+    try {
+      const raw = Uint8Array.from(atob(blob), c => c.charCodeAt(0));
+      const iv = raw.slice(0, 12);
+      const ciphertext = raw.slice(12);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+      const js = new TextDecoder().decode(decrypted);
+      // Execute the decrypted code in the game context
+      const fn = new Function('conn', 'q', 'q1', 'qv', 'log', 'updateHUD', 'spawnParticlesAtDuck',
+        'clearPoliceNPCs', 'stopSiren', 'GUN_LIST', 'advanceTime', 'processWorldEvents',
+        `return (async () => { ${js} })();`);
+      await fn(conn, q, q1, qv, log, updateHUD, spawnParticlesAtDuck,
+        clearPoliceNPCs, stopSiren, GUN_LIST, advanceTime, processWorldEvents);
+      return true;
+    } catch (_) { /* wrong key for this blob, try next */ }
+  }
+  return false;
+}
+
+function _openCheatInput() {
+  let existing = $('cheat-input');
+  if (existing) { existing.remove(); return; }
+  const input = document.createElement('input');
+  input.id = 'cheat-input';
+  input.type = 'text';
+  input.maxLength = 30;
+  input.placeholder = 'Enter cheat code...';
+  input.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:200;background:#111;border:2px solid #ff00ff;color:#ff00ff;font-family:"Courier New",monospace;font-size:16px;padding:10px 16px;width:280px;text-align:center;text-transform:uppercase;outline:none;letter-spacing:2px;';
+  document.body.appendChild(input);
+  input.focus();
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Escape') { input.remove(); return; }
+    if (e.key === 'Enter') {
+      const code = input.value;
+      input.remove();
+      if (!code.trim()) return;
+      log(`Trying code: ${'*'.repeat(code.length)}...`, 'c-magenta');
+      const ok = await _tryCheatCode(code);
+      if (!ok) {
+        log('Invalid code.', 'c-red');
+      }
+    }
+  });
+}
+
+// Wire up police attack callback from renderer
+setPoliceAttackCallback(handlePoliceAttack);
+
 // Wire up multiplayer callbacks
 setMPCallbacks({
   logFn: (msg) => log(msg, 'c-cyan'),
@@ -3564,6 +4298,7 @@ setMPCallbacks({
           city: p.city,
           day: clk.day,
           hour: clk.hour,
+          npcSeed: _npcSeedValue,
           hostPlayer: { name: p.name, char: p.char_type, x: p.x, y: p.y, health: p.health, wanted: p.wanted_level }
         };
         // Include all currently connected peers' positions
@@ -3592,6 +4327,11 @@ setMPCallbacks({
     // Host broadcast game_start → joiner auto-starts their own game
     if (data.action === 'game_start' && !getIsHost() && !gameActive) {
       log('Host started the game!', 'c-cyan');
+      if (data.npcSeed != null) {
+        _npcSeedValue = data.npcSeed;
+        setNPCSeed(data.npcSeed);
+        setMapSeed(data.npcSeed);
+      }
       window.startNewGame();
       return;
     }
@@ -3601,8 +4341,53 @@ setMPCallbacks({
       case 'crime': log(`${name} committed ${data.crime || 'a crime'}!`, 'c-red'); break;
       case 'rob': log(`${name} robbed ${data.place || 'a location'}!`, 'c-red'); break;
       case 'police': log(`${name} has cops on them!`, 'c-yellow'); break;
-      case 'death': log(`${name} was WASTED!`, 'c-red'); break;
-      case 'npc_kill': log(`${name} killed an NPC nearby!`, 'c-gray'); break;
+      case 'death': {
+        log(`${name} was WASTED!`, 'c-red');
+        // Show death particles at remote duck's position
+        const rd = getRemoteDucks().get(peerId);
+        if (rd) spawnParticles(rd.group.position.x, rd.group.position.z, 0xff0000, 25, 2, 2);
+        break;
+      }
+      case 'gang_join': log(`${name} joined your gang: ${data.gang}!`, 'c-magenta'); break;
+      case 'race_challenge': {
+        log(`${name} challenges everyone to a STREET RACE! $${data.buyIn} buy-in — 5 seconds to join!`, 'c-yellow');
+        // Auto-prompt to join if we have a vehicle and cash
+        (async () => {
+          const hv = await qv(`SELECT COUNT(*) FROM vehicles WHERE stored=0`);
+          const cash = await qv('SELECT cash FROM player');
+          if (hv && cash >= data.buyIn) {
+            showSubMenu(`RACE CHALLENGE from ${name}! $${data.buyIn} buy-in`, [
+              { label: `Join Race ($${data.buyIn})`, action: async () => {
+                await conn.query(`UPDATE player SET cash=cash-${data.buyIn}`);
+                broadcastAction({ action: 'race_accept', name: (await q1('SELECT name FROM player')).name, buyIn: data.buyIn });
+                log(`Joined the race! $${data.buyIn} on the line.`, 'c-cyan');
+                hideSubMenu(); await updateHUD();
+              }},
+              { label: 'Pass', action: () => { hideSubMenu(); showMainActions(); }}
+            ]);
+            // Auto-close after 5s
+            setTimeout(() => { if ($('sub-menu').style.display !== 'none') { hideSubMenu(); showMainActions(); } }, 5000);
+          }
+        })();
+        break;
+      }
+      case 'race_accept': {
+        log(`${name} joined the race!`, 'c-cyan');
+        _raceAcceptors.push({ name, peerId });
+        break;
+      }
+      case 'race_result': {
+        log(`Race over! Winner: ${data.winner} (pot: $${data.pot})`, data.winner === name ? 'c-green' : 'c-yellow');
+        break;
+      }
+      case 'npc_kill': {
+        log(`${name} killed an NPC nearby!`, 'c-gray');
+        if (data.npcId != null) {
+          const pos = killNPCById(data.npcId);
+          if (pos) spawnParticles(pos.x, pos.z, 0xff2222, 10, 1.5, 1);
+        }
+        break;
+      }
       default: log(`${name}: ${data.action}`, 'c-gray');
     }
   },
@@ -3648,6 +4433,13 @@ setMPCallbacks({
     // Client receives world state from host
     if (getIsHost()) return; // host doesn't apply sync from others
     log(`Received world sync — ${data.city}, Day ${data.day}`, 'c-cyan');
+
+    // Apply seeds from host so map and NPCs are identical
+    if (data.npcSeed != null) {
+      _npcSeedValue = data.npcSeed;
+      setNPCSeed(data.npcSeed);
+      setMapSeed(data.npcSeed);
+    }
 
     // Auto-start the client's game if not already running
     if (!gameActive) {
@@ -3939,6 +4731,7 @@ async function interactNPC(npc) {
         const pos = killNPC(npc);
         spawnParticles(pos.x, pos.z, 0xff4444, 8, 1.5, 1);
         log(`Jumped by a thug! -${dmg} HP`, 'c-red');
+        if (isMultiplayer()) broadcastAction({ action: 'npc_kill', npcId: pos.id });
         await checkDeath();
         hideSubMenu(); await updateHUD(); showMainActions();
       }
@@ -3953,161 +4746,118 @@ async function interactNPC(npc) {
 }
 
 // --------------------------------------------------------
-//  POLICE ENCOUNTER
+//  POLICE SYSTEM — Persistent zombie-style cops
 // --------------------------------------------------------
-let policeEncounterActive = false;
+let _policeActive = false; // tracks if police are currently on the map
+let _lastPoliceSpawnCheck = 0;
 
+// Update police presence based on wanted level — called on move and periodically
+async function updatePolicePresence() {
+  const p = await q1('SELECT wanted_level FROM player');
+  const wanted = p.wanted_level;
+  const currentCops = getPoliceNPCs().filter(c => c.alive).length;
+
+  if (wanted <= 0) {
+    if (currentCops > 0) {
+      clearPoliceNPCs();
+      stopSiren();
+      _policeActive = false;
+      setStatus('Idle');
+    }
+    return;
+  }
+
+  // Target cop count based on wanted level: 1/2/3/4/6
+  const targetCops = wanted <= 2 ? wanted : wanted <= 4 ? wanted + 1 : 6;
+
+  if (currentCops < targetCops) {
+    const now = Date.now();
+    if (now - _lastPoliceSpawnCheck > 3000) { // spawn new cops every 3s max
+      _lastPoliceSpawnCheck = now;
+      const toSpawn = Math.min(2, targetCops - currentCops);
+      for (let i = 0; i < toSpawn; i++) {
+        spawnPoliceNPC(duckGroup.position.x, duckGroup.position.z);
+      }
+      if (!_policeActive) {
+        startSiren();
+        _policeActive = true;
+        log('Cops are on you! Run or fight! (Space/F to shoot)', 'c-red');
+        setStatus('WANTED');
+      }
+    }
+  }
+}
+
+// Periodically spawn new cops while wanted (even if not moving)
+let _policePresenceInterval = null;
+function startPolicePresenceLoop() {
+  if (_policePresenceInterval) return;
+  _policePresenceInterval = setInterval(async () => {
+    if (!gameActive) return;
+    await updatePolicePresence();
+  }, 4000);
+}
+
+// Called by renderer when a cop attacks the player
+let _policeAttackCooldown = false;
+function handlePoliceAttack(type, cop, dist) {
+  if (_policeAttackCooldown) return;
+  _policeAttackCooldown = true;
+  setTimeout(() => _policeAttackCooldown = false, 300);
+
+  (async () => {
+    if (type === 'melee') {
+      // Cops beating the player on contact
+      const dmg = rand(3, 8);
+      const p = await q1('SELECT armor FROM player');
+      const armorAbsorb = Math.min(p.armor, dmg);
+      const healthDmg = dmg - armorAbsorb;
+      await conn.query(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
+      spawnParticlesAtDuck(0x4444ff, 4, 1, 0.5);
+      await checkDeath();
+      await updateHUD();
+    } else if (type === 'shoot') {
+      // Cop bullet — misses most of the time at range, more accurate up close
+      const hitChance = dist < 3 ? 40 : dist < 5 ? 25 : 15;
+      if (chance(hitChance)) {
+        const dmg = rand(5, 12);
+        const p = await q1('SELECT armor FROM player');
+        const armorAbsorb = Math.min(p.armor, dmg);
+        const healthDmg = dmg - armorAbsorb;
+        await conn.query(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
+        spawnParticlesAtDuck(0xff2222, 6, 1.2, 0.8);
+        log(`Police shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed)` : ''}`, 'c-red');
+        await checkDeath();
+        await updateHUD();
+      }
+    }
+  })();
+}
+
+// Legacy compatibility functions
 async function checkPolice() {
-  if (policeEncounterActive) return;
-  const p = await q1('SELECT * FROM player');
-  if (p.wanted_level <= 0) { clearPoliceNPCs(); return; }
-  if (!chance(p.wanted_level * 4)) return;
-  await triggerPoliceEncounter(p);
+  await updatePolicePresence();
 }
 
 async function checkPoliceOnMove() {
-  const p = await q1('SELECT * FROM player');
-  if (p.wanted_level <= 0) return;
-  if (policeEncounterActive) return;
-  const moveChance = p.wanted_level * 0.6;
-  if (!chance(moveChance)) return;
-  await triggerPoliceEncounter(p);
+  await updatePolicePresence();
 }
 
 async function checkNightAttack() {
   const clk = await q1('SELECT hour FROM game_clock');
   const isNight = clk.hour < 5 || clk.hour > 21;
   if (!isNight) return;
-  if (policeEncounterActive) return;
   const npc = getNearestNPC(3);
   if (!npc || !npc.hostile) return;
-  if (!chance(8)) return; // 8% chance per move at night near hostile NPC
+  if (!chance(8)) return;
   const dmg = rand(5, 20);
   await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
   const pos = killNPC(npc);
   spawnParticles(pos.x, pos.z, 0xff4444, 8, 1.5, 1);
   log(`A thug attacked you in the dark! -${dmg} HP`, 'c-red');
+  if (isMultiplayer()) broadcastAction({ action: 'npc_kill', npcId: pos.id });
   await checkDeath();
   await updateHUD();
-}
-
-async function triggerPoliceEncounter(p) {
-  policeEncounterActive = true;
-  setStatus('Police encounter!');
-
-  // Close any open menus first
-  hideSubMenu();
-
-  // Spawn cops visually
-  const copCount = Math.max(1, Math.min(3, Math.ceil(p.wanted_level / 2)));
-  for (let i = 0; i < copCount; i++) {
-    spawnPoliceNPC(duckGroup.position.x, duckGroup.position.z);
-  }
-
-  startSiren();
-  spawnParticlesAtDuck(0x4444ff, 10, 2, 2);
-
-  // Flash the screen blue/red briefly
-  const policeFlash = document.createElement('div');
-  policeFlash.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:49;pointer-events:none;animation:police-flash 0.3s ease 3;';
-  policeFlash.innerHTML = '<style>@keyframes police-flash{0%{background:rgba(255,0,0,0.3)}50%{background:rgba(0,0,255,0.3)}100%{background:transparent}}</style>';
-  document.body.appendChild(policeFlash);
-  setTimeout(() => policeFlash.remove(), 1000);
-
-  log('>>> POLICE ENCOUNTER! <<<', 'c-red');
-  if (p.wanted_level >= 3) log('Heavy resistance expected!', 'c-red');
-  if (p.wanted_level >= 4) log('Shoot to kill orders!', 'c-red');
-  if (p.wanted_level === 5) log('SWAT deployed!', 'c-red');
-
-  // Brief delay so player sees the cops before menu appears
-  await new Promise(r => setTimeout(r, 800));
-
-  showSubMenu(`Police! (${copCount} officer${copCount > 1 ? 's' : ''})`, [
-    { label: 'Run', action: () => policeRun(p) },
-    { label: 'Bribe', action: () => policeBribe(p) },
-    { label: 'Fight Back (if armed)', action: () => policeFight(p) },
-    { label: 'Surrender', action: () => policeSurrender(p) }
-  ]);
-}
-
-async function policeRun(p) {
-  const drivingSkill = (await qv(`SELECT level FROM skills WHERE name='driving'`)) || 1;
-  const stealthSkill = (await qv(`SELECT level FROM skills WHERE name='stealth'`)) || 1;
-  const hasPerk = await qv(`SELECT unlocked FROM perks WHERE name='Pro Driver'`);
-  let escapeChance = 40 + drivingSkill * 5 + stealthSkill * 3;
-  if (hasPerk) escapeChance += 15;
-  escapeChance = Math.min(escapeChance, 85);
-  if (chance(escapeChance)) {
-    log(`You escaped the cops! (${escapeChance}% chance)`, 'c-green');
-    spawnParticlesAtDuck(0x44ff44, 8, 2, 1);
-  } else {
-    const fine = rand(100, 500); const dmg = rand(10, 30);
-    await conn.query(`UPDATE player SET cash = GREATEST(0, cash - ${fine}), health = GREATEST(0, health - ${dmg}), wanted_level = GREATEST(0, wanted_level - 1)`);
-    log(`Busted! Fined $${fine}, took ${dmg}% damage.`, 'c-red');
-    spawnParticlesAtDuck(0xff2222, 15, 1.5, 1);
-    await checkDeath();
-  }
-  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
-  hideSubMenu(); await updateHUD();
-}
-
-async function policeFight(p) {
-  const gunBonus = await getGunBonus();
-  if (gunBonus <= 0) {
-    log("You don't have any weapons to fight with!", 'c-red');
-    return;
-  }
-  const strengthSkill = await getSkill('strength');
-  const cops = getPoliceNPCs();
-  const copCount = cops.length;
-  let winChance = 20 + gunBonus + strengthSkill * 3 - copCount * 10 - p.wanted_level * 5;
-  winChance = Math.max(5, Math.min(70, winChance));
-
-  log(`Fighting ${copCount} cop${copCount > 1 ? 's' : ''}... (${winChance}% win chance)`, 'c-yellow');
-  spawnParticlesAtDuck(0xff8800, 15, 2, 1);
-
-  if (chance(winChance)) {
-    const loot = rand(50, 200) * copCount;
-    const respect = rand(10, 30);
-    const dmg = rand(10, 30);
-    await conn.query(`UPDATE player SET cash=cash+${loot}, health=GREATEST(0,health-${dmg}), respect=respect+${respect}, wanted_level=LEAST(5,wanted_level+1)`);
-    log(`Took down the cops! Looted $${loot}, +${respect} Respect, -${dmg} HP. Wanted level increased!`, 'c-green');
-    spawnParticlesAtDuck(0x44ff44, 20, 2, 2);
-    await maybeSkillUp('strength');
-  } else {
-    const fine = rand(200, 800);
-    const dmg = rand(25, 60) + p.wanted_level * 5;
-    await conn.query(`UPDATE player SET cash=GREATEST(0,cash-${fine}), health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+1)`);
-    log(`Overpowered! Fined $${fine}, took ${dmg} damage. Wanted level increased!`, 'c-red');
-    spawnParticlesAtDuck(0xff2222, 20, 2, 1);
-    await checkDeath();
-  }
-  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
-  hideSubMenu(); await updateHUD();
-}
-
-async function policeBribe(p) {
-  let cost = rand(150, 750);
-  const hasPerk = await qv(`SELECT unlocked FROM perks WHERE name='Street Negotiator'`);
-  if (hasPerk) cost = Math.floor(cost * 0.9);
-  if (p.cash >= cost) {
-    await conn.query(`UPDATE player SET cash = cash - ${cost}, wanted_level = GREATEST(0, wanted_level - 2)`);
-    log(`Bribed the cops for $${cost}. Wanted level reduced.`, 'c-yellow');
-  } else {
-    log(`Not enough cash to bribe ($${cost} needed). They arrest you!`, 'c-red');
-    await conn.query(`UPDATE player SET wanted_level = 0, cash = GREATEST(0, cash - 200), health = GREATEST(0, health - 15)`);
-  }
-  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
-  hideSubMenu(); await updateHUD();
-}
-
-async function policeSurrender(p) {
-  const fine = rand(200, 800);
-  await conn.query(`UPDATE player SET wanted_level = 0, cash = GREATEST(0, cash - ${fine})`);
-  await advanceTime(2);
-  log(`Surrendered. Spent time in jail, fined $${fine}. Wanted level cleared.`, 'c-yellow');
-  stopSiren(); clearStatus(); clearPoliceNPCs(); policeEncounterActive = false;
-  hideSubMenu(); await updateHUD();
 }
 
 // --------------------------------------------------------
@@ -4117,12 +4867,12 @@ async function checkDeath() {
   const health = await qv('SELECT health FROM player');
   if (health <= 0) {
     const respLoss = rand(25, 50);
-    // Stop any active encounters
-    stopSiren(); clearPoliceNPCs(); policeEncounterActive = false; clearStatus();
+    // Stop any active police
+    stopSiren(); clearPoliceNPCs(); _policeActive = false; clearStatus();
 
     // Dramatic WASTED screen flash
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(255,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:opacity 2s;';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(255,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:opacity 2.5s;';
     overlay.innerHTML = '<div style="color:#fff;font-size:64px;font-weight:bold;text-shadow:0 0 30px #ff0000,0 0 60px #ff0000;font-family:Impact,sans-serif;letter-spacing:12px">WASTED</div>';
     document.body.appendChild(overlay);
 
@@ -4153,13 +4903,20 @@ async function checkDeath() {
     log(`║  Lost $200 and ${respLoss} Respect.          ║`, 'c-red');
     log('║  Wanted level cleared.               ║', 'c-red');
     log('╚══════════════════════════════════════╝', 'c-red');
-    if (isMultiplayer()) broadcastAction({ action: 'death', name: (await q1('SELECT name FROM player')).name });
+    if (isMultiplayer()) {
+      const mp = await q1('SELECT name, char_type, x, y, health, wanted_level, gang FROM player');
+      broadcastAction({ action: 'death', name: mp.name });
+      // Broadcast new position so peers see respawn at hospital (with small delay so death particles show first)
+      setTimeout(() => {
+        broadcastMove({ x: mp.x, y: mp.y, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level, gang: mp.gang || '' });
+      }, 500);
+    }
     await updateRank();
     await updateHUD();
 
-    // Fade out the wasted overlay
-    setTimeout(() => { overlay.style.opacity = '0'; }, 1500);
-    setTimeout(() => { overlay.remove(); }, 3500);
+    // Fade out the wasted overlay (hold longer for dramatic effect)
+    setTimeout(() => { overlay.style.opacity = '0'; }, 4000);
+    setTimeout(() => { overlay.remove(); }, 6500);
   }
 }
 
@@ -4282,7 +5039,7 @@ async function getShootCooldown() {
   // Better guns shoot faster: check best gun category owned
   const bestGun = await q1(`SELECT category, bonus FROM guns ORDER BY bonus DESC LIMIT 1`);
   if (!bestGun) return 400;
-  const cooldowns = { 'Pistol': 400, 'Shotgun': 500, 'SMG': 200, 'Rifle': 300, 'Heavy': 150, 'Sniper': 600 };
+  const cooldowns = { 'Pistol': 400, 'Shotgun': 500, 'SMG': 200, 'Rifle': 300, 'Heavy': 150, 'Sniper': 600, 'Melee': 350 };
   return cooldowns[bestGun.category] || 400;
 }
 async function playerShoot() {
@@ -4328,7 +5085,7 @@ async function playerShoot() {
     const loot = rand(5, 50);
     await conn.query(`UPDATE player SET cash=cash+${loot}, wanted_level=LEAST(5,wanted_level+1), respect=respect+1`);
     log(`Shot a civilian! Looted $${loot}. +1 Wanted.`, 'c-red');
-    if (isMultiplayer()) broadcastAction({ action: 'npc_kill', name: (await q1('SELECT name FROM player')).name });
+    if (isMultiplayer()) broadcastAction({ action: 'npc_kill', npcId: pos.id, name: (await q1('SELECT name FROM player')).name });
     const p = await q1('SELECT district, city FROM player');
     await conn.query(`UPDATE district_heat SET heat=heat+2 WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
     await maybeSkillUp('strength');
@@ -4375,18 +5132,34 @@ let moveDebounce = false;
 async function movePlayer(dx, dy) {
   if (moveDebounce) return;
   moveDebounce = true;
-  setTimeout(() => moveDebounce = false, 80);
+  const activeVehicle = await q1(`SELECT name FROM vehicles WHERE stored=0 LIMIT 1`);
+  const hasVehicle = !!activeVehicle;
+  // Look up vehicle speed from constants
+  let vehSpeed = 2;
+  if (hasVehicle) {
+    const vDef = VEHICLE_LIST.find(v => v.name === activeVehicle.name);
+    if (vDef) vehSpeed = vDef.speed || 2;
+  }
+  const debounceMs = hasVehicle ? Math.max(30, 80 - vehSpeed * 10) : 80;
+  setTimeout(() => moveDebounce = false, debounceMs);
 
   if (!_cachedPos) {
     const p = await q1('SELECT x,y FROM player');
     _cachedPos = { x: p.x, y: p.y };
   }
-  const nx = _cachedPos.x + dx;
-  const ny = _cachedPos.y + dy;
-  if (nx < 0 || nx >= MAP_SIZE || ny < 0 || ny >= MAP_SIZE) return;
-  if (!currentMapGrid) return;
-  const tile = currentMapGrid[ny][nx];
-  if (tile === T.WALL || tile === T.WATER) return;
+
+  // Vehicle speed determines tiles per keypress (1 on foot)
+  const steps = hasVehicle ? vehSpeed : 1;
+  let nx = _cachedPos.x, ny = _cachedPos.y;
+  for (let s = 0; s < steps; s++) {
+    const tx = nx + dx, ty = ny + dy;
+    if (tx < 0 || tx >= MAP_SIZE || ty < 0 || ty >= MAP_SIZE) break;
+    if (!currentMapGrid) break;
+    const tile = currentMapGrid[ty][tx];
+    if (tile === T.WALL || tile === T.WATER) break;
+    nx = tx; ny = ty;
+  }
+  if (nx === _cachedPos.x && ny === _cachedPos.y) return;
   _cachedPos.x = nx;
   _cachedPos.y = ny;
   await conn.query(`UPDATE player SET x=${nx}, y=${ny}`);
@@ -4398,8 +5171,8 @@ async function movePlayer(dx, dy) {
 
   // Broadcast position to peers (use cached pos + single query for other fields)
   if (isMultiplayer()) {
-    const mp = await q1('SELECT name, char_type, health, wanted_level FROM player');
-    broadcastMove({ x: nx, y: ny, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level });
+    const mp = await q1('SELECT name, char_type, health, wanted_level, gang FROM player');
+    broadcastMove({ x: nx, y: ny, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level, gang: mp.gang || '' });
   }
 
   await updateDistrict(nx, ny);
@@ -4486,7 +5259,6 @@ function showMainActions() {
     { key: 'G', label: 'Garage',         action: menuGarage },
     { key: 'F5', label: 'Save Game',     action: saveGame },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
-    { key: 'T', label: 'Wait/Rest',     action: menuWait },
     { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
   const el = $('actions');
@@ -4533,14 +5305,42 @@ async function menuTravel() {
     });
   }
   const cityDistricts = CITIES[p.city].districts;
-  for (const d of cityDistricts) {
+  const cols = Math.ceil(Math.sqrt(cityDistricts.length));
+  const rows = Math.ceil(cityDistricts.length / cols);
+  const cellW = Math.floor(MAP_SIZE / cols);
+  const cellH = Math.floor(MAP_SIZE / rows);
+  for (let di = 0; di < cityDistricts.length; di++) {
+    const d = cityDistricts[di];
+    const col = di % cols;
+    const row = Math.floor(di / cols);
     options.push({
       label: `[Local] ${d}`,
       action: async () => {
-        await conn.query(`UPDATE player SET district='${d.replace(/'/g,"''")}'`);
+        // Teleport to the center of the district zone
+        const targetX = Math.floor(col * cellW + cellW / 2);
+        const targetY = Math.floor(row * cellH + cellH / 2);
+        // Find nearest walkable tile from target center
+        let sx = targetX, sy = targetY;
+        if (currentMapGrid) {
+          let found = false;
+          for (let r = 0; r < 15 && !found; r++) {
+            for (let dy = -r; dy <= r && !found; dy++) {
+              for (let dx = -r; dx <= r && !found; dx++) {
+                const tx = targetX+dx, ty = targetY+dy;
+                if (tx < 1 || tx >= MAP_SIZE-1 || ty < 1 || ty >= MAP_SIZE-1) continue;
+                const t = currentMapGrid[ty][tx];
+                if (t !== T.WALL && t !== T.WATER) { sx = tx; sy = ty; found = true; }
+              }
+            }
+          }
+        }
+        await conn.query(`UPDATE player SET x=${sx}, y=${sy}, district='${d.replace(/'/g,"''")}'`);
+        _cachedPos = { x: sx, y: sy };
+        setDuckTarget(sx + 0.5, sy + 0.5);
+        if (duckGroup) { duckGroup.position.x = sx + 0.5; duckGroup.position.z = sy + 0.5; }
         await advanceTime(1); await processWorldEvents(); await checkPolice();
-        log(`Moved to ${d}.`, 'c-white');
-        hideSubMenu(); await updateHUD(); showMainActions();
+        log(`Traveled to ${d}.`, 'c-white');
+        hideSubMenu(); await updateHUD(); await checkPOI(); showMainActions();
       }
     });
   }
@@ -4654,17 +5454,13 @@ async function commitCrime(crime) {
   }
   clearStatus();
   await checkDeath(); await processWorldEvents();
-  // High-heat crimes always trigger police
-  if (crime.heat >= 15 && !policeEncounterActive) {
-    const pp = await q1('SELECT * FROM player');
-    // Force at least 1 wanted for the encounter
+  // High-heat crimes trigger immediate police spawns
+  if (crime.heat >= 15) {
+    const pp = await q1('SELECT wanted_level FROM player');
     if (pp.wanted_level <= 0) await conn.query(`UPDATE player SET wanted_level=1`);
-    const pp2 = await q1('SELECT * FROM player');
     log('Sirens everywhere! The cops are on you!', 'c-red');
-    await triggerPoliceEncounter(pp2);
-    return;
   }
-  await checkPolice();
+  await updatePolicePresence();
   hideSubMenu(); await updateHUD(); showMainActions();
 }
 
@@ -4739,7 +5535,19 @@ async function menuShops() {
       const cash = await qv('SELECT cash FROM player');
       if (cash < info.price) { log('Not enough cash!', 'c-red'); return; }
       await conn.query(`UPDATE player SET cash=cash-${info.price}`);
+      // Immediate-effect items
       if (name === 'Adrenaline Shot') { await conn.query(`UPDATE player SET adrenaline = 1`); }
+      else if (name === 'Bulletproof Vest') { await conn.query(`UPDATE player SET armor=LEAST(100,armor+100)`); }
+      else if (name === 'Gold Watch') { await conn.query(`UPDATE player SET respect=respect+50`); }
+      else if (name === 'Jetpack Fuel') {
+        // Instant travel to random district
+        log('Jetpack activated! Choose a district from Travel menu.', 'c-cyan');
+      }
+      else if (name === 'Smoke Grenade' && (await qv('SELECT wanted_level FROM player')) > 0) {
+        await conn.query(`UPDATE player SET wanted_level=0`);
+        clearPoliceNPCs(); stopSiren();
+        log('Smoke grenade deployed! Cops lost you!', 'c-green');
+      }
       else { await conn.query(`INSERT INTO inventory VALUES ('${name}',1) ON CONFLICT(item) DO UPDATE SET qty=qty+1`); }
       log(`Bought ${name} for $${info.price}.`, 'c-green');
       await updateHUD();
@@ -4903,6 +5711,26 @@ async function menuGang() {
         hideSubMenu(); await updateHUD(); showMainActions();
       }
     }));
+    // In multiplayer, show other players' gangs to join
+    if (isMultiplayer()) {
+      const seenGangs = new Set(localGangs);
+      for (const [, info] of getPeers()) {
+        if (info.gang && !seenGangs.has(info.gang)) {
+          seenGangs.add(info.gang);
+          const g = info.gang;
+          const owner = info.name || '?';
+          options.push({
+            label: `Join ${g} (${owner}'s crew) - Multiplayer gang`,
+            action: async () => {
+              await conn.query(`UPDATE player SET gang='${g.replace(/'/g,"''")}', gang_rank='Outsider'`);
+              log(`Joined ${owner}'s gang: ${g}!`, 'c-magenta');
+              if (isMultiplayer()) broadcastAction({ action: 'gang_join', gang: g, name: (await q1('SELECT name FROM player')).name });
+              hideSubMenu(); await updateHUD(); showMainActions();
+            }
+          });
+        }
+      }
+    }
     if (p.respect >= 1500) {
       options.push({ label: 'Create Your Own Gang (1500+ Respect)', action: async () => {
         const rawName = prompt('Enter gang name:');
@@ -5108,7 +5936,7 @@ async function menuStripClub() {
   const stripOptions = [];
   if (ownsClub > 0) {
     stripOptions.push({ label: 'Hide out in the back office (Heal, lose cops)', action: async () => {
-      stopSiren(); clearPoliceNPCs(); policeEncounterActive = false;
+      stopSiren(); clearPoliceNPCs(); _policeActive = false;
       await conn.query(`UPDATE player SET wanted_level=0, health=LEAST(100,health+30)`);
       await advanceTime(3);
       log('Hid out in your own club. Cops lost your trail. +30 HP, wanted cleared.', 'c-green');
@@ -5211,36 +6039,100 @@ async function menuGambling() {
 // --------------------------------------------------------
 //  STREET RACING
 // --------------------------------------------------------
+let _raceTimeout = null;
+let _raceActive = false;
+
 async function menuStreetRace() {
   const hasVehicle = await qv(`SELECT COUNT(*) FROM vehicles WHERE stored=0`);
   if (!hasVehicle) { log('You need a vehicle to street race!', 'c-red'); return; }
+  if (_raceActive) { log('A race is already in progress!', 'c-yellow'); return; }
   const drivingSkill = await getSkill('driving');
-  const buyIn = rand(100, 500);
+  const buyIn = rand(200, 1000);
   const cash = await qv('SELECT cash FROM player');
   if (cash < buyIn) { log(`Need $${buyIn} buy-in for the race!`, 'c-red'); return; }
-  showSubMenu(`Street Race - $${buyIn} buy-in`, [
-    { label: 'Enter Race', action: async () => {
-      setStatus('Street racing...');
-      await conn.query(`UPDATE player SET cash=cash-${buyIn}`);
-      await advanceTime(2);
-      const winChance = 30 + drivingSkill * 5;
-      if (chance(winChance)) {
-        const prize = buyIn * 3;
-        await conn.query(`UPDATE player SET cash=cash+${prize}`); log(`Won the race! Prize: $${prize}!`, 'c-green');
-        await maybeSkillUp('driving');
-      } else if (chance(50)) {
-        log('Came in second. Got your buy-in back.', 'c-yellow');
-        await conn.query(`UPDATE player SET cash=cash+${buyIn}`);
-      } else {
-        const dmg = rand(5, 20);
-        await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
-        log(`Crashed out! Lost $${buyIn} and ${dmg}% HP.`, 'c-red'); await checkDeath();
-      }
-      if (chance(30)) await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
-      clearStatus();
-      await checkPolice(); hideSubMenu(); await updateHUD(); showMainActions();
-    }}
-  ]);
+
+  if (isMultiplayer()) {
+    // Multiplayer race — broadcast challenge, 5 second window
+    showSubMenu(`Street Race Challenge - $${buyIn} buy-in`, [
+      { label: `Challenge all players ($${buyIn} buy-in, 5s to join, losers forfeit)`, action: async () => {
+        await conn.query(`UPDATE player SET cash=cash-${buyIn}`);
+        _raceActive = true;
+        const playerName = (await q1('SELECT name FROM player')).name;
+        broadcastAction({ action: 'race_challenge', name: playerName, buyIn });
+        log(`Race challenge sent! $${buyIn} buy-in. Waiting 5 seconds for racers...`, 'c-yellow');
+        hideSubMenu(); await updateHUD();
+        // Wait 5s then resolve race
+        _raceTimeout = setTimeout(async () => {
+          const racers = _raceAcceptors || [];
+          const totalPot = buyIn * (racers.length + 1);
+          log(`Race starts! ${racers.length + 1} racer${racers.length ? 's' : ''}, pot: $${totalPot}`, 'c-cyan');
+          await advanceTime(1);
+          // Calculate win — driving skill + vehicle speed + randomness
+          const activeV = await q1(`SELECT name FROM vehicles WHERE stored=0 LIMIT 1`);
+          const vDef = activeV ? VEHICLE_LIST.find(v => v.name === activeV.name) : null;
+          const myScore = drivingSkill * 5 + (vDef?.speed || 2) * 10 + rand(0, 50);
+          let won = true;
+          for (const r of racers) {
+            const opScore = rand(10, 60) + rand(0, 40); // NPC-like randomness for peers
+            if (opScore > myScore) { won = false; break; }
+          }
+          if (racers.length === 0) {
+            // Solo race against NPCs
+            won = chance(30 + drivingSkill * 5 + (vDef?.speed || 2) * 5);
+          }
+          if (won) {
+            await conn.query(`UPDATE player SET cash=cash+${totalPot}`);
+            log(`YOU WON THE RACE! Prize: $${totalPot}!`, 'c-green');
+            spawnParticlesAtDuck(0xffd700, 25, 3, 2);
+            broadcastAction({ action: 'race_result', winner: playerName, pot: totalPot });
+            await maybeSkillUp('driving');
+          } else {
+            log(`You lost the race! Forfeited $${buyIn}.`, 'c-red');
+            broadcastAction({ action: 'race_result', winner: 'someone else', pot: totalPot });
+            spawnParticlesAtDuck(0xff2222, 15, 2, 1);
+          }
+          if (chance(25)) await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+          _raceActive = false;
+          _raceAcceptors = [];
+          await updateHUD(); showMainActions();
+        }, 5000);
+      }},
+      { label: 'Solo Race (vs NPCs)', action: () => _soloRace(buyIn, drivingSkill) }
+    ]);
+  } else {
+    // Single player — just solo race
+    showSubMenu(`Street Race - $${buyIn} buy-in`, [
+      { label: 'Enter Race', action: () => _soloRace(buyIn, drivingSkill) }
+    ]);
+  }
+}
+
+let _raceAcceptors = [];
+
+async function _soloRace(buyIn, drivingSkill) {
+  setStatus('Street racing...');
+  await conn.query(`UPDATE player SET cash=cash-${buyIn}`);
+  await advanceTime(1);
+  const activeV = await q1(`SELECT name FROM vehicles WHERE stored=0 LIMIT 1`);
+  const vDef = activeV ? VEHICLE_LIST.find(v => v.name === activeV.name) : null;
+  const winChance = 25 + drivingSkill * 5 + (vDef?.speed || 2) * 5;
+  if (chance(winChance)) {
+    const prize = buyIn * 3;
+    await conn.query(`UPDATE player SET cash=cash+${prize}`);
+    log(`Won the race! Prize: $${prize}!`, 'c-green');
+    spawnParticlesAtDuck(0xffd700, 20, 3, 2);
+    await maybeSkillUp('driving');
+  } else if (chance(50)) {
+    log('Came in second. Got your buy-in back.', 'c-yellow');
+    await conn.query(`UPDATE player SET cash=cash+${buyIn}`);
+  } else {
+    const dmg = rand(5, 20);
+    await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+    log(`Crashed out! Lost $${buyIn} and ${dmg}% HP.`, 'c-red'); await checkDeath();
+  }
+  if (chance(30)) await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+  clearStatus();
+  await checkPolice(); hideSubMenu(); await updateHUD(); showMainActions();
 }
 
 // --------------------------------------------------------
@@ -5363,63 +6255,7 @@ async function menuNews() {
   showSubMenuHTML('News Feed', html);
 }
 
-// --------------------------------------------------------
-//  WAIT / REST
-// --------------------------------------------------------
-async function menuWait() {
-  const clk = await q1('SELECT * FROM game_clock');
-  const safeHouseLevel = await qv(`SELECT level FROM gang_upgrades WHERE name='safe_house'`) || 0;
-  const ownedBiz = await qv(`SELECT COUNT(*) FROM businesses`) || 0;
-  const canHideOut = safeHouseLevel > 0 || ownedBiz > 0;
-  const options = [
-    { label: 'Wait 1 hour', action: async () => {
-      await advanceTime(1); await processWorldEvents();
-      if (chance(15)) { await conn.query(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`); log('Laying low... wanted level decreased.', 'c-green'); }
-      log('Waited 1 hour.', 'c-gray');
-      hideSubMenu(); await updateHUD(); showMainActions();
-    }},
-    { label: 'Wait until dawn (6:00)', action: async () => {
-      const h = clk.hour >= 6 ? (24 - clk.hour + 6) : (6 - clk.hour);
-      await advanceTime(h); await processWorldEvents();
-      log(`Rested ${h} hours until dawn.`, 'c-cyan');
-      hideSubMenu(); await updateHUD(); showMainActions();
-    }},
-    { label: 'Wait until noon (12:00)', action: async () => {
-      const h = clk.hour >= 12 ? (24 - clk.hour + 12) : (12 - clk.hour);
-      await advanceTime(h); await processWorldEvents();
-      log(`Waited ${h} hours until noon.`, 'c-cyan');
-      hideSubMenu(); await updateHUD(); showMainActions();
-    }},
-    { label: 'Wait until dusk (18:00)', action: async () => {
-      const h = clk.hour >= 18 ? (24 - clk.hour + 18) : (18 - clk.hour);
-      await advanceTime(h); await processWorldEvents();
-      log(`Waited ${h} hours until dusk.`, 'c-cyan');
-      hideSubMenu(); await updateHUD(); showMainActions();
-    }},
-    { label: 'Wait until midnight (0:00)', action: async () => {
-      const h = clk.hour === 0 ? 24 : (24 - clk.hour);
-      await advanceTime(h); await processWorldEvents();
-      log(`Waited ${h} hours until midnight.`, 'c-cyan');
-      hideSubMenu(); await updateHUD(); showMainActions();
-    }}
-  ];
-  if (canHideOut) {
-    options.unshift({
-      label: `Rest at ${safeHouseLevel > 0 ? 'Safe House' : 'your Business'} (Sleep, heal, lose cops)`,
-      action: async () => {
-        const hoursToMorning = clk.hour >= 8 ? (24 - clk.hour + 8) : (8 - clk.hour);
-        const restHours = Math.max(hoursToMorning, 4);
-        stopSiren(); clearPoliceNPCs(); policeEncounterActive = false;
-        await conn.query(`UPDATE player SET wanted_level=0, health=LEAST(100,health+40)`);
-        await advanceTime(restHours); await processWorldEvents();
-        log(`Laid low and rested for ${restHours} hours. Wanted level cleared, +40 HP.`, 'c-green');
-        spawnParticlesAtDuck(0x44ff44, 10, 1.5, 1.5);
-        hideSubMenu(); await updateHUD(); showMainActions();
-      }
-    });
-  }
-  showSubMenu(`Current time: Day ${clk.day}, ${String(clk.hour).padStart(2,'0')}:00`, options);
-}
+// menuWait removed — time only advances through game actions (jobs, crimes, travel, etc.)
 
 // --------------------------------------------------------
 //  HELP / SETTINGS
@@ -5570,7 +6406,7 @@ function rebuildActionKeys() {
     { key: '7', action: menuDrugs }, { key: '8', action: menuVehicles }, { key: '9', action: menuGang },
     { key: '0', action: menuGambling }, { key: 'h', action: menuHookers }, { key: 'p', action: menuPerks },
     { key: 'i', action: menuInventory }, { key: 'n', action: menuNews }, { key: 'f5', action: saveGame },
-    { key: 'r', action: menuStreetRace }, { key: 't', action: menuWait }, { key: 'g', action: menuGarage }, { key: '/', action: menuHelp }
+    { key: 'r', action: menuStreetRace }, { key: 'g', action: menuGarage }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
@@ -5596,7 +6432,7 @@ document.addEventListener('keydown', async (e) => {
 
   if (e.key === 'Escape' || e.key === 'Backspace') {
     e.preventDefault();
-    if (policeEncounterActive) return; // Can't escape police encounters
+    // Police are persistent now — Escape just closes menus
     stopSiren();
     hideSubMenu();
     showMainActions();
@@ -5638,6 +6474,13 @@ document.addEventListener('keydown', async (e) => {
       currentSubOptions[subMenuSelection].action();
       return;
     }
+    return;
+  }
+
+  // Cheat code input (backtick ` key)
+  if (e.key === '`') {
+    e.preventDefault();
+    _openCheatInput();
     return;
   }
 
@@ -5705,6 +6548,9 @@ window.startNewGame = async function() {
   const startCity = selectedCard.dataset.city;
   const bonus = selectedCard.dataset.bonus;
   await initSchema();
+  // Set seeds for deterministic spawning (host generates, clients receive via worldSync)
+  setNPCSeed(_npcSeedValue);
+  setMapSeed(_npcSeedValue);
   await initPlayer(name, startCity, bonus, charType);
   applyCharacterSkin(charType);
   await initWorld();
@@ -5714,24 +6560,31 @@ window.startNewGame = async function() {
   setGameActive(true);
   log(`Welcome to Duck Theft Auto, ${name}!`, 'c-gold');
   if (startCity !== 'Los Santos') log(`Starting in ${startCity}.`, 'c-cyan');
-  if (charType.toLowerCase() === 'oz') {
+  const ct = charType.toLowerCase();
+  if (ct === 'oz') {
     log('HACKER MODE: $1,000,000 | All weapons unlocked | Max skills | Full armor', 'c-magenta');
     log('Oz is strapped and ready. No one stands a chance.', 'c-magenta');
-  } else if (bonus === 'cash') {
-    log('Street smart bonus: extra starting cash!', 'c-yellow');
+  } else if (ct === 'cj') {
+    log('CJ: $2,000 | +2 charisma | Starting respect', 'c-yellow');
+  } else if (ct === 'tommy') {
+    log('Tommy: $3,500 | Hawk 9 pistol | Body armor', 'c-yellow');
+  } else if (ct === 'claude') {
+    log('Claude: $2,500 | +2 stealth | Underworld respect', 'c-yellow');
+  } else if (ct === 'niko') {
+    log('Niko: $2,000 | +2 strength | Heavy armor | Street respect', 'c-yellow');
+  } else if (ct === 'catalina') {
+    log('Catalina: $3,000 | +2 driving | Viper SMG', 'c-yellow');
   } else if (bonus !== 'none') {
     log(`Character bonus: +2 ${bonus} skill!`, 'c-cyan');
   }
   log('Move: WASD/Arrows | Shoot: Space/F | Interact: ENTER | Save: F5', 'c-cyan');
   log('[1] Travel  [2] Work  [3] Crime  [4] Guns  [5] Hospital  [6] Shops', 'c-gray');
   log('[7] Drugs  [8] Vehicles  [9] Gang & Empire  [0] Gambling', 'c-gray');
-  const isOzChar = charType.toLowerCase() === 'oz';
-  const startCash = isOzChar ? '1,000,000' : bonus === 'cash' ? '750' : '500';
-  log('Starting cash: $' + startCash + '. Earn respect, join a gang, build your empire.', 'c-white');
-  if (!isOzChar) log('Tip: Start with legal jobs [2] to earn cash safely, then try crime [3] for bigger payoffs.', 'c-yellow');
+  if (ct !== 'oz') log('Tip: Start with legal jobs [2] to earn cash safely, then try crime [3] for bigger payoffs.', 'c-yellow');
   await updateHUD(); await checkPOI();
   showMainActions();
   if (!window._autoSaveInterval) window._autoSaveInterval = setInterval(() => { if (gameActive) saveGame(); }, 5 * 60 * 1000);
+  startPolicePresenceLoop();
 };
 
 window.loadGame = async function(slotName) {
@@ -5742,6 +6595,10 @@ window.loadGame = async function(slotName) {
     showMainActions
   }, slotName);
   if (!loaded) { alert('No save game found. Starting new game.'); return; }
+  // Comeback cash bonus on load
+  const comebackBonus = 1000;
+  await conn.query(`UPDATE player SET cash = cash + ${comebackBonus}`);
+  log(`Welcome back! +$${comebackBonus.toLocaleString()} comeback bonus.`, 'c-gold');
   // Apply character skin from saved char_type
   const p = await q1('SELECT name, char_type FROM player');
   if (p) applyCharacterSkin(p.char_type || p.name);

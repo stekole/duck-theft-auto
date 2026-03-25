@@ -107,6 +107,7 @@ function _startLobbyAnnouncing() {
 
 let _currentRoomCode = '';
 let _currentPlayerName = '';
+let _currentCharType = '';
 let _currentHasPassword = false;
 let _currentCity = '';
 
@@ -160,6 +161,7 @@ export function hostGame(roomCode, playerName, charType, password = '') {
   isHost = true;
   _currentRoomCode = roomCode;
   _currentPlayerName = playerName;
+  _currentCharType = charType;
   _currentHasPassword = !!password;
   const result = _joinRoom(roomCode, playerName, charType, password);
   if (result) _startLobbyAnnouncing();
@@ -168,6 +170,7 @@ export function hostGame(roomCode, playerName, charType, password = '') {
 
 export function joinGame(roomCode, playerName, charType, password = '') {
   isHost = false;
+  _currentCharType = charType;
   return _joinRoom(roomCode, playerName, charType, password);
 }
 
@@ -393,6 +396,7 @@ function _updatePeerData(peerId, data) {
     y: data.y ?? existing.y,
     health: data.health ?? existing.health,
     wanted: data.wanted ?? existing.wanted,
+    gang: data.gang ?? existing.gang ?? '',
     lastUpdate: Date.now()
   });
 }
@@ -426,7 +430,61 @@ async function _logConnectionEvent(peerId, event) {
 //  LOBBY UI
 // --------------------------------------------------------
 
+function _updateMPHud() {
+  const bar = document.getElementById('mp-hud-bar');
+  if (!bar || !room) { if (bar) bar.style.display = 'none'; return; }
+  bar.style.display = 'block';
+  const codeEl = document.getElementById('mp-hud-code');
+  const countEl = document.getElementById('mp-hud-count');
+  const playersEl = document.getElementById('mp-hud-players');
+  if (codeEl) codeEl.textContent = _currentRoomCode;
+  if (countEl) countEl.textContent = peers.size + 1;
+  if (playersEl) {
+    playersEl.innerHTML = '';
+    // Self
+    const selfDiv = document.createElement('div');
+    selfDiv.style.cssText = 'color:#00ff00;font-size:10px;padding:1px 0';
+    selfDiv.textContent = `${_currentPlayerName || 'You'} (${_currentCharType || '?'}) ${isHost ? '- Host' : ''}`;
+    playersEl.appendChild(selfDiv);
+    // Peers
+    const charColors = { CJ:'#44ff44', Tommy:'#ff4488', Claude:'#aaa', Niko:'#556644', Catalina:'#cc2222', Oz:'#ff00ff' };
+    for (const [, info] of peers) {
+      const div = document.createElement('div');
+      div.style.cssText = `color:${charColors[info.char] || '#ffcc00'};font-size:10px;padding:1px 0`;
+      let txt = `${info.name || '?'} (${info.char || '?'})`;
+      if (info.gang) txt += ` [${info.gang}]`;
+      if (info.health != null) txt += ` ${info.health}HP`;
+      if (info.wanted > 0) txt += ' ' + '\u2605'.repeat(info.wanted);
+      div.textContent = txt;
+      playersEl.appendChild(div);
+    }
+  }
+  // Wire toggle button once
+  const toggleBtn = document.getElementById('mp-hud-toggle');
+  if (toggleBtn && !toggleBtn._wired) {
+    toggleBtn._wired = true;
+    toggleBtn.addEventListener('click', () => {
+      const pl = document.getElementById('mp-hud-players');
+      if (pl) {
+        const show = pl.style.display === 'none';
+        pl.style.display = show ? 'block' : 'none';
+        toggleBtn.textContent = show ? 'Hide' : 'Show';
+      }
+    });
+    // Copy room code
+    const codeEl2 = document.getElementById('mp-hud-code');
+    if (codeEl2) codeEl2.addEventListener('click', () => {
+      navigator.clipboard.writeText(codeEl2.textContent).then(() => {
+        const orig = codeEl2.textContent;
+        codeEl2.textContent = 'Copied!'; codeEl2.style.color = '#44ff44';
+        setTimeout(() => { codeEl2.textContent = orig; codeEl2.style.color = '#ff6600'; }, 1200);
+      });
+    });
+  }
+}
+
 function _updateLobbyUI() {
+  _updateMPHud();
   const lobbyEl = document.getElementById('mp-lobby');
   if (!lobbyEl) return;
 
@@ -435,17 +493,57 @@ function _updateLobbyUI() {
 
   playerList.innerHTML = '';
 
-  // Show self
+  // Show self with character badge
+  const selfCharColors = { CJ: '#44ff44', Tommy: '#ff4488', Claude: '#aaaaaa', Niko: '#556644', Catalina: '#cc2222', Oz: '#ff00ff' };
   const selfEl = document.createElement('div');
-  selfEl.style.cssText = 'color:#00ff00;font-size:11px;padding:2px 0';
-  selfEl.textContent = `You ${isHost ? '(Host)' : '(Client)'}`;
+  selfEl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;padding:2px 0';
+  const selfName = document.createElement('span');
+  selfName.style.color = '#00ff00';
+  selfName.textContent = `${_currentPlayerName || 'You'} ${isHost ? '(Host)' : '(Client)'}`;
+  selfEl.appendChild(selfName);
+  if (_currentCharType) {
+    const selfChar = document.createElement('span');
+    const sc = selfCharColors[_currentCharType] || '#ffcc00';
+    selfChar.style.cssText = `color:${sc};font-size:10px;border:1px solid ${sc};padding:0 3px;border-radius:3px`;
+    selfChar.textContent = _currentCharType;
+    selfEl.appendChild(selfChar);
+  }
   playerList.appendChild(selfEl);
 
-  // Show peers
+  // Show peers with character type
+  const charColors = { CJ: '#44ff44', Tommy: '#ff4488', Claude: '#aaaaaa', Niko: '#556644', Catalina: '#cc2222', Oz: '#ff00ff' };
   for (const [peerId, info] of peers) {
     const el = document.createElement('div');
-    el.style.cssText = 'color:#ffcc00;font-size:11px;padding:2px 0';
-    el.textContent = `${info.name || peerId.slice(0, 8)} - ${info.char || '?'}`;
+    el.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;padding:2px 0';
+    const charName = info.char || '?';
+    const charColor = charColors[charName] || '#ffcc00';
+    const nameSpan = document.createElement('span');
+    nameSpan.style.color = '#ffcc00';
+    nameSpan.textContent = info.name || peerId.slice(0, 8);
+    const charSpan = document.createElement('span');
+    charSpan.style.cssText = `color:${charColor};font-size:10px;border:1px solid ${charColor};padding:0 3px;border-radius:3px`;
+    charSpan.textContent = charName;
+    el.appendChild(nameSpan);
+    el.appendChild(charSpan);
+    // Show health/wanted if available
+    if (info.health != null) {
+      const hpSpan = document.createElement('span');
+      hpSpan.style.cssText = `color:${info.health > 50 ? '#44ff44' : info.health > 25 ? '#ffcc00' : '#ff4444'};font-size:9px`;
+      hpSpan.textContent = `${info.health}HP`;
+      el.appendChild(hpSpan);
+    }
+    if (info.gang) {
+      const gSpan = document.createElement('span');
+      gSpan.style.cssText = 'color:#aa44ff;font-size:9px';
+      gSpan.textContent = info.gang;
+      el.appendChild(gSpan);
+    }
+    if (info.wanted > 0) {
+      const wSpan = document.createElement('span');
+      wSpan.style.cssText = 'color:#ff4444;font-size:9px';
+      wSpan.textContent = '\u2605'.repeat(info.wanted);
+      el.appendChild(wSpan);
+    }
     playerList.appendChild(el);
   }
 
@@ -550,8 +648,9 @@ function _validateMove(peerId, data) {
   if (!peer || peer.x === undefined) return true; // first move, allow
   const dx = Math.abs((data.x || 0) - (peer.x || 0));
   const dy = Math.abs((data.y || 0) - (peer.y || 0));
-  // Reject teleporting (more than 3 tiles per move)
-  if (dx > 3 || dy > 3) {
+  // Allow up to 8 tiles per move (vehicles can move 6, plus local travel teleports)
+  // Only reject truly absurd jumps that indicate cheating
+  if (dx > 120 || dy > 120) {
     _logFn(`[SEC] Suspicious move from ${peer.name || peerId.slice(0, 8)}: dx=${dx} dy=${dy}`);
     return false;
   }

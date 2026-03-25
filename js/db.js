@@ -107,7 +107,14 @@ export async function loadCityMap(cityName) {
 
 export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none', charType = '') {
   const isOz = (charType || name).toLowerCase() === 'oz';
-  let cash = isOz ? 1000000 : bonus === 'cash' ? 750 : 500;
+  const ct = (charType || '').toLowerCase();
+
+  // Character-specific starting cash (moderately generous)
+  const CHAR_CASH = {
+    cj: 2000, tommy: 3500, claude: 2500, niko: 2000, catalina: 3000
+  };
+  let cash = isOz ? 1000000 : CHAR_CASH[ct] || (bonus === 'cash' ? 3500 : 2000);
+
   const safeName = name.replace(/'/g, "''");
   const safeCity = startCity.replace(/'/g, "''");
   const district = (CITIES[startCity]?.districts[0] || 'Grove Street').replace(/'/g, "''");
@@ -122,6 +129,36 @@ export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none',
   if (bonus !== 'none' && bonus !== 'cash') {
     await conn.query(`UPDATE skills SET level = level + 2 WHERE name='${bonus}'`);
   }
+
+  // Character-specific starting perks & gear
+  if (!isOz) {
+    switch (ct) {
+      case 'cj':
+        // CJ: balanced — +2 charisma, starts with brass knuckles respect
+        await conn.query(`UPDATE skills SET level = level + 2 WHERE name='charisma'`);
+        await conn.query(`UPDATE player SET respect = 50`);
+        break;
+      case 'tommy':
+        // Tommy: street smart — starts with a pistol and body armor
+        await conn.query(`INSERT INTO guns VALUES ('Hawk 9','Pistol',5) ON CONFLICT DO NOTHING`);
+        await conn.query(`UPDATE player SET armor = 50`);
+        break;
+      case 'claude':
+        // Claude: silent killer — +2 stealth (from bonus) + lockpick kit boost + extra respect
+        await conn.query(`UPDATE player SET respect = 100`);
+        break;
+      case 'niko':
+        // Niko: tough — +2 strength (from bonus) + starts with body armor and extra HP via respect
+        await conn.query(`UPDATE player SET armor = 75, respect = 75`);
+        break;
+      case 'catalina':
+        // Catalina: wild — +2 driving (from bonus) + starts with an SMG
+        await conn.query(`INSERT INTO guns VALUES ('Viper SMG','SMG',16) ON CONFLICT DO NOTHING`);
+        await conn.query(`UPDATE player SET respect = 25`);
+        break;
+    }
+  }
+
   // Oz hacker: all weapons, max skills, armor
   if (isOz) {
     for (const gun of GUNS) {
