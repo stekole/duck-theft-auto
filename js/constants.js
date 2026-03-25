@@ -35,7 +35,7 @@ export const TILE_COLORS = {
 // --------------------------------------------------------
 //  CONSTANTS
 // --------------------------------------------------------
-export const MAP_SIZE = 40;
+export const MAP_SIZE = 80;
 export const CELL = 1; // world units per cell
 
 export const CITIES = {
@@ -97,14 +97,23 @@ export const VEHICLES = [
   { name: 'Pickup Truck',   price: 2500 },
   { name: 'Sports Car',     price: 5000 },
   { name: 'Lowrider',       price: 3000 },
-  { name: 'SUV',            price: 3500 }
+  { name: 'SUV',            price: 3500 },
+  { name: 'Muscle Car',     price: 4000 },
+  { name: 'Convertible',    price: 4500 },
+  { name: 'Delivery Van',   price: 2000 },
+  { name: 'Dirt Bike',      price: 1200 },
+  { name: 'Luxury Sedan',   price: 7000 },
+  { name: 'Taxi Cab',       price: 2500 }
 ];
 
 export const DRUGS = [
   { name: 'Weed',    basePrice: 50 },
   { name: 'Cocaine', basePrice: 200 },
   { name: 'Heroin',  basePrice: 250 },
-  { name: 'Meth',    basePrice: 150 }
+  { name: 'Meth',    basePrice: 150 },
+  { name: 'Ecstasy', basePrice: 100 },
+  { name: 'LSD',     basePrice: 175 },
+  { name: 'Adderall',basePrice: 80 }
 ];
 
 export const GANGS = {
@@ -138,5 +147,9 @@ export const ITEMS = {
   'Health Pack': { price: 50, heal: 40, desc: 'Restores 40 HP' },
   'Molotov Cocktail': { price: 75, desc: 'Crime success +5%' },
   'Fake ID': { price: 150, desc: 'Reduces wanted by 1' },
-  'Adrenaline Shot': { price: 100, desc: '+20% crime success for 1 crime' }
+  'Adrenaline Shot': { price: 100, desc: '+20% crime success for 1 crime' },
+  'Body Armor': { price: 200, desc: 'Restores 50 armor' },
+  'Lockpick Kit': { price: 120, desc: 'Burglary success +10%' },
+  'Police Scanner': { price: 300, desc: 'Warns of nearby police' },
+  'Brass Knuckles': { price: 60, desc: 'Mugging success +10%' }
 };

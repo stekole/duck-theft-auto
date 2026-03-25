@@ -440,7 +440,7 @@ async function checkPolice() {
   if (policeEncounterActive) return;
   const p = await q1('SELECT * FROM player');
   if (p.wanted_level <= 0) { clearPoliceNPCs(); return; }
-  if (!chance(p.wanted_level * 8)) return;
+  if (!chance(p.wanted_level * 4)) return;
   await triggerPoliceEncounter(p);
 }
 
@@ -448,7 +448,7 @@ async function checkPoliceOnMove() {
   const p = await q1('SELECT * FROM player');
   if (p.wanted_level <= 0) return;
   if (policeEncounterActive) return;
-  const moveChance = p.wanted_level * 1.5 + 1;
+  const moveChance = p.wanted_level * 0.6;
   if (!chance(moveChance)) return;
   await triggerPoliceEncounter(p);
 }
@@ -1932,9 +1932,9 @@ function menuHelp() {
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
   <button class="btn cam-btn" data-dist="10" data-height="8">Close-Up</button>
   <button class="btn cam-btn" data-dist="18" data-height="14">Medium</button>
-  <button class="btn cam-btn" data-dist="22" data-height="18">Default</button>
-  <button class="btn cam-btn" data-dist="32" data-height="26">Far</button>
-  <button class="btn cam-btn" data-dist="40" data-height="32">Overview</button>
+  <button class="btn cam-btn" data-dist="28" data-height="22">Default</button>
+  <button class="btn cam-btn" data-dist="40" data-height="32">Far</button>
+  <button class="btn cam-btn" data-dist="55" data-height="44">Overview</button>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
   <button class="btn cam-angle-btn" data-angle="0">North</button>
