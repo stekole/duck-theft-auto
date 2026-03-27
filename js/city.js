@@ -33,6 +33,7 @@ export function generateCityMap(cityName) {
   const grid = Array.from({length: S}, () => Array(S).fill(T.GROUND));
   const city = CITIES[cityName];
   const H = Math.floor(S / 2); // midpoint
+  const Q = Math.floor(S / 4); // quarter
 
   for (let i = 0; i < S; i++) {
     grid[0][i] = T.WALL; grid[S-1][i] = T.WALL;
@@ -59,7 +60,7 @@ export function generateCityMap(cityName) {
   // Main roads: cross pattern + grid
   if (cityName === 'Los Santos') {
     for (let i = 1; i < S-1; i++) { grid[H][i] = T.ROAD_MAIN; grid[i][H] = T.ROAD_MAIN; }
-    const Q = Math.floor(S / 4);
+
     for (let i = 1; i < S-1; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Q] = T.ROAD_SIDE; grid[i][S-Q] = T.ROAD_SIDE; }
     // Extra grid roads every 10
     for (let i = 1; i < S-1; i++) { if (i % 10 === 0 && i !== H && i !== Q && i !== S-Q) { for (let j = 1; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE; } }
@@ -79,7 +80,7 @@ export function generateCityMap(cityName) {
     for (let y = 20; y <= 35; y++) for (let x = 5; x <= 18; x++) if (grid[y][x] === T.GROUND) grid[y][x] = T.INDUSTRIAL;
   } else if (cityName === 'San Fierro') {
     for (let i = 4; i < S-1; i++) { grid[H][i] = T.ROAD_MAIN; grid[i][H] = T.ROAD_MAIN; }
-    const Q = Math.floor(S / 4);
+
     for (let i = 5; i < S-5; i++) { const j = Math.min(S-2, Math.max(1, i + Math.floor(S/8))); if (grid[i][j] !== T.WATER) grid[i][j] = T.ROAD_SIDE; }
     for (let i = 4; i < S-1; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Math.floor(S/5)]=T.ROAD_SIDE; grid[i][S-Math.floor(S/5)]=T.ROAD_SIDE; }
     // Extra roads
@@ -98,7 +99,7 @@ export function generateCityMap(cityName) {
     for (let y = S-20; y <= S-10; y++) for (let x = H-6; x <= H+6; x++) if (grid[y][x] === T.GROUND) { grid[y][x] = T.PARK; if (rng()<0.2) grid[y][x]=T.TREE; }
   } else if (cityName === 'Las Venturas') {
     for (let i = 1; i < S-1; i++) { grid[i][H] = T.ROAD_MAIN; grid[i][H+1] = T.ROAD_MAIN; grid[H][i] = T.ROAD_MAIN; }
-    const Q = Math.floor(S / 4);
+
     for (let i = 1; i < S-1; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Q] = T.ROAD_SIDE; grid[i][S-Q] = T.ROAD_SIDE; }
     // Extra grid
     for (let i = 12; i < S-12; i += 15) for (let j = 1; j < S-1; j++) if (grid[i][j] === T.GROUND) grid[i][j] = T.ROAD_SIDE;
@@ -118,7 +119,7 @@ export function generateCityMap(cityName) {
     for (let y = S-25; y <= S-14; y++) for (let x = 14; x <= 30; x++) if (grid[y][x]===T.GROUND) grid[y][x]=T.INDUSTRIAL;
   } else if (cityName === 'Vice City') {
     for (let i = 3; i < S-3; i++) { grid[H][i] = T.ROAD_MAIN; grid[i][H] = T.ROAD_MAIN; }
-    const Q = Math.floor(S / 4);
+
     for (let i = 3; i < S-3; i++) { grid[Q][i] = T.ROAD_SIDE; grid[S-Q][i] = T.ROAD_SIDE; grid[i][Q] = T.ROAD_SIDE; grid[i][S-Q] = T.ROAD_SIDE; }
     // Extra roads
     for (let i = 15; i < S-15; i += 12) for (let j = 3; j < S-3; j++) if (grid[i][j]===T.GROUND) grid[i][j]=T.ROAD_SIDE;
@@ -141,6 +142,7 @@ export function generateCityMap(cityName) {
     for (let y = H-8; y <= H-2; y++) for (let x = H-8; x <= H-2; x++) if (grid[y][x]===T.GROUND) { grid[y][x]=T.PARK; if (rng()<0.2) grid[y][x]=T.TREE; }
   } else if (cityName === 'Liberty City') {
     for (let i = 1; i < S-1; i++) { grid[i][H] = T.ROAD_MAIN; grid[H][i] = T.ROAD_MAIN; }
+
     // Dense grid
     for (let r = 6; r < S-1; r += 6) for (let i = 1; i < S-1; i++) { if (grid[r][i] === T.GROUND) grid[r][i] = T.ROAD_SIDE; }
     for (let c = 6; c < S-1; c += 6) for (let i = 1; i < S-1; i++) { if (grid[i][c] === T.GROUND) grid[i][c] = T.ROAD_SIDE; }

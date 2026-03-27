@@ -68,6 +68,12 @@ export function joinLobby() {
   setTimeout(() => { if (sendLobbyQuery) sendLobbyQuery({}); }, 500);
 }
 
+export function queryLobby() {
+  _pruneStaleGames();
+  if (_onGamesUpdated) _onGamesUpdated(discoveredGames);
+  if (sendLobbyQuery) sendLobbyQuery({});
+}
+
 export function leaveLobby() {
   if (lobbyRoom) {
     lobbyRoom.leave();
@@ -217,8 +223,11 @@ export function broadcastChat(msg, name) {
   if (sendChat) sendChat({ msg, name, tick: nextTick() });
 }
 
-export function broadcastWorldSync(data) {
-  if (sendWorldSync) sendWorldSync(data);
+export function broadcastWorldSync(data, targetPeerId) {
+  if (sendWorldSync) {
+    if (targetPeerId) sendWorldSync(data, targetPeerId);
+    else sendWorldSync(data);
+  }
 }
 
 export function broadcastAction(data) {
@@ -316,7 +325,7 @@ function _joinRoom(roomCode, playerName, charType, password = '') {
       kickVotes.get(data.target).add(peerId);
       const totalPeers = peers.size + 1;
       const votes = kickVotes.get(data.target).size;
-      if (isHost && votes >= Math.ceil(totalPeers / 2)) {
+      if (isHost && votes >= Math.max(2, Math.ceil(totalPeers / 2))) {
         kickPeer(data.target);
         kickVotes.delete(data.target);
       }
@@ -327,8 +336,7 @@ function _joinRoom(roomCode, playerName, charType, password = '') {
   // Peer lifecycle
   room.onPeerJoin(peerId => {
     _logFn(`[MP] Peer connected: ${peerId.slice(0, 8)}...`);
-    // For clients, track the first peer as the host
-    if (!isHost && !hostPeerId) hostPeerId = peerId;
+    // hostPeerId is set only when we receive a worldSync (not on first peer join)
     // Send our info to the new peer
     if (sendPlayerJoin) {
       sendPlayerJoin({ name: playerName, char: charType });
@@ -342,6 +350,8 @@ function _joinRoom(roomCode, playerName, charType, password = '') {
     const peerInfo = peers.get(peerId);
     _logFn(`[MP] Peer disconnected: ${peerInfo?.name || peerId.slice(0, 8)}`);
     peers.delete(peerId);
+    peerRateLimits.delete(peerId);
+    peerTicks.delete(peerId);
     dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
     _logConnectionEvent(peerId, 'left');
 
@@ -632,7 +642,7 @@ export function voteKick(targetPeerId) {
   // Check if majority voted
   const totalPeers = peers.size + 1;
   const votes = kickVotes.get(targetPeerId).size;
-  if (votes >= Math.ceil(totalPeers / 2)) {
+  if (votes >= Math.max(2, Math.ceil(totalPeers / 2))) {
     if (isHost) kickPeer(targetPeerId);
     _logFn(`[MP] Kick vote passed for ${peers.get(targetPeerId)?.name || targetPeerId.slice(0, 8)}`);
     kickVotes.delete(targetPeerId);
@@ -648,9 +658,9 @@ function _validateMove(peerId, data) {
   if (!peer || peer.x === undefined) return true; // first move, allow
   const dx = Math.abs((data.x || 0) - (peer.x || 0));
   const dy = Math.abs((data.y || 0) - (peer.y || 0));
-  // Allow up to 8 tiles per move (vehicles can move 6, plus local travel teleports)
-  // Only reject truly absurd jumps that indicate cheating
-  if (dx > 120 || dy > 120) {
+  // Allow reasonable jumps: vehicles move up to 6 tiles, local travel can teleport within city
+  // Reject teleporting across the entire map
+  if (dx > 200 || dy > 200) {
     _logFn(`[SEC] Suspicious move from ${peer.name || peerId.slice(0, 8)}: dx=${dx} dy=${dy}`);
     return false;
   }

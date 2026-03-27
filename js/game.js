@@ -20,7 +20,7 @@ import {
   setPoliceAttackCallback
 } from './renderer.js';
 import {
-  conn, q, q1, qv, saveGame,
+  conn, exec, q, q1, qv, saveGame, logAction,
   initSchema, initPlayer, initWorld, loadCityMap, loadGameData, getSaveIndex, setLogFn
 } from './db.js';
 import {
@@ -31,12 +31,23 @@ import {
 
 const $ = id => document.getElementById(id);
 
+// HTML escape helper — prevents XSS via innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Sanitize peer numeric input
+function safeInt(v, min, max, fallback = 0) {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+}
+
 // Per-peer cooldown map for incoming PvP shots (H2 security fix)
 const peerShootTimestamps = new Map();
 
 // NPC seed for deterministic spawning across multiplayer peers
 let _npcSeedValue = Math.floor(Math.random() * 2147483647);
-window._npcSeedValue = _npcSeedValue;
+let _mpCityOverride = null; // set by worldSync so joiner uses host's city
 
 // --------------------------------------------------------
 //  EVENT LOG
@@ -92,10 +103,10 @@ async function _tryCheatCode(code) {
       const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
       const js = new TextDecoder().decode(decrypted);
       // Execute the decrypted code in the game context
-      const fn = new Function('conn', 'q', 'q1', 'qv', 'log', 'updateHUD', 'spawnParticlesAtDuck',
+      const fn = new Function('conn', 'exec', 'q', 'q1', 'qv', 'logAction', 'log', 'updateHUD', 'spawnParticlesAtDuck',
         'clearPoliceNPCs', 'stopSiren', 'GUN_LIST', 'advanceTime', 'processWorldEvents',
         `return (async () => { ${js} })();`);
-      await fn(conn, q, q1, qv, log, updateHUD, spawnParticlesAtDuck,
+      await fn(conn, exec, q, q1, qv, logAction, log, updateHUD, spawnParticlesAtDuck,
         clearPoliceNPCs, stopSiren, GUN_LIST, advanceTime, processWorldEvents);
       return true;
     } catch (_) { /* wrong key for this blob, try next */ }
@@ -159,7 +170,7 @@ setMPCallbacks({
           }
         }
         worldData.peers = peerPositions;
-        broadcastWorldSync(worldData);
+        broadcastWorldSync(worldData, peerId);
         log(`Sent world sync to ${data.name || peerId.slice(0, 8)}`, 'c-cyan');
       } catch (e) {
         console.error('World sync failed:', e);
@@ -182,7 +193,8 @@ setMPCallbacks({
         setNPCSeed(data.npcSeed);
         setMapSeed(data.npcSeed);
       }
-      window.startNewGame();
+      if (data.city) _mpCityOverride = data.city;
+      window.startNewGame().then(() => { _mpCityOverride = null; });
       return;
     }
     // Display remote player actions in the log
@@ -200,17 +212,19 @@ setMPCallbacks({
       }
       case 'gang_join': log(`${name} joined your gang: ${data.gang}!`, 'c-magenta'); break;
       case 'race_challenge': {
-        log(`${name} challenges everyone to a STREET RACE! $${data.buyIn} buy-in — 5 seconds to join!`, 'c-yellow');
+        const buyIn = safeInt(data.buyIn, 0, 100000);
+        if (buyIn <= 0) break;
+        log(`${name} challenges everyone to a STREET RACE! $${buyIn} buy-in — 5 seconds to join!`, 'c-yellow');
         // Auto-prompt to join if we have a vehicle and cash
         (async () => {
           const hv = await qv(`SELECT COUNT(*) FROM vehicles WHERE stored=0`);
           const cash = await qv('SELECT cash FROM player');
-          if (hv && cash >= data.buyIn) {
-            showSubMenu(`RACE CHALLENGE from ${name}! $${data.buyIn} buy-in`, [
-              { label: `Join Race ($${data.buyIn})`, action: async () => {
-                await conn.query(`UPDATE player SET cash=cash-${data.buyIn}`);
-                broadcastAction({ action: 'race_accept', name: (await q1('SELECT name FROM player')).name, buyIn: data.buyIn });
-                log(`Joined the race! $${data.buyIn} on the line.`, 'c-cyan');
+          if (hv && cash >= buyIn) {
+            showSubMenu(`RACE CHALLENGE from ${esc(name)}! $${buyIn} buy-in`, [
+              { label: `Join Race ($${buyIn})`, action: async () => {
+                await exec(`UPDATE player SET cash=cash-${buyIn}`);
+                broadcastAction({ action: 'race_accept', name: (await q1('SELECT name FROM player')).name, buyIn });
+                log(`Joined the race! $${buyIn} on the line.`, 'c-cyan');
                 hideSubMenu(); await updateHUD();
               }},
               { label: 'Pass', action: () => { hideSubMenu(); showMainActions(); }}
@@ -248,6 +262,10 @@ setMPCallbacks({
     const isTargeted = data.target === localId || (!localId && data.target && data.target !== peerId);
     console.log('[PvP] Shot received:', { target: data.target, localId, from: peerId, isTargeted });
     if (isTargeted) {
+      // Dead player guard — don't apply damage during respawn
+      const preCheck = await qv('SELECT health FROM player');
+      if (preCheck <= 0) return;
+
       // H2: Per-peer cooldown — reject shots faster than 200ms
       const now = Date.now();
       const lastShot = peerShootTimestamps.get(peerId) || 0;
@@ -256,19 +274,19 @@ setMPCallbacks({
 
       // H2: Range check — reject if Manhattan distance > 8
       const peerInfo = getPeers().get(peerId);
-      if (peerInfo) {
+      if (peerInfo && peerInfo.x !== undefined) {
         const p = await q1('SELECT x, y FROM player');
-        const dist = Math.abs((peerInfo.x || 0) - p.x) + Math.abs((peerInfo.y || 0) - p.y);
+        const dist = Math.abs(peerInfo.x - p.x) + Math.abs(peerInfo.y - p.y);
         if (dist > 8) return;
       }
 
       // H1: Sanitize damage — must be positive integer, clamped 1–50
-      const dmg = Math.max(1, Math.min(Math.floor(Number(data.damage)) || 15, 50));
+      const dmg = safeInt(data.damage, 1, 50, 15);
       // Armor absorbs damage first, remainder goes to health
       const p = await q1('SELECT health, armor FROM player');
       const armorAbsorb = Math.min(p.armor, dmg);
       const healthDmg = dmg - armorAbsorb;
-      await conn.query(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
+      await exec(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
       spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
       const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
       log(`${shooterName} shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed by armor)` : ''}`, 'c-red');
@@ -291,9 +309,13 @@ setMPCallbacks({
       setMapSeed(data.npcSeed);
     }
 
+    // Override city so joiner plays on same map as host
+    if (data.city) _mpCityOverride = data.city;
+
     // Auto-start the client's game if not already running
     if (!gameActive) {
       await window.startNewGame();
+      _mpCityOverride = null;
     }
 
     // Spawn host's duck
@@ -354,7 +376,7 @@ async function advanceTime(hours) {
       try { await decayHeat(); } catch (e) { /* ignore */ }
       try { await pruneWorldEvents(); } catch (e) { /* ignore */ }
     }
-    await conn.query(`UPDATE game_clock SET day=${d}, hour=${h}`);
+    await exec(`UPDATE game_clock SET day=${d}, hour=${h}`);
     if (daysAdvanced.length > 0) {
       log(`════════════ DAY ${d} ════════════`, 'c-gold');
       log(`[Day ${oldDay} ${String(oldHour).padStart(2,'0')}:00 → Day ${d} ${String(h).padStart(2,'0')}:00] (${hours}h passed)`, 'c-gray');
@@ -373,35 +395,43 @@ async function dailyPayout() {
   // Passive heal overnight
   if (p.health < 100) {
     const heal = Math.min(10, 100 - p.health);
-    await conn.query(`UPDATE player SET health = LEAST(100, health + ${heal})`);
+    await exec(`UPDATE player SET health = LEAST(100, health + ${heal})`);
     log(`Rested overnight: +${heal} HP`, 'c-green');
   }
   // Wanted level decays slightly each day
   if (p.wanted_level > 0) {
-    await conn.query(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`);
+    await exec(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`);
     log('Heat dies down overnight. -1 Wanted.', 'c-green');
   }
   if (!p.gang) return;
   const safeGang = p.gang.replace(/'/g, "''");
   const tCount = (await qv(`SELECT COUNT(*) FROM territories WHERE owner='${safeGang}'`)) || 0;
   const tIncome = tCount * 150;
+  // Allied gangs share 10% of their territory income
+  const alliedGangs = await q(`SELECT gang FROM gang_relations WHERE relation='Allied'`);
+  let allyIncome = 0;
+  for (const ag of alliedGangs) {
+    const allyTerr = (await qv(`SELECT COUNT(*) FROM territories WHERE owner='${ag.gang.replace(/'/g,"''")}'`)) || 0;
+    allyIncome += Math.floor(allyTerr * 150 * 0.1);
+  }
   const bIncome = Number((await qv(`SELECT COALESCE(SUM(daily_income),0) FROM businesses`)) || 0);
   const smugLevel = Number((await qv(`SELECT level FROM gang_upgrades WHERE name='smuggling_routes'`)) || 0);
   const smugBonus = smugLevel * 100;
   const upkeep = Number((await qv(`SELECT COALESCE(SUM(upkeep),0) FROM recruits`)) || 0);
-  const net = tIncome + bIncome + smugBonus - upkeep;
+  const net = tIncome + allyIncome + bIncome + smugBonus - upkeep;
   if (net !== 0) {
-    await conn.query(`UPDATE player SET cash = cash + ${net}`);
+    await exec(`UPDATE player SET cash = cash + ${net}`);
   }
-  log(`Daily income: Territory $${tIncome} + Business $${bIncome} + Smuggling $${smugBonus} - Upkeep $${upkeep} = Net $${net}`, net >= 0 ? 'c-gold' : 'c-red');
+  const allyStr = allyIncome > 0 ? ` + Alliance $${allyIncome}` : '';
+  log(`Daily income: Territory $${tIncome}${allyStr} + Business $${bIncome} + Smuggling $${smugBonus} - Upkeep $${upkeep} = Net $${net}`, net >= 0 ? 'c-gold' : 'c-red');
 }
 
-async function decayHeat() { await conn.query(`UPDATE district_heat SET heat = GREATEST(0, heat - 1)`); }
+async function decayHeat() { await exec(`UPDATE district_heat SET heat = GREATEST(0, heat - 1)`); }
 
 async function pruneWorldEvents() {
   const count = await qv('SELECT COUNT(*) FROM world_events');
   if (count > 500) {
-    await conn.query(`DELETE FROM world_events WHERE id IN (SELECT id FROM world_events ORDER BY id ASC LIMIT ${count - 500})`);
+    await exec(`DELETE FROM world_events WHERE id IN (SELECT id FROM world_events ORDER BY id ASC LIMIT ${count - 500})`);
   }
 }
 
@@ -453,8 +483,8 @@ export async function updateHUD() {
   setCurrentGameHour(clk.hour);
   updateLighting(clk.hour);
 
-  const hasVehicle = await qv(`SELECT COUNT(*) FROM vehicles WHERE stored=0`);
-  updatePlayerVehicle(hasVehicle > 0);
+  const activeVehicle = await q1(`SELECT name FROM vehicles WHERE stored=0 LIMIT 1`);
+  updatePlayerVehicle(!!activeVehicle, activeVehicle?.name);
 
   renderMinimap(p.x, p.y);
 }
@@ -512,16 +542,16 @@ async function carjackNPCCar(car) {
         // Check if already owned
         const exists = await qv(`SELECT COUNT(*) FROM vehicles WHERE name='${car.name.replace(/'/g,"''")}'`);
         if (!exists) {
-          await conn.query(`INSERT INTO vehicles VALUES ('${car.name.replace(/'/g,"''")}',0)`);
+          await exec(`INSERT INTO vehicles VALUES ('${car.name.replace(/'/g,"''")}',0)`);
         }
         removeNPCCar(car);
-        await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+        await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
         log(`Jacked a ${car.name}! +1 Wanted.`, 'c-green');
         spawnParticlesAtDuck(0x44ff44, 12, 2, 1.5);
         await maybeSkillUp('driving');
       } else {
         const dmg = rand(10, 30);
-        await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+1)`);
+        await exec(`UPDATE player SET health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+1)`);
         log(`Failed to steal ${car.name}! The owner fought back. -${dmg} HP, +1 Wanted.`, 'c-red');
         spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
         await checkDeath();
@@ -549,17 +579,17 @@ async function interactNPC(npc) {
           // NPC may fight you instead of buying
           if (chance(isNight ? 30 : 10)) {
             const dmg = rand(10, 25);
-            await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+            await exec(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
             log(`The buyer turned on you! -${dmg} HP`, 'c-red');
             spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
             await checkDeath();
           } else {
-            await conn.query(`UPDATE player SET cash=cash+${sellPrice}`);
-            await conn.query(`UPDATE drugs SET qty=qty-1 WHERE name='${d.name}'`);
-            await conn.query(`DELETE FROM drugs WHERE qty <= 0`);
+            await exec(`UPDATE player SET cash=cash+${sellPrice}`);
+            await exec(`UPDATE drugs SET qty=qty-1 WHERE name='${d.name}'`);
+            await exec(`DELETE FROM drugs WHERE qty <= 0`);
             log(`Sold ${d.name} to a stranger for $${sellPrice}.`, 'c-green');
             if (chance(20)) {
-              await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+              await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
               log('A narc spotted the deal! Cops are coming!', 'c-red');
               await checkPolice();
             }
@@ -577,7 +607,7 @@ async function interactNPC(npc) {
       label: 'This person looks aggressive...',
       action: async () => {
         const dmg = rand(15, 35);
-        await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+        await exec(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
         const pos = killNPC(npc);
         spawnParticles(pos.x, pos.z, 0xff4444, 8, 1.5, 1);
         log(`Jumped by a thug! -${dmg} HP`, 'c-red');
@@ -601,9 +631,9 @@ async function interactNPC(npc) {
 let _policeActive = false; // tracks if police are currently on the map
 let _lastPoliceSpawnCheck = 0;
 
-// Update police presence based on wanted level — called on move and periodically
+// Update police presence based on wanted level + district heat
 async function updatePolicePresence() {
-  const p = await q1('SELECT wanted_level FROM player');
+  const p = await q1('SELECT wanted_level, district, city FROM player');
   const wanted = p.wanted_level;
   const currentCops = getPoliceNPCs().filter(c => c.alive).length;
 
@@ -617,8 +647,11 @@ async function updatePolicePresence() {
     return;
   }
 
-  // Target cop count based on wanted level: 1/2/3/4/6
-  const targetCops = wanted <= 2 ? wanted : wanted <= 4 ? wanted + 1 : 6;
+  // District heat adds bonus cops: +1 at heat 5, +2 at heat 10+
+  const heat = (await qv(`SELECT heat FROM district_heat WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`)) || 0;
+  const heatBonus = heat >= 10 ? 2 : heat >= 5 ? 1 : 0;
+  // Target cop count based on wanted level: 1/2/3/4/6 + heat bonus
+  const targetCops = Math.min(8, (wanted <= 2 ? wanted : wanted <= 4 ? wanted + 1 : 6) + heatBonus);
 
   if (currentCops < targetCops) {
     const now = Date.now();
@@ -626,7 +659,9 @@ async function updatePolicePresence() {
       _lastPoliceSpawnCheck = now;
       const toSpawn = Math.min(2, targetCops - currentCops);
       for (let i = 0; i < toSpawn; i++) {
-        spawnPoliceNPC(duckGroup.position.x, duckGroup.position.z);
+        // Wanted 4+: spawn cops in patrol cars (faster, tougher)
+        const useVehicle = wanted >= 4 && Math.random() < 0.6;
+        spawnPoliceNPC(duckGroup.position.x, duckGroup.position.z, useVehicle);
       }
       if (!_policeActive) {
         startSiren();
@@ -662,7 +697,7 @@ function handlePoliceAttack(type, cop, dist) {
       const p = await q1('SELECT armor FROM player');
       const armorAbsorb = Math.min(p.armor, dmg);
       const healthDmg = dmg - armorAbsorb;
-      await conn.query(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
+      await exec(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
       spawnParticlesAtDuck(0x4444ff, 4, 1, 0.5);
       await checkDeath();
       await updateHUD();
@@ -674,7 +709,7 @@ function handlePoliceAttack(type, cop, dist) {
         const p = await q1('SELECT armor FROM player');
         const armorAbsorb = Math.min(p.armor, dmg);
         const healthDmg = dmg - armorAbsorb;
-        await conn.query(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
+        await exec(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
         spawnParticlesAtDuck(0xff2222, 6, 1.2, 0.8);
         log(`Police shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed)` : ''}`, 'c-red');
         await checkDeath();
@@ -701,7 +736,7 @@ async function checkNightAttack() {
   if (!npc || !npc.hostile) return;
   if (!chance(8)) return;
   const dmg = rand(5, 20);
-  await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+  await exec(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
   const pos = killNPC(npc);
   spawnParticles(pos.x, pos.z, 0xff4444, 8, 1.5, 1);
   log(`A thug attacked you in the dark! -${dmg} HP`, 'c-red');
@@ -726,7 +761,8 @@ async function checkDeath() {
     overlay.innerHTML = '<div style="color:#fff;font-size:64px;font-weight:bold;text-shadow:0 0 30px #ff0000,0 0 60px #ff0000;font-family:Impact,sans-serif;letter-spacing:12px">WASTED</div>';
     document.body.appendChild(overlay);
 
-    await conn.query(`UPDATE player SET health = 100, cash = GREATEST(0, cash - 200), respect = GREATEST(0, respect - ${respLoss}), wanted_level = 0, armor = 0`);
+    await exec(`UPDATE player SET health = 100, cash = GREATEST(0, cash - 200), respect = GREATEST(0, respect - ${respLoss}), wanted_level = 0, armor = 0`);
+    logAction('death', `-$200 -${respLoss}resp`);
     spawnParticlesAtDuck(0xff0000, 30, 3, 2);
 
     // Relocate to a road tile (hospital spawn)
@@ -735,7 +771,7 @@ async function checkDeath() {
       for (let y = 5; y < MAP_SIZE - 5; y++) {
         for (let x = 5; x < MAP_SIZE - 5; x++) {
           if (currentMapGrid[y][x] === T.POI_HOSPITAL) {
-            await conn.query(`UPDATE player SET x=${x}, y=${y}`);
+            await exec(`UPDATE player SET x=${x}, y=${y}`);
             _cachedPos = { x, y };
             setDuckTarget(x + 0.5, y + 0.5);
             if (duckGroup) { duckGroup.position.x = x + 0.5; duckGroup.position.z = y + 0.5; }
@@ -779,13 +815,13 @@ async function updateRank() {
   let newRank = 'Outsider';
   for (const r of RANK_THRESHOLDS) { if (p.respect >= r.respect) newRank = r.rank; }
   if (newRank !== p.gang_rank) {
-    await conn.query(`UPDATE player SET gang_rank = '${newRank}'`);
+    await exec(`UPDATE player SET gang_rank = '${newRank}'`);
     log(`Rank up! You are now: ${newRank}`, 'c-magenta');
   }
   const expectedPP = Math.floor(p.respect / 1000);
   if (expectedPP > p.perk_points) {
     const gain = expectedPP - p.perk_points;
-    await conn.query(`UPDATE player SET perk_points = ${expectedPP}`);
+    await exec(`UPDATE player SET perk_points = ${expectedPP}`);
     log(`Earned ${gain} perk point(s)! Visit the Perks menu.`, 'c-gold');
   }
 }
@@ -810,57 +846,94 @@ async function processWorldEvents() {
       if (targets.length > 0) {
         const t = targets[0];
         if (chance(40)) {
-          await conn.query(`UPDATE territories SET owner='${attacker}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${t.city.replace(/'/g,"''")}'`);
+          await exec(`UPDATE territories SET owner='${attacker}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${t.city.replace(/'/g,"''")}'`);
           const desc = `${attacker} seized ${t.district} from ${t.owner}!`;
-          await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+          await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
           log(`NEWS: ${desc}`, 'c-orange');
         }
       }
     } else if (eventType === 4) {
-      // Drug bust
+      // Drug bust — raises heat in target district
       const city = allCities[rand(0, allCities.length - 1)];
       const districts = CITIES[city].districts;
       const district = districts[rand(0, districts.length - 1)];
       const desc = `Major drug bust in ${district}, ${city}! Several dealers arrested.`;
-      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      await exec(`UPDATE district_heat SET heat=LEAST(15, heat+3) WHERE district='${district.replace(/'/g,"''")}' AND city='${city.replace(/'/g,"''")}'`);
       log(`NEWS: ${desc}`, 'c-orange');
     } else if (eventType === 5) {
-      // Police raid
+      // Police raid — gang loses a territory
       const city = allCities[rand(0, allCities.length - 1)];
       const gang = allGangs[rand(0, allGangs.length - 1)];
-      const desc = `Police raided ${gang} hideout in ${city}. Weapons seized.`;
-      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
-      log(`NEWS: ${desc}`, 'c-orange');
+      const raidTarget = await q1(`SELECT district FROM territories WHERE owner='${gang.replace(/'/g,"''")}' AND city='${city.replace(/'/g,"''")}' ORDER BY random() LIMIT 1`);
+      if (raidTarget) {
+        await exec(`UPDATE territories SET owner='Unaffiliated' WHERE district='${raidTarget.district.replace(/'/g,"''")}' AND city='${city.replace(/'/g,"''")}'`);
+        const desc = `Police raided ${gang} in ${raidTarget.district}, ${city}. Territory seized!`;
+        await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+        log(`NEWS: ${desc}`, 'c-orange');
+      } else {
+        const desc = `Police raided ${gang} hideout in ${city}. Weapons seized.`;
+        await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+        log(`NEWS: ${desc}`, 'c-orange');
+      }
     } else if (eventType === 6) {
-      // Celebrity sighting
+      // Celebrity sighting — boosts respect if in same city
       const celebs = ['Madd Dogg', 'OG Loc', 'Kent Paul', 'Maccer', 'Lazlow', 'Love Fist', 'Fernando Martinez'];
       const celeb = celebs[rand(0, celebs.length - 1)];
       const city = allCities[rand(0, allCities.length - 1)];
       const desc = `${celeb} spotted partying in ${city}!`;
-      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
-      log(`NEWS: ${desc}`, 'c-orange');
+      await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+      const playerCity = await qv('SELECT city FROM player');
+      if (playerCity === city) {
+        await exec(`UPDATE player SET respect=respect+15`);
+        log(`NEWS: ${desc} You rubbed shoulders with them! +15 Respect`, 'c-gold');
+      } else {
+        log(`NEWS: ${desc}`, 'c-orange');
+      }
     } else if (eventType === 7) {
-      // Market crash / boom
+      // Market crash / boom — actually modify district heat (proxy for economic activity)
       const isBoom = chance(50);
-      const desc = isBoom
-        ? `Drug prices surging! Street dealers reporting record profits.`
-        : `Market crash! Drug prices plummeting across all cities.`;
-      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
-      log(`NEWS: ${desc}`, 'c-orange');
+      if (isBoom) {
+        // Boom: reduce heat everywhere (police focus on other things)
+        await exec(`UPDATE district_heat SET heat=GREATEST(0, heat-2)`);
+        const desc = `Drug prices surging! Street dealers reporting record profits. Police distracted.`;
+        await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+        log(`NEWS: ${desc}`, 'c-orange');
+      } else {
+        // Crash: raise heat everywhere (desperate dealers attract cops)
+        await exec(`UPDATE district_heat SET heat=LEAST(15, heat+2)`);
+        const desc = `Market crash! Drug prices plummeting. Desperate dealers everywhere — cops on high alert.`;
+        await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+        log(`NEWS: ${desc}`, 'c-orange');
+      }
     } else {
-      // Random crime wave / peace
+      // Crime wave / crackdown — affects player's city heat
       const city = allCities[rand(0, allCities.length - 1)];
-      const events = [
-        `Shooting spree reported in downtown ${city}. Stay indoors.`,
-        `${city} mayor announces crackdown on street crime.`,
-        `Armored truck heist in ${city} — suspects still at large.`,
-        `Car bombing rocks ${city} — gang rivalry suspected.`,
-        `Underground street racing circuit busted in ${city}.`,
-        `${city} police chief fired amid corruption scandal.`
-      ];
-      const desc = events[rand(0, events.length - 1)];
-      await conn.query(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
-      log(`NEWS: ${desc}`, 'c-orange');
+      const isCrimeWave = chance(60);
+      if (isCrimeWave) {
+        const events = [
+          `Shooting spree reported in downtown ${city}. Stay indoors.`,
+          `Armored truck heist in ${city} — suspects still at large.`,
+          `Car bombing rocks ${city} — gang rivalry suspected.`,
+          `Underground street racing circuit busted in ${city}.`
+        ];
+        const desc = events[rand(0, events.length - 1)];
+        // Crime wave raises heat across the city
+        const districts = CITIES[city].districts;
+        for (const d of districts) {
+          await exec(`UPDATE district_heat SET heat=LEAST(15, heat+1) WHERE district='${d.replace(/'/g,"''")}' AND city='${city.replace(/'/g,"''")}'`);
+        }
+        await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+        log(`NEWS: ${desc}`, 'c-orange');
+      } else {
+        const desc = `${city} mayor announces crackdown amnesty. Heat reduced across the city.`;
+        const districts = CITIES[city].districts;
+        for (const d of districts) {
+          await exec(`UPDATE district_heat SET heat=GREATEST(0, heat-2) WHERE district='${d.replace(/'/g,"''")}' AND city='${city.replace(/'/g,"''")}'`);
+        }
+        await exec(`INSERT INTO world_events(day,hour,description) VALUES (${clk.day},${clk.hour},'${desc.replace(/'/g,"''")}')`);
+        log(`NEWS: ${desc}`, 'c-orange');
+      }
     }
   } catch (e) {
     // Don't let news errors block gameplay
@@ -874,12 +947,17 @@ async function processWorldEvents() {
 async function getSkill(name) { return (await qv(`SELECT level FROM skills WHERE name='${name}'`)) || 1; }
 async function maybeSkillUp(name) {
   if (chance(25)) {
-    await conn.query(`UPDATE skills SET level = level + 1 WHERE name='${name}'`);
+    await exec(`UPDATE skills SET level = level + 1 WHERE name='${name}'`);
     const newLvl = await getSkill(name);
     log(`${name} skill increased to ${newLvl}!`, 'c-cyan');
   }
 }
-async function getGunBonus() { return (await qv(`SELECT COALESCE(MAX(bonus),0) FROM guns`)) || 0; }
+async function getGunBonus() {
+  const base = (await qv(`SELECT COALESCE(MAX(bonus),0) FROM guns`)) || 0;
+  // Weapon locker upgrade adds +3 damage per level
+  const wlLevel = (await qv(`SELECT level FROM gang_upgrades WHERE name='weapon_locker'`)) || 0;
+  return base + wlLevel * 3;
+}
 
 // --------------------------------------------------------
 //  SHOOTING
@@ -914,9 +992,10 @@ async function playerShoot() {
     if (killPos) {
       spawnParticles(killPos.x, killPos.z, 0xff2222, 15, 2, 1.2);
       const loot = rand(50, 150);
-      await conn.query(`UPDATE player SET cash=cash+${loot}`);
+      await exec(`UPDATE player SET cash=cash+${loot}`);
       log(`Killed a cop! Looted $${loot}. Heat is rising!`, 'c-red');
-      await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+      logAction('kill_cop', `+$${loot}`);
+      await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
     } else {
       spawnParticles(cop.group.position.x, cop.group.position.z, 0xff4444, 8, 1.5, 0.8);
       log(`Hit police officer! (${cop.health} HP left)`, 'c-yellow');
@@ -933,11 +1012,12 @@ async function playerShoot() {
     const pos = killNPC(npc);
     spawnParticles(pos.x, pos.z, 0xff2222, 15, 2, 1.2);
     const loot = rand(5, 50);
-    await conn.query(`UPDATE player SET cash=cash+${loot}, wanted_level=LEAST(5,wanted_level+1), respect=respect+1`);
+    await exec(`UPDATE player SET cash=cash+${loot}, wanted_level=LEAST(5,wanted_level+1), respect=respect+1`);
     log(`Shot a civilian! Looted $${loot}. +1 Wanted.`, 'c-red');
+    logAction('kill_npc', `+$${loot}`);
     if (isMultiplayer()) broadcastAction({ action: 'npc_kill', npcId: pos.id, name: (await q1('SELECT name FROM player')).name });
     const p = await q1('SELECT district, city FROM player');
-    await conn.query(`UPDATE district_heat SET heat=heat+2 WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
+    await exec(`UPDATE district_heat SET heat=heat+2 WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`);
     await maybeSkillUp('strength');
     await updateHUD();
     return;
@@ -1012,7 +1092,7 @@ async function movePlayer(dx, dy) {
   if (nx === _cachedPos.x && ny === _cachedPos.y) return;
   _cachedPos.x = nx;
   _cachedPos.y = ny;
-  await conn.query(`UPDATE player SET x=${nx}, y=${ny}`);
+  await exec(`UPDATE player SET x=${nx}, y=${ny}`);
 
   if (dx !== 0 || dy !== 0) {
     setDuckFacing(Math.atan2(dx, dy));
@@ -1044,7 +1124,7 @@ async function updateDistrict(x, y) {
   const row = Math.min(Math.floor(y / cellH), rows - 1);
   const idx = Math.min(row * cols + col, districts.length - 1);
   const district = districts[idx].replace(/'/g, "''");
-  await conn.query(`UPDATE player SET district='${district}'`);
+  await exec(`UPDATE player SET district='${district}'`);
 }
 
 // --------------------------------------------------------
@@ -1106,8 +1186,10 @@ function showMainActions() {
     { key: 'P', label: 'Perks',          action: menuPerks },
     { key: 'I', label: 'Inventory',      action: menuInventory },
     { key: 'N', label: 'News',           action: menuNews },
+    { key: 'L', label: 'Stats',          action: menuStats },
     { key: 'G', label: 'Garage',         action: menuGarage },
     { key: 'F5', label: 'Save Game',     action: saveGame },
+    { key: 'X', label: 'Strip Club',     action: menuStripClub },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
     { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
@@ -1137,18 +1219,23 @@ async function menuTravel() {
       action: async () => {
         if (p.cash < cost) { log('Not enough cash to travel!', 'c-red'); return; }
         setStatus(`Traveling to ${city}...`);
-        await conn.query(`UPDATE player SET city='${city}', cash=cash-${cost}, district='${CITIES[city].districts[0].replace(/'/g,"''")}'`);
+        await exec(`UPDATE player SET city='${city}', cash=cash-${cost}, district='${CITIES[city].districts[0].replace(/'/g,"''")}'`);
         await loadCityMap(city);
         let sx = 5, sy = 5;
         for (let y = 3; y < MAP_SIZE-3; y++) for (let x = 3; x < MAP_SIZE-3; x++) {
           if (currentMapGrid[y][x] === T.ROAD_MAIN || currentMapGrid[y][x] === T.ROAD_SIDE) { sx = x; sy = y; y = MAP_SIZE; break; }
         }
-        await conn.query(`UPDATE player SET x=${sx}, y=${sy}`);
+        await exec(`UPDATE player SET x=${sx}, y=${sy}`);
         _cachedPos = { x: sx, y: sy };
         setDuckTarget(sx + 0.5, sy + 0.5);
         if (duckGroup) { duckGroup.position.x = sx + 0.5; duckGroup.position.z = sy + 0.5; }
         await advanceTime(2); await processWorldEvents(); await checkPolice();
         log(`Traveled to ${city}!`, 'c-cyan');
+        logAction('travel', city, sx, sy);
+        if (isMultiplayer()) {
+          const mp = await q1('SELECT name, char_type, health, wanted_level, gang FROM player');
+          broadcastMove({ x: sx, y: sy, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level, gang: mp.gang || '' });
+        }
         clearStatus();
         hideSubMenu(); await updateHUD(); await checkPOI(); showMainActions();
       }
@@ -1184,7 +1271,7 @@ async function menuTravel() {
             }
           }
         }
-        await conn.query(`UPDATE player SET x=${sx}, y=${sy}, district='${d.replace(/'/g,"''")}'`);
+        await exec(`UPDATE player SET x=${sx}, y=${sy}, district='${d.replace(/'/g,"''")}'`);
         _cachedPos = { x: sx, y: sy };
         setDuckTarget(sx + 0.5, sy + 0.5);
         if (duckGroup) { duckGroup.position.x = sx + 0.5; duckGroup.position.z = sy + 0.5; }
@@ -1214,10 +1301,11 @@ async function menuJobs() {
       const base = rand(job.min, job.max);
       const bonus = skill * 5;
       const earnings = base + bonus;
-      await conn.query(`UPDATE player SET cash = cash + ${earnings}`);
+      await exec(`UPDATE player SET cash = cash + ${earnings}`);
       await advanceTime(job.hours); await maybeSkillUp(job.skill);
-      if (chance(25)) { await conn.query(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`); log('Keeping a low profile... wanted level decreased.', 'c-green'); }
+      if (chance(25)) { await exec(`UPDATE player SET wanted_level = GREATEST(0, wanted_level - 1)`); log('Keeping a low profile... wanted level decreased.', 'c-green'); }
       log(`Worked as ${job.name}: earned $${earnings} (base $${base} + skill $${bonus})`, 'c-green');
+      logAction('job', `${job.name} +$${earnings}`);
       clearStatus();
       await processWorldEvents(); await checkPolice();
       hideSubMenu(); await updateHUD(); showMainActions();
@@ -1233,13 +1321,16 @@ async function menuJobs() {
 async function menuCrime() {
   const p = await q1('SELECT * FROM player');
   const gunBonus = await getGunBonus();
+  const districtHeat = (await qv(`SELECT heat FROM district_heat WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`)) || 0;
+  const heatPenalty = Math.floor(districtHeat * 1.5);
   let html = '<div class="c-gray" style="margin-bottom:6px;font-size:10px">Success depends on your skills, weapons, and luck. Higher risk = higher reward.</div>';
+  if (districtHeat >= 5) html += `<div class="c-red" style="margin-bottom:4px;font-size:10px">District heat: ${districtHeat} — crime success reduced by ${heatPenalty}%. Move to a cooler district!</div>`;
   html += '<table><tr><th>Crime</th><th>Chance</th><th>Reward</th><th>Risk</th><th>Time</th><th></th></tr>';
   for (const crime of CRIMES) {
     const skill = await getSkill(crime.skill);
-    const minChance = Math.min(95, crime.baseMin + skill * 3 + gunBonus);
-    const maxChance = Math.min(95, crime.baseMax + skill * 3 + gunBonus);
-    const avgChance = Math.floor((minChance + maxChance) / 2);
+    const minChance = Math.min(95, crime.baseMin + skill * 3 + gunBonus - heatPenalty);
+    const maxChance = Math.min(95, crime.baseMax + skill * 3 + gunBonus - heatPenalty);
+    const avgChance = Math.max(5, Math.floor((minChance + maxChance) / 2));
     const chanceColor = avgChance >= 60 ? 'c-green' : avgChance >= 35 ? 'c-yellow' : 'c-red';
     const maxLoot = crime.lootMax + skill * crime.lootMul;
     const riskLevel = crime.failWanted >= 2 ? 'HIGH' : crime.heat >= 5 ? 'MED' : 'LOW';
@@ -1271,8 +1362,11 @@ async function commitCrime(crime) {
   const gunBonus = await getGunBonus();
   const hasDisguise = await qv(`SELECT unlocked FROM perks WHERE name='Master of Disguise'`);
   const hasAdrenaline = p.adrenaline > 0;
-  let successChance = rand(crime.baseMin, crime.baseMax) + skill * 3 + gunBonus;
-  if (hasAdrenaline) { successChance += 20; await conn.query(`UPDATE player SET adrenaline = 0`); }
+  // District heat penalizes crime success — more cops = more eyes
+  const districtHeat = (await qv(`SELECT heat FROM district_heat WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`)) || 0;
+  const heatPenalty = Math.floor(districtHeat * 1.5); // -1.5% per heat level
+  let successChance = rand(crime.baseMin, crime.baseMax) + skill * 3 + gunBonus - heatPenalty;
+  if (hasAdrenaline) { successChance += 20; await exec(`UPDATE player SET adrenaline = 0`); }
   successChance = Math.min(successChance, 95);
   await advanceTime(crime.hours);
   if (chance(successChance)) {
@@ -1281,15 +1375,16 @@ async function commitCrime(crime) {
     const respect = rand(crime.respectMin, crime.respectMax);
     const actualDmg = p.armor > 0 ? Math.floor(dmg / 2) : dmg;
     const crimeWanted = crime.heat >= 15 ? 2 : crime.heat >= 5 ? 1 : 0;
-    await conn.query(`UPDATE player SET cash=cash+${loot}, health=GREATEST(0,health-${actualDmg}), respect=respect+${respect}, armor=GREATEST(0,armor-${dmg}), wanted_level=LEAST(5,wanted_level+${crimeWanted})`);
+    await exec(`UPDATE player SET cash=cash+${loot}, health=GREATEST(0,health-${actualDmg}), respect=respect+${respect}, armor=GREATEST(0,armor-${dmg}), wanted_level=LEAST(5,wanted_level+${crimeWanted})`);
     const safeD = p.district.replace(/'/g, "''"); const safeC = p.city.replace(/'/g, "''");
-    await conn.query(`UPDATE district_heat SET heat=heat+${crime.heat} WHERE district='${safeD}' AND city='${safeC}'`);
+    await exec(`UPDATE district_heat SET heat=heat+${crime.heat} WHERE district='${safeD}' AND city='${safeC}'`);
     if (crime.name === 'Carjack') {
       const v = VEHICLE_LIST[rand(0, VEHICLE_LIST.length - 1)];
       const exists = await qv(`SELECT COUNT(*) FROM vehicles WHERE name='${v.name}'`);
-      if (!exists) { await conn.query(`INSERT INTO vehicles VALUES ('${v.name}',0)`); log(`Jacked a ${v.name}!`, 'c-cyan'); }
+      if (!exists) { await exec(`INSERT INTO vehicles VALUES ('${v.name}',0)`); log(`Jacked a ${v.name}!`, 'c-cyan'); }
     }
     log(`SUCCESS: ${crime.name} - Earned $${loot}, +${respect} Respect${actualDmg > 0 ? ', -' + actualDmg + '% HP' : ''}`, 'c-green');
+    logAction('crime_success', `${crime.name} +$${loot} +${respect}resp`, p.x, p.y);
     spawnParticlesAtDuck(0xffdd00, 15, 2, 1.5);
     await maybeSkillUp(crime.skill); await updateRank();
   } else {
@@ -1298,8 +1393,9 @@ async function commitCrime(crime) {
     const fine = rand(crime.failFineMin, crime.failFineMax);
     const dmg = rand(crime.failDmgMin, crime.failDmgMax);
     const actualDmg = p.armor > 0 ? Math.floor(dmg / 2) : dmg;
-    await conn.query(`UPDATE player SET cash=GREATEST(0,cash-${fine}), health=GREATEST(0,health-${actualDmg}), wanted_level=LEAST(5,wanted_level+${wantedGain}), armor=GREATEST(0,armor-${dmg})`);
+    await exec(`UPDATE player SET cash=GREATEST(0,cash-${fine}), health=GREATEST(0,health-${actualDmg}), wanted_level=LEAST(5,wanted_level+${wantedGain}), armor=GREATEST(0,armor-${dmg})`);
     log(`FAILED: ${crime.name} - Fined $${fine}, -${actualDmg}% HP, +${wantedGain} Wanted`, 'c-red');
+    logAction('crime_fail', `${crime.name} -$${fine}`, p.x, p.y);
     spawnParticlesAtDuck(0xff2222, 12, 1.5, 1);
   }
   clearStatus();
@@ -1307,7 +1403,7 @@ async function commitCrime(crime) {
   // High-heat crimes trigger immediate police spawns
   if (crime.heat >= 15) {
     const pp = await q1('SELECT wanted_level FROM player');
-    if (pp.wanted_level <= 0) await conn.query(`UPDATE player SET wanted_level=1`);
+    if (pp.wanted_level <= 0) await exec(`UPDATE player SET wanted_level=1`);
     log('Sirens everywhere! The cops are on you!', 'c-red');
   }
   await updatePolicePresence();
@@ -1318,13 +1414,19 @@ async function commitCrime(crime) {
 //  AMMU-NATION
 // --------------------------------------------------------
 async function menuGuns() {
-  let html = '<table><tr><th>Gun</th><th>Type</th><th>Bonus</th><th>Price</th><th></th></tr>';
+  // Weapon locker discount: -10% per level
+  const wlLevel = (await qv(`SELECT level FROM gang_upgrades WHERE name='weapon_locker'`)) || 0;
+  const discount = wlLevel * 0.1;
+  let html = '';
+  if (wlLevel > 0) html += `<div class="c-cyan" style="margin-bottom:4px;font-size:10px">Weapon Locker Lv.${wlLevel}: ${Math.floor(discount * 100)}% discount + ${wlLevel * 3} bonus damage</div>`;
+  html += '<table><tr><th>Gun</th><th>Type</th><th>Bonus</th><th>Price</th><th></th></tr>';
   const owned = await q('SELECT name FROM guns');
   const ownedSet = new Set(owned.map(g => g.name));
   for (const gun of GUN_LIST) {
     const isOwned = ownedSet.has(gun.name);
-    html += `<tr><td>${gun.name}</td><td>${gun.cat}</td><td>+${gun.bonus}%</td><td>$${gun.price}</td>`;
-    html += `<td>${isOwned ? '<span class="c-green">OWNED</span>' : `<button class="btn buy-gun" data-name="${gun.name}" data-price="${gun.price}" data-cat="${gun.cat}" data-bonus="${gun.bonus}">Buy</button>`}</td></tr>`;
+    const discountedPrice = Math.floor(gun.price * (1 - discount));
+    html += `<tr><td>${gun.name}</td><td>${gun.cat}</td><td>+${gun.bonus}%</td><td>$${discountedPrice}${discount > 0 ? ` <span class="c-gray" style="text-decoration:line-through">$${gun.price}</span>` : ''}</td>`;
+    html += `<td>${isOwned ? '<span class="c-green">OWNED</span>' : `<button class="btn buy-gun" data-name="${gun.name}" data-price="${discountedPrice}" data-cat="${gun.cat}" data-bonus="${gun.bonus}">Buy</button>`}</td></tr>`;
   }
   html += '</table>';
   html += '<div style="margin-top:6px"><button class="btn rob-ammo">*** Rob Ammu-Nation ***</button></div>';
@@ -1335,9 +1437,10 @@ async function menuGuns() {
       const name = btn.dataset.name; const price = parseInt(btn.dataset.price);
       const cash = await qv('SELECT cash FROM player');
       if (cash < price) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-${price}`);
-      await conn.query(`INSERT INTO guns VALUES ('${name.replace(/'/g,"''")}','${btn.dataset.cat}',${btn.dataset.bonus})`);
+      await exec(`UPDATE player SET cash=cash-${price}`);
+      await exec(`INSERT INTO guns VALUES ('${name.replace(/'/g,"''")}','${btn.dataset.cat}',${btn.dataset.bonus})`);
       log(`Purchased ${name} for $${price}!`, 'c-green');
+      logAction('buy_gun', `${name} $${price}`);
       await updateHUD(); await menuGuns();
     });
   });
@@ -1351,7 +1454,7 @@ async function menuHospital() {
     { label: 'Full Treatment ($200)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < 200) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-200, health=100`);
+      await exec(`UPDATE player SET cash=cash-200, health=100`);
       log('Fully healed at the hospital.', 'c-green');
       spawnParticlesAtDuck(0x44ff44, 12, 1.5, 1.5);
       hideSubMenu(); await updateHUD(); showMainActions();
@@ -1359,15 +1462,15 @@ async function menuHospital() {
     { label: 'Buy Health Pack ($50)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < 50) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-50`);
-      await conn.query(`INSERT INTO inventory VALUES ('Health Pack',1) ON CONFLICT(item) DO UPDATE SET qty=qty+1`);
+      await exec(`UPDATE player SET cash=cash-50`);
+      await exec(`INSERT INTO inventory VALUES ('Health Pack',1) ON CONFLICT(item) DO UPDATE SET qty=qty+1`);
       log('Bought a Health Pack.', 'c-green');
       hideSubMenu(); await updateHUD(); showMainActions();
     }},
     { label: 'Buy Body Armor ($100)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < 100) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-100, armor=100`);
+      await exec(`UPDATE player SET cash=cash-100, armor=100`);
       log('Equipped body armor!', 'c-green');
       hideSubMenu(); await updateHUD(); showMainActions();
     }}
@@ -1384,21 +1487,21 @@ async function menuShops() {
     action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < info.price) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-${info.price}`);
+      await exec(`UPDATE player SET cash=cash-${info.price}`);
       // Immediate-effect items
-      if (name === 'Adrenaline Shot') { await conn.query(`UPDATE player SET adrenaline = 1`); }
-      else if (name === 'Bulletproof Vest') { await conn.query(`UPDATE player SET armor=LEAST(100,armor+100)`); }
-      else if (name === 'Gold Watch') { await conn.query(`UPDATE player SET respect=respect+50`); }
+      if (name === 'Adrenaline Shot') { await exec(`UPDATE player SET adrenaline = 1`); }
+      else if (name === 'Bulletproof Vest') { await exec(`UPDATE player SET armor=LEAST(100,armor+100)`); }
+      else if (name === 'Gold Watch') { await exec(`UPDATE player SET respect=respect+50`); }
       else if (name === 'Jetpack Fuel') {
         // Instant travel to random district
         log('Jetpack activated! Choose a district from Travel menu.', 'c-cyan');
       }
       else if (name === 'Smoke Grenade' && (await qv('SELECT wanted_level FROM player')) > 0) {
-        await conn.query(`UPDATE player SET wanted_level=0`);
+        await exec(`UPDATE player SET wanted_level=0`);
         clearPoliceNPCs(); stopSiren();
         log('Smoke grenade deployed! Cops lost you!', 'c-green');
       }
-      else { await conn.query(`INSERT INTO inventory VALUES ('${name}',1) ON CONFLICT(item) DO UPDATE SET qty=qty+1`); }
+      else { await exec(`INSERT INTO inventory VALUES ('${name}',1) ON CONFLICT(item) DO UPDATE SET qty=qty+1`); }
       log(`Bought ${name} for $${info.price}.`, 'c-green');
       await updateHUD();
     }
@@ -1418,18 +1521,20 @@ async function robLocation(placeName, lootMin, lootMax, lootMul, heat) {
   if (chance(successChance)) {
     const loot = rand(lootMin, lootMax) + skill * lootMul;
     const respect = rand(5, 20);
-    await conn.query(`UPDATE player SET cash=cash+${loot}, respect=respect+${respect}, wanted_level=LEAST(5,wanted_level+1)`);
+    await exec(`UPDATE player SET cash=cash+${loot}, respect=respect+${respect}, wanted_level=LEAST(5,wanted_level+1)`);
     const safeD = p.district.replace(/'/g, "''"); const safeC = p.city.replace(/'/g, "''");
-    await conn.query(`UPDATE district_heat SET heat=heat+${heat} WHERE district='${safeD}' AND city='${safeC}'`);
+    await exec(`UPDATE district_heat SET heat=heat+${heat} WHERE district='${safeD}' AND city='${safeC}'`);
     log(`Robbed ${placeName}! Got $${loot}, +${respect} Respect. +1 Wanted.`, 'c-green');
+    logAction('rob_success', `${placeName} +$${loot}`);
     if (isMultiplayer()) broadcastAction({ action: 'rob', place: placeName, name: p.name });
     spawnParticlesAtDuck(0xffdd00, 15, 2, 1.5);
     await maybeSkillUp('stealth'); await updateRank();
   } else {
     const fine = rand(100, 400);
     const dmg = rand(10, 35);
-    await conn.query(`UPDATE player SET cash=GREATEST(0,cash-${fine}), health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+2)`);
+    await exec(`UPDATE player SET cash=GREATEST(0,cash-${fine}), health=GREATEST(0,health-${dmg}), wanted_level=LEAST(5,wanted_level+2)`);
     log(`Failed to rob ${placeName}! Fined $${fine}, -${dmg} HP, +2 Wanted.`, 'c-red');
+    logAction('rob_fail', `${placeName} -$${fine}`);
     spawnParticlesAtDuck(0xff2222, 12, 1.5, 1);
   }
   clearStatus();
@@ -1443,13 +1548,18 @@ async function robLocation(placeName, lootMin, lootMax, lootMul, heat) {
 async function menuDrugs() {
   const dealSkill = await getSkill('dealing');
   const clock = await q1('SELECT day, hour FROM game_clock');
+  const p = await q1('SELECT district, city FROM player');
+  const districtHeat = (await qv(`SELECT heat FROM district_heat WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`)) || 0;
   const priceSeed = clock.day * 100 + Math.floor(clock.hour / 6);
-  let html = '<table><tr><th>Drug</th><th>Buy</th><th>Sell</th><th>Owned</th><th></th></tr>';
+  // High heat = higher drug prices (risk premium) — +3% per heat level
+  const heatMul = 1 + districtHeat * 0.03;
+  let html = `<table><tr><th>Drug</th><th>Buy</th><th>Sell</th><th>Owned</th><th></th></tr>`;
+  if (districtHeat >= 5) html = `<div class="c-red" style="margin-bottom:4px;font-size:10px">High heat district! Drug prices ${districtHeat >= 10 ? 'much ' : ''}higher but riskier.</div>` + html;
   for (let di = 0; di < DRUGS.length; di++) {
     const drug = DRUGS[di];
-    const buyPrice = drug.basePrice + seededRand(priceSeed + di, -20, 30);
+    const buyPrice = Math.floor((drug.basePrice + seededRand(priceSeed + di, -20, 30)) * heatMul);
     const sellMul = 1.2 + (dealSkill * 0.1) + (seededRand(priceSeed + di + 100, 0, 50) / 100);
-    const sellPrice = Math.floor(drug.basePrice * sellMul);
+    const sellPrice = Math.floor(drug.basePrice * sellMul * heatMul);
     const owned = (await qv(`SELECT qty FROM drugs WHERE name='${drug.name}'`)) || 0;
     html += `<tr><td>${drug.name}</td><td>$${buyPrice}</td><td>$${sellPrice}</td><td>${owned}</td>`;
     html += `<td><button class="btn buy-drug" data-name="${drug.name}" data-price="${buyPrice}">Buy</button> `;
@@ -1462,11 +1572,12 @@ async function menuDrugs() {
       const name = btn.dataset.name; const price = parseInt(btn.dataset.price);
       const cash = await qv('SELECT cash FROM player');
       if (cash < price) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-${price}`);
+      await exec(`UPDATE player SET cash=cash-${price}`);
       const exists = await qv(`SELECT COUNT(*) FROM drugs WHERE name='${name}'`);
-      if (exists > 0) { await conn.query(`UPDATE drugs SET qty=qty+1, avg_price=${price} WHERE name='${name}'`); }
-      else { await conn.query(`INSERT INTO drugs VALUES ('${name}',1,${price})`); }
+      if (exists > 0) { await exec(`UPDATE drugs SET qty=qty+1, avg_price=${price} WHERE name='${name}'`); }
+      else { await exec(`INSERT INTO drugs VALUES ('${name}',1,${price})`); }
       log(`Bought 1 ${name} for $${price}.`, 'c-green');
+      logAction('drug_buy', `${name} $${price}`);
       await maybeSkillUp('dealing'); await updateHUD(); await menuDrugs();
     });
   });
@@ -1475,11 +1586,12 @@ async function menuDrugs() {
       const name = btn.dataset.name; const price = parseInt(btn.dataset.price);
       const qty = (await qv(`SELECT qty FROM drugs WHERE name='${name}'`)) || 0;
       if (qty <= 0) { log(`No ${name} to sell!`, 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash+${price}`);
-      await conn.query(`UPDATE drugs SET qty=qty-1 WHERE name='${name}'`);
+      await exec(`UPDATE player SET cash=cash+${price}`);
+      await exec(`UPDATE drugs SET qty=qty-1 WHERE name='${name}'`);
       log(`Sold 1 ${name} for $${price}.`, 'c-green');
+      logAction('drug_sell', `${name} $${price}`);
       await maybeSkillUp('dealing');
-      if (chance(15)) { log('A narc spotted you dealing!', 'c-red'); await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`); }
+      if (chance(15)) { log('A narc spotted you dealing!', 'c-red'); await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`); }
       await updateHUD(); await menuDrugs();
     });
   });
@@ -1505,9 +1617,10 @@ async function menuVehicles() {
       const name = btn.dataset.name; const price = parseInt(btn.dataset.price);
       const cash = await qv('SELECT cash FROM player');
       if (cash < price) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-${price}`);
-      await conn.query(`INSERT INTO vehicles VALUES ('${name}',0)`);
+      await exec(`UPDATE player SET cash=cash-${price}`);
+      await exec(`INSERT INTO vehicles VALUES ('${name}',0)`);
       log(`Bought a ${name} for $${price}!`, 'c-green');
+      logAction('buy_vehicle', `${name} $${price}`);
       await updateHUD(); await menuVehicles();
     });
   });
@@ -1521,7 +1634,7 @@ async function menuHookers() {
   showSubMenu('Street Services', [
     { label: 'Quick Fix - $50 (+10 HP)', action: async () => {
       if (p.cash < 50) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
-      await conn.query(`UPDATE player SET cash=cash-50, health=LEAST(100,health+10)`);
+      await exec(`UPDATE player SET cash=cash-50, health=LEAST(100,health+10)`);
       await advanceTime(1);
       log('Spent some quality time on the street. +10 HP.', 'c-magenta');
       spawnParticlesAtDuck(0xff44ff, 8, 1, 1.5);
@@ -1529,7 +1642,7 @@ async function menuHookers() {
     }},
     { label: 'Full Service - $100 (+25 HP)', action: async () => {
       if (p.cash < 100) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
-      await conn.query(`UPDATE player SET cash=cash-100, health=LEAST(100,health+25)`);
+      await exec(`UPDATE player SET cash=cash-100, health=LEAST(100,health+25)`);
       await advanceTime(2);
       log('A night to remember. +25 HP. Worth every dollar.', 'c-magenta');
       spawnParticlesAtDuck(0xff44ff, 12, 1.5, 1.5);
@@ -1537,7 +1650,7 @@ async function menuHookers() {
     }},
     { label: 'VIP Experience - $250 (+50 HP, -1 Wanted)', action: async () => {
       if (p.cash < 250) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
-      await conn.query(`UPDATE player SET cash=cash-250, health=LEAST(100,health+50), wanted_level=GREATEST(0,wanted_level-1)`);
+      await exec(`UPDATE player SET cash=cash-250, health=LEAST(100,health+50), wanted_level=GREATEST(0,wanted_level-1)`);
       await advanceTime(3);
       log('The VIP treatment. +50 HP, stress relief lowered your wanted level.', 'c-magenta');
       spawnParticlesAtDuck(0xff44ff, 18, 2, 2);
@@ -1556,7 +1669,7 @@ async function menuGang() {
     const options = localGangs.map(g => ({
       label: `Join ${g} - Gain territory, recruit crew, earn daily income`,
       action: async () => {
-        await conn.query(`UPDATE player SET gang='${g.replace(/'/g,"''")}', gang_rank='Outsider'`);
+        await exec(`UPDATE player SET gang='${g.replace(/'/g,"''")}', gang_rank='Outsider'`);
         log(`Joined ${g}! Visit Gang & Empire [9] to manage territory, recruit crew, and build your empire.`, 'c-magenta');
         hideSubMenu(); await updateHUD(); showMainActions();
       }
@@ -1572,7 +1685,7 @@ async function menuGang() {
           options.push({
             label: `Join ${g} (${owner}'s crew) - Multiplayer gang`,
             action: async () => {
-              await conn.query(`UPDATE player SET gang='${g.replace(/'/g,"''")}', gang_rank='Outsider'`);
+              await exec(`UPDATE player SET gang='${g.replace(/'/g,"''")}', gang_rank='Outsider'`);
               log(`Joined ${owner}'s gang: ${g}!`, 'c-magenta');
               if (isMultiplayer()) broadcastAction({ action: 'gang_join', gang: g, name: (await q1('SELECT name FROM player')).name });
               hideSubMenu(); await updateHUD(); showMainActions();
@@ -1587,7 +1700,7 @@ async function menuGang() {
         if (!rawName) return;
         const name = rawName.replace(/[^a-zA-Z0-9 ]/g, '').trim().slice(0, 30);
         if (!name) { log('Invalid gang name.', 'c-red'); return; }
-        await conn.query(`UPDATE player SET gang='${name}', gang_rank='Boss'`);
+        await exec(`UPDATE player SET gang='${name}', gang_rank='Boss'`);
         log(`Created gang: ${name}! You are the Boss.`, 'c-magenta');
         hideSubMenu(); await updateHUD(); showMainActions();
       }});
@@ -1603,9 +1716,10 @@ async function menuGang() {
   gangInfo += `<span class="c-cyan">Businesses: ${bizCount}</span> | `;
   gangInfo += `<span class="c-gold">Respect: ${p.respect}</span>`;
   gangInfo += `</div>`;
-  showSubMenu(`${p.gang} - ${p.gang_rank}`, [
+  showSubMenu(`${esc(p.gang)} - ${esc(p.gang_rank)}`, [
     { label: 'Territory Map - See who controls each district', action: menuTerritoryMap },
     { label: 'Attack Territory - Fight rival gangs for turf ($150/day per territory)', action: menuAttackTerritory },
+    { label: 'Diplomacy - Manage alliances with other gangs', action: menuDiplomacy },
     { label: `Recruit Members - Hire crew (have ${recruitCount})`, action: menuRecruit },
     { label: 'Upgrades - Safe house, weapons, smuggling routes', action: menuGangUpgrades },
     { label: `Buy Business - Earn passive daily income (own ${bizCount})`, action: menuBusiness },
@@ -1613,7 +1727,7 @@ async function menuGang() {
     { label: 'Leave Gang', action: async () => {
       showSubMenu('Leave Gang?', [
         { label: 'Yes, leave', action: async () => {
-          await conn.query(`UPDATE player SET gang='', gang_rank=''`);
+          await exec(`UPDATE player SET gang='', gang_rank=''`);
           log('Left the gang.', 'c-yellow');
           hideSubMenu(); await updateHUD(); showMainActions();
         }},
@@ -1632,20 +1746,89 @@ async function menuGang() {
 async function menuTerritoryMap() {
   const p = await q1('SELECT city, gang FROM player');
   const territories = await q(`SELECT district, owner FROM territories WHERE city='${p.city.replace(/'/g,"''")}'`);
-  let html = '<table><tr><th>District</th><th>Owner</th></tr>';
+  const alliedGangs = new Set((await q(`SELECT gang FROM gang_relations WHERE relation='Allied'`)).map(r => r.gang));
+  let html = '<table><tr><th>District</th><th>Owner</th><th>Status</th></tr>';
   for (const t of territories) {
-    const color = t.owner === p.gang ? 'c-green' : t.owner === 'Unaffiliated' ? 'c-gray' : 'c-red';
-    html += `<tr><td>${t.district}</td><td class="${color}">${t.owner}</td></tr>`;
+    const isOwn = t.owner === p.gang;
+    const isAlly = alliedGangs.has(t.owner);
+    const color = isOwn ? 'c-green' : isAlly ? 'c-cyan' : t.owner === 'Unaffiliated' ? 'c-gray' : 'c-red';
+    const status = isOwn ? 'YOURS' : isAlly ? 'ALLY' : t.owner === 'Unaffiliated' ? '-' : 'RIVAL';
+    html += `<tr><td>${esc(t.district)}</td><td class="${color}">${esc(t.owner)}</td><td class="${color}">${status}</td></tr>`;
   }
   html += '</table>';
   showSubMenuHTML(`Territory - ${p.city}`, html);
+}
+
+async function menuDiplomacy() {
+  const p = await q1('SELECT gang, city, respect FROM player');
+  const localGangs = GANGS[p.city] || [];
+  const otherGangs = localGangs.filter(g => g !== p.gang);
+  if (otherGangs.length === 0) { log('No other gangs in this city.', 'c-yellow'); return; }
+  const relations = await q('SELECT gang, relation FROM gang_relations');
+  const relMap = {};
+  for (const r of relations) relMap[r.gang] = r.relation;
+  const options = [];
+  for (const g of otherGangs) {
+    const rel = relMap[g] || 'Hostile';
+    const color = rel === 'Allied' ? 'c-green' : rel === 'Neutral' ? 'c-yellow' : 'c-red';
+    const tCount = await qv(`SELECT COUNT(*) FROM territories WHERE owner='${g.replace(/'/g,"''")}'`);
+    options.push({
+      label: `${g} [${rel}] — ${tCount || 0} territories`,
+      action: async () => {
+        const actions = [];
+        if (rel !== 'Allied' && p.respect >= 500) {
+          actions.push({ label: `Propose Alliance ($1000, 500+ respect)`, action: async () => {
+            const cash = await qv('SELECT cash FROM player');
+            if (cash < 1000) { log('Need $1000 for diplomatic overtures!', 'c-red'); return; }
+            if (chance(40 + Math.floor(p.respect / 200))) {
+              await exec(`UPDATE player SET cash=cash-1000`);
+              await exec(`DELETE FROM gang_relations WHERE gang='${g.replace(/'/g,"''")}'`);
+              await exec(`INSERT INTO gang_relations VALUES ('${g.replace(/'/g,"''")}','Allied')`);
+              log(`Alliance formed with ${g}! Allied territories share income.`, 'c-green');
+              logAction('alliance', g);
+              spawnParticlesAtDuck(0x44ff44, 15, 2, 1.5);
+            } else {
+              await exec(`UPDATE player SET cash=cash-1000`);
+              log(`${g} rejected your alliance proposal. Money wasted.`, 'c-red');
+            }
+            hideSubMenu(); await updateHUD(); showMainActions();
+          }});
+        }
+        if (rel !== 'Neutral') {
+          actions.push({ label: `Set Neutral`, action: async () => {
+            await exec(`DELETE FROM gang_relations WHERE gang='${g.replace(/'/g,"''")}'`);
+            await exec(`INSERT INTO gang_relations VALUES ('${g.replace(/'/g,"''")}','Neutral')`);
+            log(`Relations with ${g} set to Neutral.`, 'c-yellow');
+            hideSubMenu(); await updateHUD(); showMainActions();
+          }});
+        }
+        if (rel !== 'Hostile') {
+          actions.push({ label: `Declare Hostile`, action: async () => {
+            await exec(`DELETE FROM gang_relations WHERE gang='${g.replace(/'/g,"''")}'`);
+            await exec(`INSERT INTO gang_relations VALUES ('${g.replace(/'/g,"''")}','Hostile')`);
+            log(`Declared ${g} as hostile! Their territory is now fair game.`, 'c-red');
+            hideSubMenu(); await updateHUD(); showMainActions();
+          }});
+        }
+        if (rel === 'Allied') {
+          actions.push({ label: `(Allied: +10% shared territory income, can't attack their turf)`, action: () => {} });
+        }
+        actions.push({ label: 'Back', action: () => menuDiplomacy() });
+        showSubMenu(`${g} — ${rel}`, actions);
+      }
+    });
+  }
+  showSubMenu('Gang Diplomacy', options);
 }
 
 async function menuAttackTerritory() {
   const p = await q1('SELECT city, gang, respect FROM player');
   const safeGang = p.gang.replace(/'/g,"''");
   const safeCity = p.city.replace(/'/g,"''");
-  const targets = await q(`SELECT district, owner FROM territories WHERE city='${safeCity}' AND owner != '${safeGang}' AND owner != 'Unaffiliated'`);
+  // Filter out allied gangs — can't attack allies
+  const alliedGangs = (await q(`SELECT gang FROM gang_relations WHERE relation='Allied'`)).map(r => r.gang);
+  const allTargets = await q(`SELECT district, owner FROM territories WHERE city='${safeCity}' AND owner != '${safeGang}' AND owner != 'Unaffiliated'`);
+  const targets = allTargets.filter(t => !alliedGangs.includes(t.owner));
   const unclaimed = await q(`SELECT district FROM territories WHERE city='${safeCity}' AND owner='Unaffiliated'`);
   if (targets.length === 0 && unclaimed.length === 0) {
     log('No territories to attack or claim here.', 'c-yellow');
@@ -1663,15 +1846,15 @@ async function menuAttackTerritory() {
         const strength = recruitCount * 2 + upgrades * 5;
         await advanceTime(3);
         if (chance(Math.min(40 + strength, 85))) {
-          await conn.query(`UPDATE territories SET owner='${safeGang}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${safeCity}'`);
+          await exec(`UPDATE territories SET owner='${safeGang}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${safeCity}'`);
           const respect = rand(25, 100);
-          await conn.query(`UPDATE player SET respect=respect+${respect}`);
+          await exec(`UPDATE player SET respect=respect+${respect}`);
           log(`Victory! Took ${t.district} from ${t.owner}! +${respect} Respect`, 'c-green');
           spawnParticlesAtDuck(0x44ff44, 20, 2, 2);
           await updateRank();
         } else {
           const dmg = rand(20, 50);
-          await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg}), respect=GREATEST(0,respect-75)`);
+          await exec(`UPDATE player SET health=GREATEST(0,health-${dmg}), respect=GREATEST(0,respect-75)`);
           log(`Defeat! Failed to take ${t.district}. -${dmg} HP, -75 Respect.`, 'c-red');
           spawnParticlesAtDuck(0xff2222, 15, 1.5, 1);
           await checkDeath();
@@ -1686,9 +1869,9 @@ async function menuAttackTerritory() {
     options.push({
       label: `Claim ${t.district} (Unclaimed)`,
       action: async () => {
-        await conn.query(`UPDATE territories SET owner='${safeGang}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${safeCity}'`);
+        await exec(`UPDATE territories SET owner='${safeGang}' WHERE district='${t.district.replace(/'/g,"''")}' AND city='${safeCity}'`);
         const respect = rand(10, 30);
-        await conn.query(`UPDATE player SET respect=respect+${respect}`);
+        await exec(`UPDATE player SET respect=respect+${respect}`);
         log(`Claimed ${t.district} for ${p.gang}! +${respect} Respect`, 'c-green');
         spawnParticlesAtDuck(0x44ff44, 12, 1.5, 1.5);
         await advanceTime(2); await processWorldEvents();
@@ -1713,8 +1896,8 @@ async function menuRecruit() {
   const names = ['Rico','Smoke','Ryder','Sweet','Cesar','Woozie','Catalina','T-Bone','8-Ball','Salvatore'];
   const name = names[rand(0, names.length - 1)];
   const str = rand(3, 10); const upkeep = rand(20, 60);
-  await conn.query(`UPDATE player SET cash=cash-${cost}`);
-  await conn.query(`INSERT INTO recruits(name,strength,upkeep) VALUES ('${name}',${str},${upkeep})`);
+  await exec(`UPDATE player SET cash=cash-${cost}`);
+  await exec(`INSERT INTO recruits(name,strength,upkeep) VALUES ('${name}',${str},${upkeep})`);
   log(`Recruited ${name} (Strength: ${str}, Upkeep: $${upkeep}/day) for $${cost}!`, 'c-cyan');
   await updateHUD();
 }
@@ -1727,8 +1910,8 @@ async function menuGangUpgrades() {
       const cost = (u.level + 1) * 500;
       const cash = await qv('SELECT cash FROM player');
       if (cash < cost) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-${cost}`);
-      await conn.query(`UPDATE gang_upgrades SET level=level+1 WHERE name='${u.name}'`);
+      await exec(`UPDATE player SET cash=cash-${cost}`);
+      await exec(`UPDATE gang_upgrades SET level=level+1 WHERE name='${u.name}'`);
       log(`Upgraded ${u.name} to level ${u.level + 1}!`, 'c-green');
       await updateHUD(); await menuGangUpgrades();
     }
@@ -1760,8 +1943,8 @@ async function menuBusiness() {
       const price = parseInt(btn.dataset.price);
       const cash = await qv('SELECT cash FROM player');
       if (cash < price) { log('Not enough cash!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-${price}`);
-      await conn.query(`INSERT INTO businesses VALUES ('${btn.dataset.name}','${p.city.replace(/'/g,"''")}','${btn.dataset.type}',${btn.dataset.income})`);
+      await exec(`UPDATE player SET cash=cash-${price}`);
+      await exec(`INSERT INTO businesses VALUES ('${btn.dataset.name}','${p.city.replace(/'/g,"''")}','${btn.dataset.type}',${btn.dataset.income})`);
       log(`Bought ${btn.dataset.name} for $${price}! Income: $${btn.dataset.income}/day`, 'c-green');
       await updateHUD(); await menuBusiness();
     });
@@ -1787,7 +1970,7 @@ async function menuStripClub() {
   if (ownsClub > 0) {
     stripOptions.push({ label: 'Hide out in the back office (Heal, lose cops)', action: async () => {
       stopSiren(); clearPoliceNPCs(); _policeActive = false;
-      await conn.query(`UPDATE player SET wanted_level=0, health=LEAST(100,health+30)`);
+      await exec(`UPDATE player SET wanted_level=0, health=LEAST(100,health+30)`);
       await advanceTime(3);
       log('Hid out in your own club. Cops lost your trail. +30 HP, wanted cleared.', 'c-green');
       spawnParticlesAtDuck(0x44ff44, 10, 1.5, 1.5);
@@ -1797,7 +1980,7 @@ async function menuStripClub() {
   showSubMenu(ownsClub > 0 ? 'Your Strip Club' : 'Strip Club', [...stripOptions,
     { label: 'Lap Dance - $75 (+15 HP)', action: async () => {
       if (p.cash < 75) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
-      await conn.query(`UPDATE player SET cash=cash-75, health=LEAST(100,health+15)`);
+      await exec(`UPDATE player SET cash=cash-75, health=LEAST(100,health+15)`);
       await advanceTime(1);
       log('Enjoyed a lap dance. Feeling relaxed. +15 HP.', 'c-magenta');
       spawnParticlesAtDuck(0xff66aa, 8, 1, 1.5);
@@ -1805,7 +1988,7 @@ async function menuStripClub() {
     }},
     { label: 'VIP Room - $200 (+30 HP, -1 Wanted)', action: async () => {
       if (p.cash < 200) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
-      await conn.query(`UPDATE player SET cash=cash-200, health=LEAST(100,health+30), wanted_level=GREATEST(0,wanted_level-1)`);
+      await exec(`UPDATE player SET cash=cash-200, health=LEAST(100,health+30), wanted_level=GREATEST(0,wanted_level-1)`);
       await advanceTime(2);
       log('VIP treatment. Nobody looks for you here. +30 HP, -1 Wanted.', 'c-magenta');
       spawnParticlesAtDuck(0xff66aa, 15, 1.5, 2);
@@ -1813,7 +1996,7 @@ async function menuStripClub() {
     }},
     { label: 'Champagne Room - $500 (+50 HP, +10 Respect)', action: async () => {
       if (p.cash < 500) { log('Not enough cash for the high life!', 'c-red'); hideSubMenu(); showMainActions(); return; }
-      await conn.query(`UPDATE player SET cash=cash-500, health=LEAST(100,health+50), respect=respect+10`);
+      await exec(`UPDATE player SET cash=cash-500, health=LEAST(100,health+50), respect=respect+10`);
       await advanceTime(3);
       log('Big spender! The whole club knows your name. +50 HP, +10 Respect.', 'c-gold');
       spawnParticlesAtDuck(0xffd700, 20, 2, 2);
@@ -1822,7 +2005,7 @@ async function menuStripClub() {
     }},
     { label: 'Buy Drinks & Hang Out - $30 (-1 Wanted)', action: async () => {
       if (p.cash < 30) { log('Not enough cash!', 'c-red'); hideSubMenu(); showMainActions(); return; }
-      await conn.query(`UPDATE player SET cash=cash-30, wanted_level=GREATEST(0,wanted_level-1)`);
+      await exec(`UPDATE player SET cash=cash-30, wanted_level=GREATEST(0,wanted_level-1)`);
       await advanceTime(2);
       log('Laid low at the strip club for a while. -1 Wanted.', 'c-cyan');
       hideSubMenu(); await updateHUD(); showMainActions();
@@ -1847,37 +2030,37 @@ async function menuGambling() {
     { label: 'Slot Machine ($50)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < 50) { log('Need $50 to play!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-50`);
+      await exec(`UPDATE player SET cash=cash-50`);
       const symbols = ['7','7','7','$','$','$','*','*','#','#','!','@'];
       const r1 = symbols[rand(0, symbols.length-1)], r2 = symbols[rand(0, symbols.length-1)], r3 = symbols[rand(0, symbols.length-1)];
       log(`[ ${r1} | ${r2} | ${r3} ]`, 'c-yellow');
       if (r1 === r2 && r2 === r3) {
         const win = r1 === '7' ? 5000 : r1 === '$' ? 1000 : 500;
-        await conn.query(`UPDATE player SET cash=cash+${win}`); log(`JACKPOT! Won $${win}!`, 'c-gold'); spawnParticlesAtDuck(0xffd700, 25, 3, 2);
+        await exec(`UPDATE player SET cash=cash+${win}`); log(`JACKPOT! Won $${win}!`, 'c-gold'); spawnParticlesAtDuck(0xffd700, 25, 3, 2);
       } else if (r1 === r2 || r2 === r3) {
-        await conn.query(`UPDATE player SET cash=cash+100`); log('Partial match! Won $100.', 'c-green');
+        await exec(`UPDATE player SET cash=cash+100`); log('Partial match! Won $100.', 'c-green');
       } else { log('No luck this time.', 'c-gray'); }
       await updateHUD();
     }},
     { label: 'Dice Roll ($100)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < 100) { log('Need $100 to play!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-100`);
+      await exec(`UPDATE player SET cash=cash-100`);
       const d1 = rand(1,6), d2 = rand(1,6), total = d1 + d2;
       log(`Rolled: [${d1}] [${d2}] = ${total}`, 'c-yellow');
-      if (total === 7 || total === 11) { await conn.query(`UPDATE player SET cash=cash+300`); log('Winner! +$300!', 'c-green'); }
-      else if (total === 2 || total === 12) { await conn.query(`UPDATE player SET cash=cash+500`); log('Snake eyes / boxcars! +$500!', 'c-gold'); }
+      if (total === 7 || total === 11) { await exec(`UPDATE player SET cash=cash+300`); log('Winner! +$300!', 'c-green'); }
+      else if (total === 2 || total === 12) { await exec(`UPDATE player SET cash=cash+500`); log('Snake eyes / boxcars! +$500!', 'c-gold'); }
       else { log('House wins.', 'c-gray'); }
       await updateHUD();
     }},
     { label: 'High Stakes Poker ($500)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
       if (cash < 500) { log('Need $500 for the big table!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET cash=cash-500`);
+      await exec(`UPDATE player SET cash=cash-500`);
       const charisma = await getSkill('charisma');
       if (chance(30 + charisma * 3)) {
         const win = rand(800, 2500);
-        await conn.query(`UPDATE player SET cash=cash+${win}`); log(`Read them like a book. Won $${win}!`, 'c-gold');
+        await exec(`UPDATE player SET cash=cash+${win}`); log(`Read them like a book. Won $${win}!`, 'c-gold');
         await maybeSkillUp('charisma');
       } else { log('Poker face failed. Lost your buy-in.', 'c-red'); }
       await updateHUD();
@@ -1905,7 +2088,7 @@ async function menuStreetRace() {
     // Multiplayer race — broadcast challenge, 5 second window
     showSubMenu(`Street Race Challenge - $${buyIn} buy-in`, [
       { label: `Challenge all players ($${buyIn} buy-in, 5s to join, losers forfeit)`, action: async () => {
-        await conn.query(`UPDATE player SET cash=cash-${buyIn}`);
+        await exec(`UPDATE player SET cash=cash-${buyIn}`);
         _raceActive = true;
         const playerName = (await q1('SELECT name FROM player')).name;
         broadcastAction({ action: 'race_challenge', name: playerName, buyIn });
@@ -1931,7 +2114,7 @@ async function menuStreetRace() {
             won = chance(30 + drivingSkill * 5 + (vDef?.speed || 2) * 5);
           }
           if (won) {
-            await conn.query(`UPDATE player SET cash=cash+${totalPot}`);
+            await exec(`UPDATE player SET cash=cash+${totalPot}`);
             log(`YOU WON THE RACE! Prize: $${totalPot}!`, 'c-green');
             spawnParticlesAtDuck(0xffd700, 25, 3, 2);
             broadcastAction({ action: 'race_result', winner: playerName, pot: totalPot });
@@ -1941,7 +2124,7 @@ async function menuStreetRace() {
             broadcastAction({ action: 'race_result', winner: 'someone else', pot: totalPot });
             spawnParticlesAtDuck(0xff2222, 15, 2, 1);
           }
-          if (chance(25)) await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+          if (chance(25)) await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
           _raceActive = false;
           _raceAcceptors = [];
           await updateHUD(); showMainActions();
@@ -1961,26 +2144,26 @@ let _raceAcceptors = [];
 
 async function _soloRace(buyIn, drivingSkill) {
   setStatus('Street racing...');
-  await conn.query(`UPDATE player SET cash=cash-${buyIn}`);
+  await exec(`UPDATE player SET cash=cash-${buyIn}`);
   await advanceTime(1);
   const activeV = await q1(`SELECT name FROM vehicles WHERE stored=0 LIMIT 1`);
   const vDef = activeV ? VEHICLE_LIST.find(v => v.name === activeV.name) : null;
   const winChance = 25 + drivingSkill * 5 + (vDef?.speed || 2) * 5;
   if (chance(winChance)) {
     const prize = buyIn * 3;
-    await conn.query(`UPDATE player SET cash=cash+${prize}`);
+    await exec(`UPDATE player SET cash=cash+${prize}`);
     log(`Won the race! Prize: $${prize}!`, 'c-green');
     spawnParticlesAtDuck(0xffd700, 20, 3, 2);
     await maybeSkillUp('driving');
   } else if (chance(50)) {
     log('Came in second. Got your buy-in back.', 'c-yellow');
-    await conn.query(`UPDATE player SET cash=cash+${buyIn}`);
+    await exec(`UPDATE player SET cash=cash+${buyIn}`);
   } else {
     const dmg = rand(5, 20);
-    await conn.query(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
+    await exec(`UPDATE player SET health=GREATEST(0,health-${dmg})`);
     log(`Crashed out! Lost $${buyIn} and ${dmg}% HP.`, 'c-red'); await checkDeath();
   }
-  if (chance(30)) await conn.query(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+  if (chance(30)) await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
   clearStatus();
   await checkPolice(); hideSubMenu(); await updateHUD(); showMainActions();
 }
@@ -2005,8 +2188,8 @@ async function menuPerks() {
       const cost = parseInt(btn.dataset.cost);
       const pp = (await qv('SELECT perk_points FROM player')) || 0;
       if (pp < cost) { log('Not enough perk points!', 'c-red'); return; }
-      await conn.query(`UPDATE player SET perk_points=perk_points-${cost}`);
-      await conn.query(`UPDATE perks SET unlocked=1 WHERE name='${btn.dataset.name.replace(/'/g,"''")}'`);
+      await exec(`UPDATE player SET perk_points=perk_points-${cost}`);
+      await exec(`UPDATE perks SET unlocked=1 WHERE name='${btn.dataset.name.replace(/'/g,"''")}'`);
       log(`Unlocked perk: ${btn.dataset.name}!`, 'c-magenta');
       await updateHUD(); await menuPerks();
     });
@@ -2060,14 +2243,14 @@ async function menuInventory() {
       if (item === 'Health Pack') {
         const hasPerk = await qv(`SELECT unlocked FROM perks WHERE name='Back Alley Surgeon'`);
         const heal = hasPerk ? 50 : 40;
-        await conn.query(`UPDATE player SET health=LEAST(100,health+${heal})`);
+        await exec(`UPDATE player SET health=LEAST(100,health+${heal})`);
         log(`Used Health Pack. +${heal} HP.`, 'c-green');
       } else if (item === 'Fake ID') {
-        await conn.query(`UPDATE player SET wanted_level=GREATEST(0,wanted_level-1)`);
+        await exec(`UPDATE player SET wanted_level=GREATEST(0,wanted_level-1)`);
         log('Used Fake ID. Wanted level reduced by 1.', 'c-green');
       }
-      await conn.query(`UPDATE inventory SET qty=qty-1 WHERE item='${item}'`);
-      await conn.query(`DELETE FROM inventory WHERE qty <= 0`);
+      await exec(`UPDATE inventory SET qty=qty-1 WHERE item='${item}'`);
+      await exec(`DELETE FROM inventory WHERE qty <= 0`);
       await updateHUD(); await menuInventory();
     });
   });
@@ -2076,14 +2259,14 @@ async function menuInventory() {
       const name = btn.dataset.name;
       if (!name) {
         // Go on foot — store all active vehicles
-        await conn.query(`UPDATE vehicles SET stored=1 WHERE stored=0`);
+        await exec(`UPDATE vehicles SET stored=1 WHERE stored=0`);
         log('Going on foot. All vehicles stored.', 'c-cyan');
       } else {
         const isStored = btn.dataset.stored === '1';
         if (isStored) {
           // Take out of garage and make active
-          await conn.query(`UPDATE vehicles SET stored=1 WHERE stored=0`); // store current
-          await conn.query(`UPDATE vehicles SET stored=0 WHERE name='${name.replace(/'/g,"''")}'`);
+          await exec(`UPDATE vehicles SET stored=1 WHERE stored=0`); // store current
+          await exec(`UPDATE vehicles SET stored=0 WHERE name='${name.replace(/'/g,"''")}'`);
           log(`Switched to ${name}. Other vehicles stored.`, 'c-green');
         } else {
           log(`Already driving ${name}.`, 'c-gray');
@@ -2105,7 +2288,119 @@ async function menuNews() {
   showSubMenuHTML('News Feed', html);
 }
 
-// menuWait removed — time only advances through game actions (jobs, crimes, travel, etc.)
+// --------------------------------------------------------
+//  STATS & LEADERBOARD (SQL analytics over action_log)
+// --------------------------------------------------------
+async function menuStats() {
+  const totalActions = (await qv('SELECT COUNT(*) FROM action_log')) || 0;
+  if (totalActions === 0) { showSubMenuHTML('Stats Dashboard', '<div class="c-gray">No stats yet — play the game first!</div>'); return; }
+
+  const p = await q1('SELECT * FROM player');
+  const clk = await q1('SELECT * FROM game_clock');
+
+  // Core stats via SQL analytics
+  const crimeSuccesses = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='crime_success'`)) || 0;
+  const crimeFails = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='crime_fail'`)) || 0;
+  const crimeTotal = crimeSuccesses + crimeFails;
+  const crimeRate = crimeTotal > 0 ? Math.round(crimeSuccesses / crimeTotal * 100) : 0;
+
+  const kills = (await qv(`SELECT COUNT(*) FROM action_log WHERE action IN ('kill_npc','kill_cop')`)) || 0;
+  const copKills = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='kill_cop'`)) || 0;
+  const deaths = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='death'`)) || 0;
+  const kd = deaths > 0 ? (kills / deaths).toFixed(1) : kills > 0 ? 'INF' : '0';
+
+  const robSuccesses = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='rob_success'`)) || 0;
+  const robFails = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='rob_fail'`)) || 0;
+
+  const jobCount = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='job'`)) || 0;
+  const drugBuys = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='drug_buy'`)) || 0;
+  const drugSells = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='drug_sell'`)) || 0;
+  const travels = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='travel'`)) || 0;
+  const gunsBought = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='buy_gun'`)) || 0;
+  const vehiclesBought = (await qv(`SELECT COUNT(*) FROM action_log WHERE action='buy_vehicle'`)) || 0;
+
+  // Streaks — consecutive crimes without dying (window function)
+  let bestStreak = 0;
+  try {
+    bestStreak = (await qv(`
+      WITH numbered AS (
+        SELECT action, SUM(CASE WHEN action='death' THEN 1 ELSE 0 END) OVER (ORDER BY id) AS death_group
+        FROM action_log WHERE action IN ('crime_success','death')
+      )
+      SELECT COALESCE(MAX(cnt), 0) FROM (
+        SELECT death_group, COUNT(*) AS cnt FROM numbered WHERE action='crime_success' GROUP BY death_group
+      )
+    `)) || 0;
+  } catch (_) { /* older saves may not have enough data */ }
+
+  // Most committed crime
+  let favCrime = 'None';
+  try {
+    const fc = await q1(`SELECT detail, COUNT(*) AS cnt FROM action_log WHERE action='crime_success' GROUP BY detail ORDER BY cnt DESC LIMIT 1`);
+    if (fc) favCrime = fc.detail.split(' +')[0];
+  } catch (_) {}
+
+  // Session duration (first to last action)
+  let sessionTime = '';
+  try {
+    const first = (await qv(`SELECT MIN(tick) FROM action_log`)) || 0;
+    const last = (await qv(`SELECT MAX(tick) FROM action_log`)) || 0;
+    if (first && last) {
+      const mins = Math.floor((last - first) / 60000);
+      sessionTime = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
+    }
+  } catch (_) {}
+
+  let html = `
+<div class="c-yellow" style="margin-bottom:6px">--- ${esc(p.name)} | Day ${clk.day} | ${esc(p.city)} ---</div>
+<table>
+  <tr><td class="c-cyan">Cash</td><td class="c-gold">$${p.cash.toLocaleString()}</td><td class="c-cyan">Respect</td><td>${p.respect.toLocaleString()}</td></tr>
+  <tr><td class="c-cyan">Health</td><td>${p.health}</td><td class="c-cyan">Armor</td><td>${p.armor}</td></tr>
+  <tr><td class="c-cyan">Gang</td><td>${esc(p.gang || 'None')}</td><td class="c-cyan">Rank</td><td>${esc(p.gang_rank || '-')}</td></tr>
+</table>
+
+<div class="c-yellow" style="margin:8px 0 4px">--- Combat ---</div>
+<table>
+  <tr><td>Total Kills</td><td class="c-red">${kills}</td><td>Cop Kills</td><td class="c-red">${copKills}</td></tr>
+  <tr><td>Deaths</td><td>${deaths}</td><td>K/D Ratio</td><td class="${kd === 'INF' || parseFloat(kd) >= 1 ? 'c-green' : 'c-red'}">${kd}</td></tr>
+</table>
+
+<div class="c-yellow" style="margin:8px 0 4px">--- Crime ---</div>
+<table>
+  <tr><td>Crimes Attempted</td><td>${crimeTotal}</td><td>Success Rate</td><td class="${crimeRate >= 50 ? 'c-green' : 'c-red'}">${crimeRate}%</td></tr>
+  <tr><td>Robberies</td><td>${robSuccesses}/${robSuccesses + robFails}</td><td>Best Streak</td><td class="c-gold">${bestStreak}</td></tr>
+  <tr><td>Favorite Crime</td><td colspan="3" class="c-cyan">${favCrime}</td></tr>
+</table>
+
+<div class="c-yellow" style="margin:8px 0 4px">--- Economy ---</div>
+<table>
+  <tr><td>Jobs Worked</td><td class="c-green">${jobCount}</td><td>Drugs Bought</td><td>${drugBuys}</td></tr>
+  <tr><td>Drugs Sold</td><td>${drugSells}</td><td>Guns Bought</td><td>${gunsBought}</td></tr>
+  <tr><td>Vehicles Bought</td><td>${vehiclesBought}</td><td>Cities Visited</td><td>${travels}</td></tr>
+</table>
+
+<div class="c-yellow" style="margin:8px 0 4px">--- Career ---</div>
+<table>
+  <tr><td>Total Actions</td><td>${totalActions}</td><td>Play Time</td><td class="c-cyan">${sessionTime || '?'}</td></tr>
+</table>
+`;
+
+  // Multiplayer leaderboard — compare with peers
+  if (isMultiplayer()) {
+    const peers = getPeers();
+    if (peers.size > 0) {
+      html += `<div class="c-yellow" style="margin:8px 0 4px">--- Multiplayer Leaderboard ---</div><table><tr><th>Player</th><th>HP</th><th>Wanted</th><th>Gang</th></tr>`;
+      // Add self
+      html += `<tr><td class="c-green">${esc(p.name)} (you)</td><td>${p.health}</td><td>${'*'.repeat(p.wanted_level)}</td><td>${esc(p.gang || '-')}</td></tr>`;
+      for (const [, info] of peers) {
+        html += `<tr><td>${esc(info.name || '?')}</td><td>${safeInt(info.health, 0, 100, 0)}</td><td>${'*'.repeat(safeInt(info.wanted, 0, 5, 0))}</td><td>${esc(info.gang || '-')}</td></tr>`;
+      }
+      html += '</table>';
+    }
+  }
+
+  showSubMenuHTML('Stats & Leaderboard', html);
+}
 
 // --------------------------------------------------------
 //  HELP / SETTINGS
@@ -2213,7 +2508,7 @@ async function menuGarage() {
       label: `Store: ${v.name} (driving)`,
       action: async () => {
         if (stored.length >= maxSlots) { log(`Garage full! Max ${maxSlots} slots (upgrade safe house for more).`, 'c-red'); return; }
-        await conn.query(`UPDATE vehicles SET stored=1 WHERE name='${v.name.replace(/'/g,"''")}'`);
+        await exec(`UPDATE vehicles SET stored=1 WHERE name='${v.name.replace(/'/g,"''")}'`);
         log(`Stored ${v.name} in your garage.`, 'c-green');
         await updateHUD(); await menuGarage();
       }
@@ -2224,7 +2519,7 @@ async function menuGarage() {
     options.push({
       label: `Take out: ${v.name} (garaged)`,
       action: async () => {
-        await conn.query(`UPDATE vehicles SET stored=0 WHERE name='${v.name.replace(/'/g,"''")}'`);
+        await exec(`UPDATE vehicles SET stored=0 WHERE name='${v.name.replace(/'/g,"''")}'`);
         log(`Took ${v.name} out of the garage.`, 'c-green');
         await updateHUD(); await menuGarage();
       }
@@ -2255,8 +2550,8 @@ function rebuildActionKeys() {
     { key: '4', action: menuGuns }, { key: '5', action: menuHospital }, { key: '6', action: menuShops },
     { key: '7', action: menuDrugs }, { key: '8', action: menuVehicles }, { key: '9', action: menuGang },
     { key: '0', action: menuGambling }, { key: 'h', action: menuHookers }, { key: 'p', action: menuPerks },
-    { key: 'i', action: menuInventory }, { key: 'n', action: menuNews }, { key: 'f5', action: saveGame },
-    { key: 'r', action: menuStreetRace }, { key: 'g', action: menuGarage }, { key: '/', action: menuHelp }
+    { key: 'i', action: menuInventory }, { key: 'n', action: menuNews }, { key: 'l', action: menuStats }, { key: 'f5', action: saveGame },
+    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'g', action: menuGarage }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
@@ -2395,12 +2690,13 @@ window.startNewGame = async function() {
   const charType = selectedCard.dataset.name;
   const customName = $('player-name-input').value.trim();
   const name = customName || charType;
-  const startCity = selectedCard.dataset.city;
+  const startCity = _mpCityOverride || selectedCard.dataset.city;
   const bonus = selectedCard.dataset.bonus;
   await initSchema();
   // Set seeds for deterministic spawning (host generates, clients receive via worldSync)
   setNPCSeed(_npcSeedValue);
   setMapSeed(_npcSeedValue);
+  window._npcSeedValue = _npcSeedValue; // expose for multiplayer bootstrap
   await initPlayer(name, startCity, bonus, charType);
   applyCharacterSkin(charType);
   await initWorld();
@@ -2447,7 +2743,7 @@ window.loadGame = async function(slotName) {
   if (!loaded) { alert('No save game found. Starting new game.'); return; }
   // Comeback cash bonus on load
   const comebackBonus = 1000;
-  await conn.query(`UPDATE player SET cash = cash + ${comebackBonus}`);
+  await exec(`UPDATE player SET cash = cash + ${comebackBonus}`);
   log(`Welcome back! +$${comebackBonus.toLocaleString()} comeback bonus.`, 'c-gold');
   // Apply character skin from saved char_type
   const p = await q1('SELECT name, char_type FROM player');
