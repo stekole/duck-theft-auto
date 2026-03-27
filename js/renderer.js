@@ -159,70 +159,70 @@ function _buildDuckGroup(opts = {}) {
   const headGeo = new THREE.SphereGeometry(0.2, 16, 12);
   const headMat = new THREE.MeshStandardMaterial({ color: 0xffee33, roughness: 0.5 });
   const head = new THREE.Mesh(headGeo, headMat);
-  head.position.set(0, 0.55, 0.15);
+  head.position.set(0, 0.58, 0.12);
   head.castShadow = castShadows;
   group.add(head);
 
-  // Beak
-  const beakGeo = new THREE.ConeGeometry(0.06, 0.18, 8);
+  // Beak — slightly rounder
+  const beakGeo = new THREE.ConeGeometry(0.07, 0.16, 10);
   const beakMat = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: 0.4 });
   const beak = new THREE.Mesh(beakGeo, beakMat);
   beak.rotation.x = -Math.PI / 2;
-  beak.position.set(0, 0.52, 0.35);
+  beak.position.set(0, 0.54, 0.32);
   group.add(beak);
 
-  // Eyes
-  const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
+  // Eyes — slightly larger, better placed
+  const eyeGeo = new THREE.SphereGeometry(0.038, 10, 10);
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-  eyeL.position.set(-0.1, 0.6, 0.28);
+  eyeL.position.set(-0.09, 0.63, 0.26);
   group.add(eyeL);
   const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-  eyeR.position.set(0.1, 0.6, 0.28);
+  eyeR.position.set(0.09, 0.63, 0.26);
   group.add(eyeR);
 
-  // Eye whites (only on local duck for detail)
+  // Eye whites
   if (opts.eyeWhites) {
-    const eyeWhiteGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    const eyeWhiteGeo = new THREE.SphereGeometry(0.055, 10, 10);
     const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
     const eyeWL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-    eyeWL.position.set(-0.1, 0.6, 0.26);
+    eyeWL.position.set(-0.09, 0.63, 0.24);
     group.add(eyeWL);
     const eyeWR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-    eyeWR.position.set(0.1, 0.6, 0.26);
+    eyeWR.position.set(0.09, 0.63, 0.24);
     group.add(eyeWR);
   }
 
-  // Feet
-  const footGeo = new THREE.BoxGeometry(0.12, 0.03, 0.18);
+  // Feet — webbed look
+  const footGeo = new THREE.BoxGeometry(0.13, 0.025, 0.2);
   const footMat = new THREE.MeshStandardMaterial({ color: 0xff6600 });
   const footL = new THREE.Mesh(footGeo, footMat);
-  footL.position.set(-0.1, 0.02, 0.05);
+  footL.position.set(-0.1, 0.015, 0.05);
   footL.name = 'footL';
   group.add(footL);
   const footR = new THREE.Mesh(footGeo, footMat);
-  footR.position.set(0.1, 0.02, 0.05);
+  footR.position.set(0.1, 0.015, 0.05);
   footR.name = 'footR';
   group.add(footR);
 
-  // Tail
-  const tailGeo = new THREE.ConeGeometry(0.08, 0.15, 6);
+  // Tail — fluffier
+  const tailGeo = new THREE.ConeGeometry(0.09, 0.14, 8);
   const tailMat = new THREE.MeshStandardMaterial({ color: 0xeebb00 });
   const tail = new THREE.Mesh(tailGeo, tailMat);
   tail.rotation.x = Math.PI / 3;
-  tail.position.set(0, 0.4, -0.3);
+  tail.position.set(0, 0.38, -0.28);
   group.add(tail);
 
-  // Hat (default)
+  // Hat (default) — properly centered on head
   if (opts.hat !== false) {
     const hatBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
     const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
     const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
-    hatBrim.position.set(0, 0.72, 0.1);
+    hatBrim.position.set(0, 0.75, 0.12);
     group.add(hatBrim);
     const hatTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
     const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
-    hatTop.position.set(0, 0.78, 0.1);
+    hatTop.position.set(0, 0.81, 0.12);
     group.add(hatTop);
   }
 
@@ -262,6 +262,18 @@ export function applyCharacterSkin(charName) {
   );
 
   const name = (charName || '').toLowerCase();
+
+  // Character-colored ring at feet for visibility from distance
+  const charColors = { cj: 0x44ff44, tommy: 0xff4488, claude: 0x4444ff, niko: 0x556644, catalina: 0xcc2222, oz: 0x00ff00, izzy: 0xff1493 };
+  const ringColor = charColors[name];
+  if (ringColor) {
+    const ringGeo = new THREE.TorusGeometry(0.35, 0.02, 8, 24);
+    const ringMat = new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.8, transparent: true, opacity: 0.7 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    duckGroup.add(ring); characterAccessories.push(ring);
+  }
 
   function _a(mesh) { duckGroup.add(mesh); characterAccessories.push(mesh); }
 
@@ -431,18 +443,7 @@ export function applyCharacterSkin(charName) {
   }
   // Default (unknown names) keep the standard hat — no changes
 
-  // Character glow ring — colored halo under the duck for visibility
-  const glowColors = { cj: 0x44ff44, tommy: 0xff4488, claude: 0x8888aa, niko: 0x88aa44, catalina: 0xff2244, oz: 0x00ff00 };
-  const ringColor = glowColors[name];
-  if (ringColor) {
-    const ringGeo = new THREE.RingGeometry(0.35, 0.5, 24);
-    const ringMat = new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.8, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.02;
-    duckGroup.add(ring);
-    characterAccessories.push(ring);
-  }
+  // (character ring added at top of function)
 }
 
 // --------------------------------------------------------
@@ -2347,6 +2348,18 @@ function _applyRemoteSkin(group, charName) {
     c.geometry && c.geometry.type === 'CylinderGeometry' && c.position.y > 0.7
   );
 
+  // Character-colored ring at feet
+  const charColors = { cj: 0x44ff44, tommy: 0xff4488, claude: 0x4444ff, niko: 0x556644, catalina: 0xcc2222, oz: 0x00ff00, izzy: 0xff1493 };
+  const ringColor = charColors[name];
+  if (ringColor) {
+    const ringGeo = new THREE.TorusGeometry(0.35, 0.02, 8, 24);
+    const ringMat = new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.8, transparent: true, opacity: 0.7 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    group.add(ring);
+  }
+
   function _add(mesh) { group.add(mesh); }
 
   if (name === 'cj') {
@@ -2387,17 +2400,26 @@ function _applyRemoteSkin(group, charName) {
     }
   } else if (name === 'oz') {
     for (const h of defaultHat) group.remove(h);
+    // Hoodie
     const hood = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI*2, 0, Math.PI*0.6), new THREE.MeshStandardMaterial({ color: 0x1a1a2e }));
-    hood.position.set(0, 0.6, 0.08); _add(hood);
-    const cyber = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.04), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.0 }));
-    cyber.position.set(0, 0.6, 0.33); _add(cyber);
+    hood.position.set(0, 0.63, 0.06); _add(hood);
+    // Cyber visor — pushed out from face, thicker
+    const cyberMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.2, transparent: true, opacity: 0.9 });
+    const cyberL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.045, 0.03), cyberMat);
+    cyberL.position.set(-0.07, 0.63, 0.34); _add(cyberL);
+    const cyberR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.045, 0.03), cyberMat);
+    cyberR.position.set(0.07, 0.63, 0.34); _add(cyberR);
+    // Bridge
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.02), cyberMat);
+    bridge.position.set(0, 0.63, 0.34); _add(bridge);
   } else if (name === 'izzy') {
     for (const h of defaultHat) group.remove(h);
-    // Pink mohawk
+    // Pink mohawk — taller center spikes
     const mohawkMat = new THREE.MeshStandardMaterial({ color: 0xff1493, emissive: 0xff1493, emissiveIntensity: 0.3 });
     for (let i = -2; i <= 2; i++) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.18 + Math.abs(i) * -0.03, 5), mohawkMat);
-      spike.position.set(i * 0.04, 0.82 + (2 - Math.abs(i)) * 0.03, 0.1);
+      const h = 0.2 - Math.abs(i) * 0.03;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.04, h, 6), mohawkMat);
+      spike.position.set(i * 0.04, 0.84 + (2 - Math.abs(i)) * 0.03, 0.12);
       _add(spike);
     }
     // Leather jacket
@@ -2420,18 +2442,18 @@ function _applyRemoteSkin(group, charName) {
     // Gold earring
     const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9 });
     const earring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 12), earMat);
-    earring.position.set(-0.2, 0.5, 0.16); _add(earring);
+    earring.position.set(-0.2, 0.55, 0.12); _add(earring);
     // Knife strapped to back
     const knifeBlade = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.18, 0.01), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9 }));
-    knifeBlade.position.set(0.08, 0.35, -0.18); knifeBlade.rotation.z = -0.15; _add(knifeBlade);
+    knifeBlade.position.set(0.08, 0.35, -0.16); knifeBlade.rotation.z = -0.15; _add(knifeBlade);
     const knifeHandle = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.06, 0.015), new THREE.MeshStandardMaterial({ color: 0x442211 }));
-    knifeHandle.position.set(0.07, 0.24, -0.18); knifeHandle.rotation.z = -0.15; _add(knifeHandle);
-    // Eyeliner (dark lines around eyes)
+    knifeHandle.position.set(0.07, 0.24, -0.16); knifeHandle.rotation.z = -0.15; _add(knifeHandle);
+    // Eyeliner
     const linerMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
     const linerL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.01), linerMat);
-    linerL.position.set(-0.1, 0.59, 0.3); _add(linerL);
+    linerL.position.set(-0.09, 0.62, 0.28); _add(linerL);
     const linerR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.01), linerMat);
-    linerR.position.set(0.1, 0.59, 0.3); _add(linerR);
+    linerR.position.set(0.09, 0.62, 0.28); _add(linerR);
   }
 
   // Glow ring for remote ducks — colored halo for character identification
