@@ -1301,15 +1301,12 @@ function showMainActions() {
     { key: '5', label: 'Hospital',       action: menuHospital },
     { key: '6', label: 'Shops',          action: menuShops },
     { key: '7', label: 'Drug Market',    action: menuDrugs },
-    { key: '8', label: 'Vehicles',       action: menuVehicles },
-    { key: '9', label: 'Gang & Empire',  action: menuGang },
-    { key: '0', label: 'Switch Gun',     action: menuSwitchGun },
+    { key: '8', label: 'Gang & Empire',  action: menuGang },
+    { key: '9', label: 'Perks',          action: menuPerks },
+    { key: '0', label: 'Inventory',      action: menuInventory },
     { key: 'H', label: 'Hookers',        action: menuHookers },
-    { key: 'P', label: 'Perks',          action: menuPerks },
-    { key: 'I', label: 'Inventory',      action: menuInventory },
     { key: 'N', label: 'News',           action: menuNews },
     { key: 'L', label: 'Stats',          action: menuStats },
-    { key: 'G', label: 'Garage',         action: menuGarage },
     { key: 'F5', label: 'Save Game',     action: saveGame },
     { key: 'X', label: 'Strip Club',     action: menuStripClub },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
@@ -2381,12 +2378,14 @@ async function menuInventory() {
   if (drugs.length === 0) html += '<div class="c-gray">None</div>';
   else { html += '<table>'; for (const d of drugs) html += `<tr><td>${d.name}</td><td>x${d.qty}</td></tr>`; html += '</table>'; }
   html += '<div class="c-yellow" style="margin-top:6px">--- Vehicles ---</div>';
-  if (vehicles.length === 0) html += '<div class="c-gray">None</div>';
+  if (vehicles.length === 0) html += '<div class="c-gray">None — steal one or find a dealership</div>';
   else {
+    const active = vehicles.find(v => !v.stored);
+    if (active) html += `<div class="c-green" style="margin-bottom:4px;font-size:10px">Driving: ${active.name}</div>`;
     html += '<div style="margin:4px 0"><button class="btn switch-vehicle" data-name="">Go on Foot</button></div>';
     for (const v of vehicles) {
-      const status = v.stored ? ' (garaged)' : '';
-      html += `<div style="margin:2px 0"><button class="btn switch-vehicle" data-name="${v.name}" data-stored="${v.stored}">${v.name}${status}</button></div>`;
+      const label = v.stored ? `${v.name} (garaged)` : `${v.name} <span class="c-green">[ACTIVE]</span>`;
+      html += `<div style="margin:2px 0;display:flex;gap:4px;align-items:center"><button class="btn switch-vehicle" data-name="${v.name}" data-stored="${v.stored}">${label}</button><button class="btn sell-vehicle" data-name="${v.name}" style="font-size:9px;color:#ff4444">Sell</button></div>`;
     }
   }
   showSubMenuHTML('Inventory', html);
@@ -2436,6 +2435,17 @@ async function menuInventory() {
       await exec(`UPDATE guns SET equipped=FALSE`);
       await exec(`UPDATE guns SET equipped=TRUE WHERE name='${name.replace(/'/g,"''")}'`);
       log(`Equipped ${name}.`, 'c-green');
+      await updateHUD(); await menuInventory();
+    });
+  });
+  $('sub-menu').querySelectorAll('.sell-vehicle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.name;
+      const vDef = VEHICLES.find(v => v.name === name);
+      const sellPrice = vDef ? Math.floor(vDef.price * 0.4) : rand(200, 1000);
+      await exec(`DELETE FROM vehicles WHERE name='${name.replace(/'/g,"''")}'`);
+      await exec(`UPDATE player SET cash=cash+${sellPrice}`);
+      log(`Sold ${name} for $${sellPrice.toLocaleString()}.`, 'c-green');
       await updateHUD(); await menuInventory();
     });
   });
@@ -2603,7 +2613,7 @@ function menuHelp() {
 <div class="c-white">- Upgrade your safe house to recruit more gang members.</div>
 <div class="c-white">- Adrenaline Shots give +20% crime success for one crime.</div>
 <div class="c-white">- Earn perk points every 1000 respect. Unlock powerful bonuses.</div>
-<div class="c-white">- Pick Oz at character select for hacker mode ($1M, all weapons).</div>
+<div class="c-white">- Pick Oz or Izzy at character select for god mode ($1M, all weapons).</div>
 
 <div class="c-yellow" style="margin:8px 0 6px">--- Camera Settings ---</div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
@@ -2712,10 +2722,10 @@ function rebuildActionKeys() {
   const actions = [
     { key: '1', action: menuTravel }, { key: '2', action: menuJobs }, { key: '3', action: menuCrime },
     { key: '4', action: menuGuns }, { key: '5', action: menuHospital }, { key: '6', action: menuShops },
-    { key: '7', action: menuDrugs }, { key: '8', action: menuVehicles }, { key: '9', action: menuGang },
-    { key: '0', action: menuSwitchGun }, { key: 'h', action: menuHookers }, { key: 'p', action: menuPerks },
-    { key: 'i', action: menuInventory }, { key: 'n', action: menuNews }, { key: 'l', action: menuStats }, { key: 'f5', action: saveGame },
-    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'g', action: menuGarage }, { key: '/', action: menuHelp }
+    { key: '7', action: menuDrugs }, { key: '8', action: menuGang }, { key: '9', action: menuPerks },
+    { key: '0', action: menuInventory }, { key: 'h', action: menuHookers },
+    { key: 'n', action: menuNews }, { key: 'l', action: menuStats }, { key: 'f5', action: saveGame },
+    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
@@ -2871,9 +2881,10 @@ window.startNewGame = async function() {
   log(`Welcome to Duck Theft Auto, ${name}!`, 'c-gold');
   if (startCity !== 'Los Santos') log(`Starting in ${startCity}.`, 'c-cyan');
   const ct = charType.toLowerCase();
-  if (ct === 'oz') {
-    log('HACKER MODE: $1,000,000 | All weapons unlocked | Max skills | Full armor', 'c-magenta');
-    log('Oz is strapped and ready. No one stands a chance.', 'c-magenta');
+  if (ct === 'oz' || ct === 'izzy') {
+    log('GOD MODE: $1,000,000 | All weapons unlocked | Max skills | Full armor', 'c-magenta');
+    if (ct === 'izzy') log('Izzy doesn\'t play nice. Vice City won\'t know what hit it.', 'c-magenta');
+    else log('Oz is strapped and ready. No one stands a chance.', 'c-magenta');
   } else if (ct === 'cj') {
     log('CJ: $2,000 | +2 charisma | Starting respect', 'c-yellow');
   } else if (ct === 'tommy') {
@@ -2889,8 +2900,8 @@ window.startNewGame = async function() {
   }
   log('Move: WASD/Arrows | Shoot: Space/F | Interact: ENTER | Save: F5', 'c-cyan');
   log('[1] Travel  [2] Work  [3] Crime  [4] Guns  [5] Hospital  [6] Shops', 'c-gray');
-  log('[7] Drugs  [8] Vehicles  [9] Gang & Empire  [0] Switch Gun', 'c-gray');
-  if (ct !== 'oz') log('Tip: Start with legal jobs [2] to earn cash safely, then try crime [3] for bigger payoffs.', 'c-yellow');
+  log('[7] Drugs  [8] Gang & Empire  [9] Perks  [0] Inventory', 'c-gray');
+  if (ct !== 'oz' && ct !== 'izzy') log('Tip: Start with legal jobs [2] to earn cash safely, then try crime [3] for bigger payoffs.', 'c-yellow');
   await updateHUD(); await checkPOI();
   showMainActions();
   if (!window._autoSaveInterval) window._autoSaveInterval = setInterval(() => { if (gameActive) saveGame(); }, 5 * 60 * 1000);

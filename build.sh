@@ -52,6 +52,7 @@ echo "import * as THREE from 'three';" >> dist/index.html
 echo "import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';" >> dist/index.html
 echo "import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';" >> dist/index.html
 echo "import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';" >> dist/index.html
+echo "import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';" >> dist/index.html
 echo "import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';" >> dist/index.html
 echo "import { joinRoom } from 'trystero/nostr';" >> dist/index.html
 echo '' >> dist/index.html

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { T, POI_DEFS, TILE_COLORS, MAP_SIZE } from './constants.js';
 import { currentMapGrid } from './city.js';
 
@@ -104,6 +105,7 @@ export function initThree() {
     0.85   // threshold — only bright emissives bloom
   );
   _composer.addPass(bloomPass);
+  _composer.addPass(new SMAAPass(window.innerWidth, window.innerHeight));
 
   // Generate environment cubemap for reflections
   _envMap = _generateEnvMap();
@@ -1074,6 +1076,119 @@ export function buildCity3D() {
       dummy.updateMatrix(); beaconInst.setMatrixAt(i, dummy.matrix);
     });
     cityGroup.add(beaconInst);
+  }
+
+  // ---- Building ground-floor details: doors, awnings, facade ledges ----
+  const doorPositions = [];
+  const awningPositions = [];
+  const ledgePositions = [];
+  const waterTankPositions = [];
+  for (let matIdx = 0; matIdx < 8; matIdx++) {
+    for (const b of buildingGroups.get(matIdx)) {
+      const seed = (b.x * 7 + b.z * 11) | 0;
+      // Door on road-facing side
+      const gx = Math.floor(b.x), gz = Math.floor(b.z);
+      if (gx > 0 && gx < MAP_SIZE - 1 && gz > 0 && gz < MAP_SIZE - 1) {
+        const adjTiles = [
+          { dx: 0, dz: 1, side: 'z+' }, { dx: 0, dz: -1, side: 'z-' },
+          { dx: 1, dz: 0, side: 'x+' }, { dx: -1, dz: 0, side: 'x-' }
+        ];
+        for (const { dx, dz, side } of adjTiles) {
+          const at = currentMapGrid[gz + dz]?.[gx + dx];
+          if (at === T.ROAD_MAIN || at === T.ROAD_SIDE || at === T.PLAZA) {
+            doorPositions.push({ x: b.x + dx * 0.45, z: b.z + dz * 0.45, side });
+            if (seed % 3 === 0) {
+              awningPositions.push({ x: b.x + dx * 0.45, z: b.z + dz * 0.45, side });
+            }
+            break;
+          }
+        }
+      }
+      // Facade ledge at mid-height on taller buildings
+      if (b.height > 1.5 && seed % 2 === 0) {
+        ledgePositions.push({ x: b.x, y: b.height * 0.5, z: b.z });
+      }
+      // Water tanks on tall buildings
+      if (b.height > 3.0 && seed % 4 === 0) {
+        waterTankPositions.push({ x: b.x - 0.15, y: b.height + 0.15, z: b.z - 0.15 });
+      }
+    }
+  }
+
+  // Doors
+  if (doorPositions.length > 0) {
+    const doorGeo = new THREE.BoxGeometry(0.18, 0.3, 0.02);
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x443322, roughness: 0.8 });
+    const doorInst = new THREE.InstancedMesh(doorGeo, doorMat, doorPositions.length);
+    doorInst.castShadow = false;
+    doorPositions.forEach((pos, i) => {
+      const rotY = (pos.side === 'x+' || pos.side === 'x-') ? Math.PI / 2 : 0;
+      dummy.position.set(pos.x, 0.16, pos.z);
+      dummy.rotation.set(0, rotY, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); doorInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(doorInst);
+  }
+
+  // Awnings (colored overhangs above doors)
+  if (awningPositions.length > 0) {
+    const awnGeo = new THREE.BoxGeometry(0.3, 0.02, 0.15);
+    const awnColors = [0xcc2222, 0x2255aa, 0x22aa44, 0xccaa22, 0xaa4488, 0xff6600];
+    const awnMat = new THREE.MeshStandardMaterial({ color: 0xcc2222 });
+    const awnInst = new THREE.InstancedMesh(awnGeo, awnMat, awningPositions.length);
+    awnInst.castShadow = true;
+    awningPositions.forEach((pos, i) => {
+      const dx = pos.side === 'x+' ? 0.08 : pos.side === 'x-' ? -0.08 : 0;
+      const dz = pos.side === 'z+' ? 0.08 : pos.side === 'z-' ? -0.08 : 0;
+      const rotY = (pos.side === 'x+' || pos.side === 'x-') ? Math.PI / 2 : 0;
+      dummy.position.set(pos.x + dx, 0.35, pos.z + dz);
+      dummy.rotation.set(0, rotY, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); awnInst.setMatrixAt(i, dummy.matrix);
+      awnInst.setColorAt(i, new THREE.Color(awnColors[i % awnColors.length]));
+    });
+    awnInst.instanceColor.needsUpdate = true;
+    cityGroup.add(awnInst);
+  }
+
+  // Facade ledges (horizontal trim on building face)
+  if (ledgePositions.length > 0) {
+    const ledgeGeo = new THREE.BoxGeometry(0.95, 0.03, 0.95);
+    const ledgeMat = new THREE.MeshStandardMaterial({ color: 0x888078, roughness: 0.7 });
+    const ledgeInst = new THREE.InstancedMesh(ledgeGeo, ledgeMat, ledgePositions.length);
+    ledgeInst.castShadow = false;
+    ledgePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); ledgeInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(ledgeInst);
+  }
+
+  // Water tanks on rooftops
+  if (waterTankPositions.length > 0) {
+    const tankGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8);
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0x666655, roughness: 0.8 });
+    const tankInst = new THREE.InstancedMesh(tankGeo, tankMat, waterTankPositions.length);
+    tankInst.castShadow = true;
+    // Tank legs
+    const legGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.12, 4);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5 });
+    const legInst = new THREE.InstancedMesh(legGeo, legMat, waterTankPositions.length * 4);
+    legInst.castShadow = false;
+    waterTankPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y + 0.06, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); tankInst.setMatrixAt(i, dummy.matrix);
+      // 4 legs
+      for (let l = 0; l < 4; l++) {
+        const lx = pos.x + (l < 2 ? -0.06 : 0.06);
+        const lz = pos.z + (l % 2 === 0 ? -0.06 : 0.06);
+        dummy.position.set(lx, pos.y - 0.06, lz);
+        dummy.updateMatrix(); legInst.setMatrixAt(i * 4 + l, dummy.matrix);
+      }
+    });
+    cityGroup.add(tankInst);
+    cityGroup.add(legInst);
   }
 
   // ---- Trees: 2 InstancedMeshes (trunk + canopy) ----
@@ -2276,6 +2391,47 @@ function _applyRemoteSkin(group, charName) {
     hood.position.set(0, 0.6, 0.08); _add(hood);
     const cyber = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.04), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.0 }));
     cyber.position.set(0, 0.6, 0.33); _add(cyber);
+  } else if (name === 'izzy') {
+    for (const h of defaultHat) group.remove(h);
+    // Pink mohawk
+    const mohawkMat = new THREE.MeshStandardMaterial({ color: 0xff1493, emissive: 0xff1493, emissiveIntensity: 0.3 });
+    for (let i = -2; i <= 2; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.18 + Math.abs(i) * -0.03, 5), mohawkMat);
+      spike.position.set(i * 0.04, 0.82 + (2 - Math.abs(i)) * 0.03, 0.1);
+      _add(spike);
+    }
+    // Leather jacket
+    const jacketMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3, metalness: 0.4 });
+    const jacket = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.2, 0.3), jacketMat);
+    jacket.position.set(0, 0.2, 0.04); _add(jacket);
+    // Jacket collar
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const collarL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.01), collarMat);
+    collarL.position.set(-0.04, 0.31, 0.2); collarL.rotation.z = 0.2; _add(collarL);
+    const collarR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.01), collarMat);
+    collarR.position.set(0.04, 0.31, 0.2); collarR.rotation.z = -0.2; _add(collarR);
+    // Zipper
+    const zipMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8 });
+    const zip = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.01), zipMat);
+    zip.position.set(0, 0.2, 0.2); _add(zip);
+    // Pink pin
+    const pin = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), new THREE.MeshStandardMaterial({ color: 0xff1493, emissive: 0xff1493, emissiveIntensity: 0.5 }));
+    pin.position.set(0.1, 0.28, 0.18); _add(pin);
+    // Gold earring
+    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9 });
+    const earring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 12), earMat);
+    earring.position.set(-0.2, 0.5, 0.16); _add(earring);
+    // Knife strapped to back
+    const knifeBlade = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.18, 0.01), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9 }));
+    knifeBlade.position.set(0.08, 0.35, -0.18); knifeBlade.rotation.z = -0.15; _add(knifeBlade);
+    const knifeHandle = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.06, 0.015), new THREE.MeshStandardMaterial({ color: 0x442211 }));
+    knifeHandle.position.set(0.07, 0.24, -0.18); knifeHandle.rotation.z = -0.15; _add(knifeHandle);
+    // Eyeliner (dark lines around eyes)
+    const linerMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const linerL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.01), linerMat);
+    linerL.position.set(-0.1, 0.59, 0.3); _add(linerL);
+    const linerR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.01), linerMat);
+    linerR.position.set(0.1, 0.59, 0.3); _add(linerR);
   }
 
   // Glow ring for remote ducks — colored halo for character identification
@@ -2446,25 +2602,27 @@ export function gameLoop() {
   const dt = clock.getDelta();
   const elapsed = clock.getElapsedTime();
 
-  // Duck position interpolation
+  // Duck position interpolation — frame-rate independent smoothing
+  const lerpFactor = 1 - Math.pow(0.001, dt); // ~0.93 at 60fps, smooth at any rate
+  const remoteLerp = 1 - Math.pow(0.003, dt);
   if (duckGroup) {
-    duckGroup.position.x += (duckTargetX - duckGroup.position.x) * 0.2;
-    duckGroup.position.z += (duckTargetZ - duckGroup.position.z) * 0.2;
+    duckGroup.position.x += (duckTargetX - duckGroup.position.x) * lerpFactor;
+    duckGroup.position.z += (duckTargetZ - duckGroup.position.z) * lerpFactor;
 
     const targetRot = duckFacing;
     let rotDiff = targetRot - duckGroup.rotation.y;
     while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
     while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-    duckGroup.rotation.y += rotDiff * 0.15;
+    duckGroup.rotation.y += rotDiff * lerpFactor;
 
-    const moving = Math.abs(duckTargetX - duckGroup.position.x) > 0.02 || Math.abs(duckTargetZ - duckGroup.position.z) > 0.02;
+    const moving = Math.abs(duckTargetX - duckGroup.position.x) > 0.01 || Math.abs(duckTargetZ - duckGroup.position.z) > 0.01;
     if (moving) {
-      waddle += dt * 12;
-      if (_duckFootL) _duckFootL.position.z = 0.05 + Math.sin(waddle) * 0.08;
-      if (_duckFootR) _duckFootR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.08;
-      duckGroup.position.y = Math.sin(waddle * 2) * 0.02;
+      waddle += dt * 14;
+      if (_duckFootL) _duckFootL.position.z = 0.05 + Math.sin(waddle) * 0.1;
+      if (_duckFootR) _duckFootR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.1;
+      duckGroup.position.y = Math.sin(waddle * 2) * 0.025;
     } else {
-      duckGroup.position.y = 0;
+      duckGroup.position.y *= 0.9; // ease back to ground
     }
   }
 
@@ -2473,17 +2631,17 @@ export function gameLoop() {
     const g = rd.group;
     const dx = rd.targetX - g.position.x;
     const dz = rd.targetZ - g.position.z;
-    g.position.x += dx * 0.15;
-    g.position.z += dz * 0.15;
-    const moving = Math.abs(dx) > 0.02 || Math.abs(dz) > 0.02;
+    g.position.x += dx * remoteLerp;
+    g.position.z += dz * remoteLerp;
+    const moving = Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01;
     if (moving) {
       g.rotation.y = Math.atan2(dx, dz);
-      rd.waddle += dt * 12;
-      if (rd._footL) rd._footL.position.z = 0.05 + Math.sin(rd.waddle) * 0.08;
-      if (rd._footR) rd._footR.position.z = 0.05 + Math.sin(rd.waddle + Math.PI) * 0.08;
-      g.position.y = Math.sin(rd.waddle * 2) * 0.02;
+      rd.waddle += dt * 14;
+      if (rd._footL) rd._footL.position.z = 0.05 + Math.sin(rd.waddle) * 0.1;
+      if (rd._footR) rd._footR.position.z = 0.05 + Math.sin(rd.waddle + Math.PI) * 0.1;
+      g.position.y = Math.sin(rd.waddle * 2) * 0.025;
     } else {
-      g.position.y = 0;
+      g.position.y *= 0.9;
     }
   }
 

@@ -124,7 +124,8 @@ export async function loadCityMap(cityName) {
 }
 
 export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none', charType = '') {
-  const isOz = (charType || name).toLowerCase() === 'oz';
+  const _ct = (charType || name).toLowerCase();
+  const isOz = _ct === 'oz' || _ct === 'izzy';
   const ct = (charType || '').toLowerCase();
 
   // Character-specific starting cash (moderately generous)
