@@ -53,7 +53,7 @@ export async function initSchema() {
     CREATE TABLE IF NOT EXISTS map(x INT, y INT, tile VARCHAR);
     CREATE TABLE IF NOT EXISTS skills(name VARCHAR PRIMARY KEY, level INT DEFAULT 1);
     INSERT INTO skills VALUES ('driving',1),('strength',1),('charisma',1),('stealth',1),('dealing',1) ON CONFLICT DO NOTHING;
-    CREATE TABLE IF NOT EXISTS guns(name VARCHAR PRIMARY KEY, category VARCHAR, bonus INT);
+    CREATE TABLE IF NOT EXISTS guns(name VARCHAR PRIMARY KEY, category VARCHAR, bonus INT, equipped BOOLEAN DEFAULT FALSE);
     CREATE TABLE IF NOT EXISTS inventory(item VARCHAR PRIMARY KEY, qty INT DEFAULT 1);
     CREATE TABLE IF NOT EXISTS drugs(name VARCHAR PRIMARY KEY, qty INT DEFAULT 0, avg_price INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS vehicles(name VARCHAR PRIMARY KEY, stored INT DEFAULT 0);
@@ -158,7 +158,7 @@ export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none',
         stmts.push(`UPDATE player SET respect = 50`);
         break;
       case 'tommy':
-        stmts.push(`INSERT INTO guns VALUES ('Hawk 9','Pistol',5) ON CONFLICT DO NOTHING`);
+        stmts.push(`INSERT INTO guns VALUES ('Hawk 9','Pistol',5,TRUE) ON CONFLICT DO NOTHING`);
         stmts.push(`UPDATE player SET armor = 50`);
         break;
       case 'claude':
@@ -168,7 +168,7 @@ export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none',
         stmts.push(`UPDATE player SET armor = 75, respect = 75`);
         break;
       case 'catalina':
-        stmts.push(`INSERT INTO guns VALUES ('Viper SMG','SMG',16) ON CONFLICT DO NOTHING`);
+        stmts.push(`INSERT INTO guns VALUES ('Viper SMG','SMG',16,TRUE) ON CONFLICT DO NOTHING`);
         stmts.push(`UPDATE player SET respect = 25`);
         break;
     }
@@ -176,8 +176,9 @@ export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none',
 
   // Oz hacker: all weapons, max skills, armor
   if (isOz) {
-    for (const gun of GUNS) {
-      stmts.push(`INSERT INTO guns VALUES ('${gun.name.replace(/'/g,"''")}','${gun.cat}',${gun.bonus}) ON CONFLICT DO NOTHING`);
+    for (let gi = 0; gi < GUNS.length; gi++) {
+      const gun = GUNS[gi];
+      stmts.push(`INSERT INTO guns VALUES ('${gun.name.replace(/'/g,"''")}','${gun.cat}',${gun.bonus},${gi === 0 ? 'TRUE' : 'FALSE'}) ON CONFLICT DO NOTHING`);
     }
     stmts.push(`UPDATE skills SET level = 10`);
     stmts.push(`UPDATE player SET armor = 100, respect = 5000`);

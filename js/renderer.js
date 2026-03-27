@@ -458,7 +458,7 @@ export function buildCity3D() {
   if (!currentMapGrid) return;
 
   // Seeded RNG for deterministic world objects (parked cars, dock posts, etc.)
-  const _cityRng = _seededRNG(_npcSeed + 7919);
+  const _cityRng = _renderSeededRNG(_npcSeed + 7919);
 
   // Ground plane with procedural noise texture
   const groundGeo = new THREE.PlaneGeometry(MAP_SIZE + 4, MAP_SIZE + 4);
@@ -523,12 +523,16 @@ export function buildCity3D() {
         roadSidePositions.push({ x: wx, z: wz });
       } else if (tile === T.WALL) {
         const heightSeed = (x * 7 + y * 13) % 10;
-        const height = 0.5 + heightSeed * 0.2;
+        // Buildings taller near city center (downtown skyline)
+        const cx = MAP_SIZE / 2, cz = MAP_SIZE / 2;
+        const distToCenter = Math.sqrt((x - cx) * (x - cx) + (y - cz) * (y - cz));
+        const centerBonus = Math.max(0, 1 - distToCenter / (MAP_SIZE * 0.35));
+        const height = 0.5 + heightSeed * 0.2 + centerBonus * 3.5;
         const matIdx = heightSeed % 8;
         buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
 
-        // Windows only on tall buildings (height > 2.0), reduced probability
-        if (height > 2.0) {
+        // Windows on buildings taller than 1.0
+        if (height > 1.0) {
           const wSide = ((x * 31 + y * 17) % 2 === 0) ? 0.46 : -0.46;
           for (let wy = 0.4; wy < height - 0.2; wy += 0.35) {
             if (((x * 11 + y * 7 + Math.floor(wy * 100)) % 100) < 30) {
@@ -914,6 +918,68 @@ export function buildCity3D() {
     cityGroup.add(cwInst);
   }
 
+  // ---- Park benches ----
+  const benchSpots = parkPositions.filter((_, i) => i % 18 === 0);
+  if (benchSpots.length > 0) {
+    const benchSeatGeo = new THREE.BoxGeometry(0.5, 0.04, 0.18);
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x664422, roughness: 0.9 });
+    const benchBackGeo = new THREE.BoxGeometry(0.5, 0.2, 0.03);
+    const seatInst = new THREE.InstancedMesh(benchSeatGeo, benchMat, benchSpots.length);
+    const backInst = new THREE.InstancedMesh(benchBackGeo, benchMat, benchSpots.length);
+    seatInst.castShadow = true; backInst.castShadow = true;
+    benchSpots.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.18, pos.z);
+      dummy.rotation.set(0, (i * 37) % 4 * Math.PI / 2, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); seatInst.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(pos.x, 0.3, pos.z - 0.08);
+      dummy.updateMatrix(); backInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(seatInst);
+    cityGroup.add(backInst);
+  }
+
+  // ---- Fountain in plazas ----
+  const fountainSpots = plazaPositions.filter((_, i) => i % 25 === 0);
+  for (const pos of fountainSpots) {
+    const basinGeo = new THREE.CylinderGeometry(0.4, 0.45, 0.15, 12);
+    const basinMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.3 });
+    const basin = new THREE.Mesh(basinGeo, basinMat);
+    basin.position.set(pos.x, 0.1, pos.z);
+    basin.castShadow = true;
+    cityGroup.add(basin);
+    const waterGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.04, 12);
+    const waterMat = new THREE.MeshPhysicalMaterial({ color: 0x4488cc, transparent: true, opacity: 0.5, roughness: 0.05 });
+    const water = new THREE.Mesh(waterGeo, waterMat);
+    water.position.set(pos.x, 0.14, pos.z);
+    cityGroup.add(water);
+    const spoutGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6);
+    const spout = new THREE.Mesh(spoutGeo, basinMat);
+    spout.position.set(pos.x, 0.35, pos.z);
+    spout.castShadow = true;
+    cityGroup.add(spout);
+  }
+
+  // ---- Hedge rows in parks ----
+  const hedgeSpots = parkPositions.filter((p, i) => {
+    if (i % 8 !== 0) return false;
+    const gx = Math.floor(p.x), gz = Math.floor(p.z);
+    return gx > 1 && gx < MAP_SIZE - 1 && currentMapGrid[gz]?.[gx] === T.PARK;
+  });
+  if (hedgeSpots.length > 0) {
+    const hedgeGeo = new THREE.BoxGeometry(0.9, 0.25, 0.3);
+    const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x1a5522, roughness: 0.9 });
+    const hedgeInst = new THREE.InstancedMesh(hedgeGeo, hedgeMat, hedgeSpots.length);
+    hedgeInst.castShadow = true;
+    hedgeSpots.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.14, pos.z);
+      dummy.rotation.set(0, (i % 2) * Math.PI / 2, 0);
+      dummy.scale.set(1, 0.8 + (i % 3) * 0.2, 1);
+      dummy.updateMatrix(); hedgeInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(hedgeInst);
+  }
+
   // ---- Buildings: InstancedMesh per material group ----
   const buildingMats = [];
   for (let i = 0; i < 8; i++) {
@@ -1017,25 +1083,34 @@ export function buildCity3D() {
     const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
     trunkInst.castShadow = true;
     treePositions.forEach((pos, i) => {
-      dummy.position.set(pos.x, 0.25, pos.z);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
+      const sc = 0.7 + ((pos.x * 17 + pos.z * 31) % 10) * 0.08;
+      dummy.position.set(pos.x, 0.25 * sc, pos.z);
+      dummy.rotation.set(0, ((pos.x * 7 + pos.z * 13) % 100) * 0.06, 0);
+      dummy.scale.set(sc, sc, sc);
       dummy.updateMatrix();
       trunkInst.setMatrixAt(i, dummy.matrix);
     });
     cityGroup.add(trunkInst);
 
+    // Varied canopy — mix of round and cone shapes
     const canopyGeo = new THREE.SphereGeometry(0.3, 8, 6);
+    const canopyColors = [0x228833, 0x1a7a2a, 0x2a9944, 0x336622, 0x1a6633];
     const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
     const canopyInst = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
     canopyInst.castShadow = true;
     treePositions.forEach((pos, i) => {
-      dummy.position.set(pos.x, 0.65, pos.z);
+      const sc = 0.7 + ((pos.x * 17 + pos.z * 31) % 10) * 0.08;
+      const stretch = 0.8 + ((pos.x * 11 + pos.z * 23) % 10) * 0.05;
+      dummy.position.set(pos.x, 0.55 * sc + 0.1, pos.z);
       dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
+      dummy.scale.set(sc * stretch, sc * 1.1, sc / stretch);
       dummy.updateMatrix();
       canopyInst.setMatrixAt(i, dummy.matrix);
+      // Vary color per instance
+      const col = canopyColors[(i * 7) % canopyColors.length];
+      canopyInst.setColorAt(i, new THREE.Color(col));
     });
+    canopyInst.instanceColor.needsUpdate = true;
     cityGroup.add(canopyInst);
   }
 
@@ -1212,7 +1287,7 @@ export function buildCity3D() {
   }
 
   // NPC cars on main roads (stealable) — seeded for multiplayer sync
-  const _carRng = _seededRNG(_npcSeed + 1337);
+  const _carRng = _renderSeededRNG(_npcSeed + 1337);
   npcCars = [];
   const npcCarColors = [
     0xff00ff, 0x00ffff, 0xff4400, 0x44ff00, 0xffff00, 0xff0066,
@@ -1229,13 +1304,16 @@ export function buildCity3D() {
       if (currentMapGrid[y][x] === T.ROAD_MAIN) mainRoadTiles.push({x, y});
     }
   }
-  const npcCarCount = Math.min(40, Math.floor(mainRoadTiles.length / 15));
+  const npcCarCount = Math.min(30, Math.floor(mainRoadTiles.length / 20));
   for (let i = 0; i < npcCarCount; i++) {
     const rt = mainRoadTiles[Math.floor(_carRng() * mainRoadTiles.length)];
     const colorIdx = Math.floor(_carRng() * npcCarColors.length);
     const color = npcCarColors[colorIdx];
     const vName = npcCarNames[colorIdx];
-    const wx = rt.x + 0.5, wz = rt.y + 0.5;
+    // Offset cars to one side of the road so player can pass
+    const laneOffset = (_carRng() < 0.5 ? 0.25 : -0.25);
+    const wx = rt.x + 0.5 + (_carRng() < 0.5 ? laneOffset : 0);
+    const wz = rt.y + 0.5 + (_carRng() < 0.5 ? 0 : laneOffset);
     const carGroup = new THREE.Group();
     // Wider/sportier body
     const bodyW = 0.3 + _carRng() * 0.15;
@@ -1329,7 +1407,7 @@ export function buildCity3D() {
 }
 
 // Seeded PRNG (mulberry32) for deterministic NPC spawning across peers
-function _seededRNG(seed) {
+function _renderSeededRNG(seed) {
   let s = seed | 0;
   return function() {
     s = (s + 0x6D2B79F5) | 0;
@@ -1350,7 +1428,7 @@ export function spawnNPCs() {
   if (!currentMapGrid) { console.warn('spawnNPCs: no map grid'); return; }
 
   // Use seeded RNG so all multiplayer peers get identical NPC placement
-  const rng = _seededRNG(_npcSeed);
+  const rng = _renderSeededRNG(_npcSeed);
 
   const npcColors = [0xcc4444, 0x4444cc, 0x44cc44, 0xcccc44, 0xcc44cc, 0x44cccc, 0xff8844, 0x884422, 0xffffff, 0x888888];
   const roadTiles = [];
@@ -1782,15 +1860,50 @@ export function spawnPoliceNPC(nearX, nearZ, inVehicle = false) {
   const siren2 = group.getObjectByName('siren2');
 
   scene.add(group);
-  policeNPCs.push({
-    group, phase: Math.random() * Math.PI * 2,
+  const id = _nextPoliceId++;
+  const cop = {
+    group, id, phase: Math.random() * Math.PI * 2,
     speed: inVehicle ? 1.8 + Math.random() * 0.5 : 0.8 + Math.random() * 0.5,
     health: inVehicle ? 150 : 100, alive: true, inVehicle,
     nextShootTime: performance.now() + 3000 + Math.random() * 3000,
     lastMeleeTime: 0,
     _legL: legL, _legR: legR, _siren: siren, _siren2: siren2
-  });
-  return policeNPCs[policeNPCs.length - 1];
+  };
+  policeNPCs.push(cop);
+  return cop;
+}
+
+// Spawn police at exact position (for multiplayer sync from host)
+export function spawnPoliceNPCAt(x, z, inVehicle, copId) {
+  const cop = spawnPoliceNPC(0, 0, inVehicle);
+  cop.group.position.set(x, 0, z);
+  cop.id = copId;
+  return cop;
+}
+
+export function killPoliceById(copId) {
+  const cop = policeNPCs.find(c => c.id === copId);
+  if (cop) {
+    const pos = { x: cop.group.position.x, z: cop.group.position.z };
+    cop.alive = false;
+    removePoliceNPC(cop);
+    return pos;
+  }
+  return null;
+}
+
+// Get nearest police car for stealing
+export function getNearestPoliceCar(maxDist = 2) {
+  if (!duckGroup) return null;
+  let best = null, bestDist = maxDist;
+  for (const cop of policeNPCs) {
+    if (!cop.alive || !cop.inVehicle) continue;
+    const dx = cop.group.position.x - duckGroup.position.x;
+    const dz = cop.group.position.z - duckGroup.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < bestDist) { best = cop; bestDist = dist; }
+  }
+  return best;
 }
 
 export function clearPoliceNPCs() {
@@ -1988,14 +2101,14 @@ export function updateLighting(hour) {
     scene.fog.density = 0.018;
   } else {
     sunLight.position.set(-20, 12, 15);
-    sunLight.intensity = 0.3;
-    sunLight.color.setHex(0x4466aa);
-    ambientLight.intensity = 0.25;
-    hemiLight.intensity = 0.25;
-    scene.background.setHex(0x0a0e1a);
+    sunLight.intensity = 0.5;
+    sunLight.color.setHex(0x6688cc);
+    ambientLight.intensity = 0.4;
+    hemiLight.intensity = 0.35;
+    scene.background.setHex(0x141828);
     scene.fog.color.copy(scene.background);
-    scene.fog.density = 0.022; // slightly thicker fog at night
-    renderer.toneMappingExposure = 0.7;
+    scene.fog.density = 0.018;
+    renderer.toneMappingExposure = 0.9;
   }
 }
 
@@ -2432,9 +2545,17 @@ export function gameLoop() {
     if (npc._head) npc._head.material.emissiveIntensity = nightGlow;
   }
 
-  // NPC car driving — stay on roads only
+  // NPC car driving — stay on roads, avoid player
   for (const car of npcCars) {
-    const step = car.speed * dt;
+    let step = car.speed * dt;
+    // Slow down / stop near player to avoid blocking
+    if (duckGroup) {
+      const cdx = car.group.position.x - duckGroup.position.x;
+      const cdz = car.group.position.z - duckGroup.position.z;
+      const playerDist = Math.sqrt(cdx * cdx + cdz * cdz);
+      if (playerDist < 1.5) step *= 0.1; // nearly stop
+      else if (playerDist < 3) step *= 0.4; // slow down
+    }
     if (car.driveAxis === 'x') {
       car.group.position.x += car.dir * step;
     } else {

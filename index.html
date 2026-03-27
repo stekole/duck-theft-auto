@@ -412,20 +412,13 @@ body {
     </div>
   </div>
   <div style="margin-top:6px"><input type="text" id="player-name-input" value="" maxlength="20" placeholder="Enter your name (optional)"></div>
-  <div id="saved-sessions" style="margin-top:8px;display:none">
-    <div style="color:#888;font-size:11px;margin-bottom:4px">Saved Games:</div>
-    <div id="saved-list" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center"></div>
-  </div>
-  <div style="margin-top:8px">
-    <button onclick="startNewGame()">New Game</button>
-  </div>
-  <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
-    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
-    <div id="mp-game-list" style="margin-bottom:6px"></div>
-    <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
-    <div style="margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:4px"><input type="text" id="mp-room-input" maxlength="6" placeholder="Room code" style="width:100px;text-transform:uppercase;text-align:center;font-size:11px"><button onclick="joinMultiplayer()" title="Join by code" style="font-size:11px;padding:2px 6px;background:#222;color:#ff6600;border:1px solid #444;cursor:pointer;border-radius:3px">&#9654;</button></div>
+  <div style="margin-top:10px">
+    <button onclick="startNewGame()">Solo Game</button>
     <button onclick="hostMultiplayer()">Host Game</button>
   </div>
+  <div id="mp-game-list" style="margin-top:8px"></div>
+  <div style="margin-top:6px;display:flex;align-items:center;justify-content:center;gap:4px"><input type="text" id="mp-room-input" maxlength="6" placeholder="Room code" style="width:100px;text-transform:uppercase;text-align:center;font-size:11px"><button onclick="joinMultiplayer()" title="Join by code" style="font-size:11px;padding:2px 6px;background:#222;color:#ff6600;border:1px solid #444;cursor:pointer;border-radius:3px">&#9654;</button></div>
+  <div style="margin-top:6px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
   <div id="mp-lobby" style="display:none;margin-top:8px;border:1px solid #333;padding:8px;text-align:left;max-width:300px">
     <div style="color:#00ff00;font-size:12px">Room: <span id="mp-room-code" style="color:#ff6600;font-weight:bold;cursor:pointer;text-decoration:underline dotted" title="Click to copy"></span> &mdash; Players: <span id="mp-peer-count">1</span></div>
     <div id="mp-player-list" style="margin-top:4px"></div>
@@ -489,6 +482,17 @@ body {
     "trystero/nostr": "https://esm.run/trystero/nostr"
   }
 }
+</script>
+
+<script>
+window.addEventListener('error', e => {
+  const el = document.getElementById('loading');
+  if (el) el.textContent = 'Error: ' + (e.message || e) + ' [' + (e.filename||'').split('/').pop() + ':' + e.lineno + ']';
+});
+window.addEventListener('unhandledrejection', e => {
+  const el = document.getElementById('loading');
+  if (el) el.textContent = 'Error: ' + (e.reason?.message || e.reason || 'unknown');
+});
 </script>
 
 <script type="module">
@@ -566,33 +570,6 @@ const $ = id => document.getElementById(id);
     // Keep card selected when typing a custom name — card determines class/city/bonus
     // Only clear selection if user deliberately clicks outside cards (not needed)
 
-    // Populate saved sessions list
-    const saveIndex = getSaveIndex();
-    const entries = Object.values(saveIndex).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    if (entries.length > 0) {
-      $('saved-sessions').style.display = 'block';
-      const list = $('saved-list');
-      for (const s of entries) {
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.style.cssText = 'font-size:11px;padding:6px 12px;';
-        const date = s.timestamp ? new Date(s.timestamp).toLocaleDateString() : '';
-        const spanName = document.createElement('span');
-        spanName.style.color = '#ff6600';
-        spanName.textContent = s.name;
-        const spanInfo = document.createElement('span');
-        spanInfo.style.color = '#888';
-        spanInfo.textContent = ` ${s.city} Day ${s.day} $${(s.cash||0).toLocaleString()} `;
-        const spanDate = document.createElement('span');
-        spanDate.style.cssText = 'color:#666;font-size:9px';
-        spanDate.textContent = date;
-        btn.appendChild(spanName);
-        btn.appendChild(spanInfo);
-        btn.appendChild(spanDate);
-        btn.addEventListener('click', () => window.loadGame(s.name));
-        list.appendChild(btn);
-      }
-    }
     // Room code copy-to-clipboard
     $('mp-room-code').addEventListener('click', () => {
       const code = $('mp-room-code').textContent;
@@ -623,10 +600,16 @@ const $ = id => document.getElementById(id);
       try {
         await window.startNewGame();
       } catch(err) { console.error('hostMultiplayer startNewGame failed:', err); alert('Failed to start: ' + err.message); return; }
-      broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue, city: card.dataset.city });
+      // Re-broadcast game_start every 3s for 30s so late joiners get it
+      const _city = card.dataset.city;
+      let _bcastCount = 0;
+      const _bcastIv = setInterval(() => {
+        if (_bcastCount++ >= 10) { clearInterval(_bcastIv); return; }
+        broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue, city: _city });
+      }, 3000);
     };
 
-    window.joinMultiplayer = () => {
+    window.joinMultiplayer = async () => {
       const code = $('mp-room-input').value.trim().toUpperCase();
       if (!code || code.length < 2) return;
       let card = document.querySelector('.char-card.selected');
@@ -639,12 +622,13 @@ const $ = id => document.getElementById(id);
       const playerName = $('player-name-input').value.trim() || charName;
       const password = $('mp-password').value;
       joinGame(code, playerName, charName, password);
-      // Don't start yet — wait for host's worldSync which carries the map seed
-      // onWorldSyncReceived in game.js will call startNewGame() with correct seed
+      // Wait for host's worldSync (carries seed + city), with timeout fallback
       $('mp-lobby').style.display = 'block';
       $('mp-room-code').textContent = code;
       $('mp-waiting').textContent = 'Connecting to host...';
       $('mp-waiting').style.display = 'inline';
+      // No fallback timer — game_start action from host will start the game
+      // Host re-broadcasts game_start every 3s so we'll get it once connected
     };
 
     window.leaveMultiplayer = () => {

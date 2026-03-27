@@ -2,7 +2,7 @@
 //  MULTIPLAYER P2P MODULE (Trystero + Nostr signaling)
 // --------------------------------------------------------
 import { joinRoom } from 'trystero/nostr';
-import { logConnection, upsertRemotePlayer, removeRemotePlayer as dbRemoveRemotePlayer } from './db.js';
+import { logConnection, upsertRemotePlayer, removeRemotePlayer } from './db.js';
 
 let room = null;
 let isHost = false;
@@ -352,7 +352,7 @@ function _joinRoom(roomCode, playerName, charType, password = '') {
     peers.delete(peerId);
     peerRateLimits.delete(peerId);
     peerTicks.delete(peerId);
-    dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
+    removeRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
     _logConnectionEvent(peerId, 'left');
 
     // Host migration: if the host left, promote ourselves
@@ -629,7 +629,7 @@ export function kickPeer(peerId) {
     if (pc && pc.close) pc.close();
   } catch (_) { /* best-effort close */ }
   peers.delete(peerId);
-  dbRemoveRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
+  removeRemotePlayer(peerId).catch(e => console.warn('[MP]', e.message));
   if (sendAction) sendAction({ action: 'peer_kicked', peerId, name: peerInfo?.name });
   _updateLobbyUI();
 }

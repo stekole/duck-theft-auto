@@ -26,6 +26,20 @@ sed -n '/<body>/,/<script/{ /<body>/d; /<script/d; p; }' index.html >> dist/inde
 # Import map
 sed -n '/<script type="importmap">/,/<\/script>/p' index.html >> dist/index.html
 
+# Error handler (catches module load failures)
+cat >> dist/index.html << 'ERRORHANDLER'
+<script>
+window.addEventListener('error', function(e) {
+  var el = document.getElementById('loading');
+  if (el) el.textContent = 'Error: ' + (e.message || e) + ' [' + (e.filename||'').split('/').pop() + ':' + e.lineno + ']';
+});
+window.addEventListener('unhandledrejection', function(e) {
+  var el = document.getElementById('loading');
+  if (el) el.textContent = 'Error: ' + (e.reason && e.reason.message || e.reason || 'unknown');
+});
+</script>
+ERRORHANDLER
+
 # Inline all JS into one module
 echo '<script type="module">' >> dist/index.html
 echo '// ========================================================' >> dist/index.html
@@ -119,22 +133,6 @@ cat >> dist/index.html << 'HTMLBOOT'
       });
     });
 
-    // Populate saved sessions list
-    var saveIndex = getSaveIndex();
-    var entries = Object.values(saveIndex).sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
-    if (entries.length > 0) {
-      $('saved-sessions').style.display = 'block';
-      var list = $('saved-list');
-      for (var s of entries) {
-        var btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.style.cssText = 'font-size:11px;padding:6px 12px;';
-        var date = s.timestamp ? new Date(s.timestamp).toLocaleDateString() : '';
-        btn.innerHTML = '<span style="color:#ff6600">' + s.name + '</span> <span style="color:#888">' + s.city + ' Day ' + s.day + ' $' + (s.cash||0).toLocaleString() + '</span> <span style="color:#666;font-size:9px">' + date + '</span>';
-        btn.addEventListener('click', (function(name) { return function() { window.loadGame(name); }; })(s.name));
-        list.appendChild(btn);
-      }
-    }
     // Room code copy-to-clipboard
     $('mp-room-code').addEventListener('click', function() {
       var code = $('mp-room-code').textContent;
@@ -159,7 +157,12 @@ cat >> dist/index.html << 'HTMLBOOT'
       var password = $('mp-password').value;
       hostGame(code, playerName, charName, password);
       try { await window.startNewGame(); } catch(err) { console.error('host failed:', err); alert('Failed: ' + err.message); return; }
-      broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue, city: card.dataset.city });
+      var _city = card.dataset.city;
+      var _bcastCount = 0;
+      var _bcastIv = setInterval(function() {
+        if (_bcastCount++ >= 10) { clearInterval(_bcastIv); return; }
+        broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue, city: _city });
+      }, 3000);
     };
     window.joinMultiplayer = async function() {
       var code = $('mp-room-input').value.trim().toUpperCase();
@@ -171,7 +174,6 @@ cat >> dist/index.html << 'HTMLBOOT'
       var playerName = $('player-name-input').value.trim() || charName;
       var password = $('mp-password').value;
       joinGame(code, playerName, charName, password);
-      // Wait for host's worldSync to get correct seed before starting
       $('mp-lobby').style.display = 'block';
       $('mp-room-code').textContent = code;
       $('mp-waiting').textContent = 'Connecting to host...';
