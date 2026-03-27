@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { T, POI_DEFS, TILE_COLORS, MAP_SIZE } from './constants.js';
 import { currentMapGrid } from './city.js';
 
@@ -25,16 +28,17 @@ export let playerVehicleMesh = null;
 export let currentGameHour = 12;
 
 // Camera settings (isometric-ish)
-export let camHeight = 18;
-export let camDist = 22;
+export let camHeight = 22;
+export let camDist = 28;
 export let camAngle = Math.PI / 4; // 45 degrees
 export const CAM_ZOOM_MIN = 8;
-export const CAM_ZOOM_MAX = 40;
+export const CAM_ZOOM_MAX = 60;
 
 // Duck movement
 export let duckTargetX = 0, duckTargetZ = 0;
 export let duckFacing = 0; // radians
 let waddle = 0;
+let _duckFootL = null, _duckFootR = null;
 
 // Setters for mutable state accessed from game.js
 export function setGameActive(v) { gameActive = v; }
@@ -51,9 +55,9 @@ export function setCurrentGameHour(v) { currentGameHour = v; }
 export function initThree() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
-  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.025);
+  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
 
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 300);
   camera.position.set(camDist, camHeight, camDist);
   camera.lookAt(0, 0, 0);
 
@@ -77,6 +81,9 @@ export function initThree() {
   sunLight.shadow.camera.right = 30;
   sunLight.shadow.camera.top = 30;
   sunLight.shadow.camera.bottom = -30;
+  sunLight.shadow.bias = -0.001;
+  sunLight.target = new THREE.Object3D();
+  scene.add(sunLight.target);
   scene.add(sunLight);
 
   ambientLight = new THREE.AmbientLight(0x404060, 0.4);
@@ -87,18 +94,55 @@ export function initThree() {
 
   clock = new THREE.Clock();
 
+  // Post-processing: bloom for emissive glow
+  _composer = new EffectComposer(renderer);
+  _composer.addPass(new RenderPass(scene, camera));
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.4,   // strength
+    0.3,   // radius
+    0.85   // threshold — only bright emissives bloom
+  );
+  _composer.addPass(bloomPass);
+
+  // Generate environment cubemap for reflections
+  _envMap = _generateEnvMap();
+
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    _composer.setSize(window.innerWidth, window.innerHeight);
   });
 }
 
+let _composer = null;
+let _envMap = null;
+
+function _generateEnvMap() {
+  // Simple gradient cubemap for reflections
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, size);
+  gradient.addColorStop(0, '#87CEEB');
+  gradient.addColorStop(0.5, '#ddeeff');
+  gradient.addColorStop(1, '#2a4a2a');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  return tex;
+}
+
 // --------------------------------------------------------
-//  3D DUCK CHARACTER
+//  3D DUCK CHARACTER (shared factory)
 // --------------------------------------------------------
-export function createDuck() {
-  duckGroup = new THREE.Group();
+function _buildDuckGroup(opts = {}) {
+  const group = new THREE.Group();
+  const castShadows = opts.castShadows !== false;
 
   // Body
   const bodyGeo = new THREE.SphereGeometry(0.3, 16, 12);
@@ -106,16 +150,16 @@ export function createDuck() {
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.scale.set(1, 0.8, 1.2);
   body.position.y = 0.3;
-  body.castShadow = true;
-  duckGroup.add(body);
+  body.castShadow = castShadows;
+  group.add(body);
 
   // Head
   const headGeo = new THREE.SphereGeometry(0.2, 16, 12);
   const headMat = new THREE.MeshStandardMaterial({ color: 0xffee33, roughness: 0.5 });
   const head = new THREE.Mesh(headGeo, headMat);
   head.position.set(0, 0.55, 0.15);
-  head.castShadow = true;
-  duckGroup.add(head);
+  head.castShadow = castShadows;
+  group.add(head);
 
   // Beak
   const beakGeo = new THREE.ConeGeometry(0.06, 0.18, 8);
@@ -123,27 +167,29 @@ export function createDuck() {
   const beak = new THREE.Mesh(beakGeo, beakMat);
   beak.rotation.x = -Math.PI / 2;
   beak.position.set(0, 0.52, 0.35);
-  duckGroup.add(beak);
+  group.add(beak);
 
   // Eyes
   const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
   eyeL.position.set(-0.1, 0.6, 0.28);
-  duckGroup.add(eyeL);
+  group.add(eyeL);
   const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
   eyeR.position.set(0.1, 0.6, 0.28);
-  duckGroup.add(eyeR);
+  group.add(eyeR);
 
-  // Eye whites
-  const eyeWhiteGeo = new THREE.SphereGeometry(0.05, 8, 8);
-  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-  const eyeWL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  eyeWL.position.set(-0.1, 0.6, 0.26);
-  duckGroup.add(eyeWL);
-  const eyeWR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  eyeWR.position.set(0.1, 0.6, 0.26);
-  duckGroup.add(eyeWR);
+  // Eye whites (only on local duck for detail)
+  if (opts.eyeWhites) {
+    const eyeWhiteGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const eyeWL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+    eyeWL.position.set(-0.1, 0.6, 0.26);
+    group.add(eyeWL);
+    const eyeWR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+    eyeWR.position.set(0.1, 0.6, 0.26);
+    group.add(eyeWR);
+  }
 
   // Feet
   const footGeo = new THREE.BoxGeometry(0.12, 0.03, 0.18);
@@ -151,11 +197,11 @@ export function createDuck() {
   const footL = new THREE.Mesh(footGeo, footMat);
   footL.position.set(-0.1, 0.02, 0.05);
   footL.name = 'footL';
-  duckGroup.add(footL);
+  group.add(footL);
   const footR = new THREE.Mesh(footGeo, footMat);
   footR.position.set(0.1, 0.02, 0.05);
   footR.name = 'footR';
-  duckGroup.add(footR);
+  group.add(footR);
 
   // Tail
   const tailGeo = new THREE.ConeGeometry(0.08, 0.15, 6);
@@ -163,24 +209,40 @@ export function createDuck() {
   const tail = new THREE.Mesh(tailGeo, tailMat);
   tail.rotation.x = Math.PI / 3;
   tail.position.set(0, 0.4, -0.3);
-  duckGroup.add(tail);
+  group.add(tail);
 
-  // Tiny hat (because GTA)
-  const hatBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
-  const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
-  hatBrim.position.set(0, 0.72, 0.1);
-  duckGroup.add(hatBrim);
-  const hatTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
-  const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
-  hatTop.position.set(0, 0.78, 0.1);
-  duckGroup.add(hatTop);
+  // Hat (default)
+  if (opts.hat !== false) {
+    const hatBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
+    hatBrim.position.set(0, 0.72, 0.1);
+    group.add(hatBrim);
+    const hatTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
+    const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
+    hatTop.position.set(0, 0.78, 0.1);
+    group.add(hatTop);
+  }
 
+  return { group, footL, footR };
+}
+
+export function createDuck() {
+  const { group, footL, footR } = _buildDuckGroup({ eyeWhites: true, castShadows: true });
+  duckGroup = group;
+  _duckFootL = footL;
+  _duckFootR = footR;
   scene.add(duckGroup);
 }
 
 // Character-specific accessories for the 3D duck
 let characterAccessories = [];
+function _mk(mesh, props) {
+  if (props.position) { mesh.position.copy(props.position); }
+  if (props.rotation) { mesh.rotation.copy(props.rotation); }
+  return mesh;
+}
+
 export function applyCharacterSkin(charName) {
   // Remove old accessories
   for (const obj of characterAccessories) {
@@ -199,116 +261,186 @@ export function applyCharacterSkin(charName) {
 
   const name = (charName || '').toLowerCase();
 
+  function _a(mesh) { duckGroup.add(mesh); characterAccessories.push(mesh); }
+
   if (name === 'cj') {
-    // Green bandana replacing hat
+    // Green bandana with glow + knot
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const bandanaGeo = new THREE.BoxGeometry(0.36, 0.06, 0.28);
-    const bandanaMat = new THREE.MeshStandardMaterial({ color: 0x44ff44 });
-    const bandana = new THREE.Mesh(bandanaGeo, bandanaMat);
-    bandana.position.set(0, 0.7, 0.1);
-    duckGroup.add(bandana);
-    characterAccessories.push(bandana);
-    // Gold chain
-    const chainGeo = new THREE.TorusGeometry(0.12, 0.015, 8, 16);
-    const chainMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 });
-    const chain = new THREE.Mesh(chainGeo, chainMat);
-    chain.rotation.x = Math.PI / 2;
-    chain.position.set(0, 0.35, 0.2);
-    duckGroup.add(chain);
-    characterAccessories.push(chain);
+    const bandanaMat = new THREE.MeshStandardMaterial({ color: 0x44ff44, emissive: 0x22aa22, emissiveIntensity: 0.4 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.07, 0.3), bandanaMat), { position: new THREE.Vector3(0, 0.7, 0.1) }));
+    // Bandana tail + knot
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.035, 0.22), bandanaMat);
+    tail.position.set(0, 0.67, -0.12); tail.rotation.x = 0.3; _a(tail);
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), bandanaMat);
+    knot.position.set(0, 0.68, -0.02); _a(knot);
+    // Big gold chain with $ pendant
+    const chainMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.4 });
+    _a(_mk(new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.022, 8, 24), chainMat), { rotation: new THREE.Euler(Math.PI/2,0,0), position: new THREE.Vector3(0, 0.35, 0.2) }));
+    _a(_mk(new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), chainMat), { position: new THREE.Vector3(0, 0.21, 0.34) }));
+    // Tattoo sleeve (arm band)
+    const tattooMat = new THREE.MeshStandardMaterial({ color: 0x228822, emissive: 0x114411, emissiveIntensity: 0.3, transparent: true, opacity: 0.6 });
+    _a(_mk(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 12), tattooMat), { position: new THREE.Vector3(0, 0.38, 0) }));
+    // Shotgun on back
+    const gunMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6, roughness: 0.4 });
+    _a(_mk(new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5, 6), gunMat), { position: new THREE.Vector3(0.12, 0.4, -0.15), rotation: new THREE.Euler(0.3, 0, 0.15) }));
 
   } else if (name === 'tommy') {
-    // Sunglasses
+    // Slicked-back hair
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const glassGeo = new THREE.BoxGeometry(0.28, 0.05, 0.04);
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.5 });
-    const glasses = new THREE.Mesh(glassGeo, glassMat);
-    glasses.position.set(0, 0.6, 0.32);
-    duckGroup.add(glasses);
-    characterAccessories.push(glasses);
-    // Hawaiian shirt color on body
-    const shirtGeo = new THREE.BoxGeometry(0.35, 0.15, 0.25);
-    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff4488 });
-    const shirt = new THREE.Mesh(shirtGeo, shirtMat);
-    shirt.position.set(0, 0.2, 0.05);
-    duckGroup.add(shirt);
-    characterAccessories.push(shirt);
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x332211, roughness: 0.3 });
+    _a(_mk(new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI*2, 0, Math.PI*0.4), hairMat), { position: new THREE.Vector3(0, 0.68, -0.02) }));
+    // Reflective aviators with gold frame
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0xccaa44, metalness: 0.9, roughness: 0.1 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.065, 0.02), frameMat), { position: new THREE.Vector3(0, 0.6, 0.32) }));
+    const lensMat = new THREE.MeshStandardMaterial({ color: 0x1a1a44, emissive: 0x2244aa, emissiveIntensity: 0.5, metalness: 0.95, roughness: 0.05 });
+    for (const sx of [-0.08, 0.08]) {
+      _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.05, 0.01), lensMat), { position: new THREE.Vector3(sx, 0.6, 0.34) }));
+    }
+    // Hawaiian shirt — vibrant with palm pattern
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff4488, emissive: 0x882244, emissiveIntensity: 0.2 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.2, 0.3), shirtMat), { position: new THREE.Vector3(0, 0.2, 0.05) }));
+    // Open collar V
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0xffdd00, emissive: 0xffdd00, emissiveIntensity: 0.1 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.01), collarMat), { position: new THREE.Vector3(-0.04, 0.3, 0.2), rotation: new THREE.Euler(0, 0, 0.2) }));
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.01), collarMat), { position: new THREE.Vector3(0.04, 0.3, 0.2), rotation: new THREE.Euler(0, 0, -0.2) }));
+    // Flower details on shirt
+    const flowerColors = [0x44ddff, 0xffff44, 0x44ff88, 0xff8844];
+    for (let i = 0; i < 5; i++) {
+      const fc = flowerColors[i % flowerColors.length];
+      const fm = new THREE.MeshStandardMaterial({ color: fc, emissive: fc, emissiveIntensity: 0.5 });
+      const fx = (i % 3 - 1) * 0.09, fy = 0.14 + (i * 0.04), fz = 0.2;
+      _a(_mk(new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), fm), { position: new THREE.Vector3(fx, fy, fz) }));
+    }
+    // Pistol in waistband
+    const gunMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.7 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.08, 0.06), gunMat), { position: new THREE.Vector3(0.15, 0.15, 0.1) }));
 
   } else if (name === 'claude') {
-    // Leather jacket collar
+    // Full leather jacket — dark, menacing
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const collarGeo = new THREE.BoxGeometry(0.38, 0.08, 0.3);
-    const collarMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3 });
-    const collar = new THREE.Mesh(collarGeo, collarMat);
-    collar.position.set(0, 0.42, 0.05);
-    duckGroup.add(collar);
-    characterAccessories.push(collar);
+    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.15, metalness: 0.5 });
+    // Jacket body
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 0.32), leatherMat), { position: new THREE.Vector3(0, 0.2, 0.04) }));
+    // High collar
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.3), leatherMat), { position: new THREE.Vector3(0, 0.44, 0.05) }));
+    // Popped collar tips
+    for (const sx of [-0.16, 0.16]) {
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.04), leatherMat);
+      tip.position.set(sx, 0.48, 0.15); tip.rotation.z = sx > 0 ? -0.35 : 0.35; _a(tip);
+    }
+    // Chrome zipper
+    const zipMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.95, roughness: 0.05 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.22, 0.01), zipMat), { position: new THREE.Vector3(0, 0.2, 0.21) }));
+    // Zipper pull
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.015), zipMat), { position: new THREE.Vector3(0, 0.32, 0.22) }));
+    // Menacing shadow over eyes
+    const shadowMat = new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 0.02), shadowMat), { position: new THREE.Vector3(0, 0.63, 0.3) }));
+    // Stubble (tiny dots on chin)
+    const stubbleMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+    for (const [sx,sy] of [[-0.04,0.47],[0.04,0.47],[0,0.46],[-0.02,0.48],[0.02,0.48]]) {
+      _a(_mk(new THREE.Mesh(new THREE.SphereGeometry(0.008, 4, 4), stubbleMat), { position: new THREE.Vector3(sx, sy, 0.33) }));
+    }
 
   } else if (name === 'niko') {
-    // Military cap (olive) replacing default hat
+    // Military cap with insignia
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const capBrimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16);
-    const capMat = new THREE.MeshStandardMaterial({ color: 0x556644 });
-    const capBrim = new THREE.Mesh(capBrimGeo, capMat);
-    capBrim.position.set(0, 0.72, 0.1);
-    duckGroup.add(capBrim);
-    characterAccessories.push(capBrim);
-    const capTopGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16);
-    const capTop = new THREE.Mesh(capTopGeo, capMat);
-    capTop.position.set(0, 0.78, 0.1);
-    duckGroup.add(capTop);
-    characterAccessories.push(capTop);
-    // Scar on face
-    const scarGeo = new THREE.BoxGeometry(0.01, 0.12, 0.01);
-    const scarMat = new THREE.MeshStandardMaterial({ color: 0xcc6644 });
-    const scar = new THREE.Mesh(scarGeo, scarMat);
-    scar.position.set(0.15, 0.58, 0.3);
-    scar.rotation.z = 0.3;
-    duckGroup.add(scar);
-    characterAccessories.push(scar);
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x556644, roughness: 0.8 });
+    _a(_mk(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.025, 16), capMat), { position: new THREE.Vector3(0, 0.72, 0.12) }));
+    _a(_mk(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.13, 16), capMat), { position: new THREE.Vector3(0, 0.8, 0.1) }));
+    // Cap insignia (gold star)
+    const insigniaMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, emissive: 0xaa8800, emissiveIntensity: 0.6 });
+    _a(_mk(new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), insigniaMat), { position: new THREE.Vector3(0, 0.82, 0.23) }));
+    // Battle scars (two crossing)
+    const scarMat = new THREE.MeshStandardMaterial({ color: 0xcc6644, emissive: 0x662222, emissiveIntensity: 0.4 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.15, 0.01), scarMat), { position: new THREE.Vector3(0.14, 0.58, 0.3), rotation: new THREE.Euler(0, 0, 0.3) }));
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.08, 0.01), scarMat), { position: new THREE.Vector3(0.16, 0.56, 0.3), rotation: new THREE.Euler(0, 0, -0.4) }));
+    // Dog tags on chain
+    const tagMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.85, roughness: 0.15 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.055, 0.008), tagMat), { position: new THREE.Vector3(0.05, 0.28, 0.25) }));
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.055, 0.008), tagMat), { position: new THREE.Vector3(0.06, 0.26, 0.25), rotation: new THREE.Euler(0, 0, 0.15) }));
+    // Military jacket
+    const jacketMat = new THREE.MeshStandardMaterial({ color: 0x445533, roughness: 0.9 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.28), jacketMat), { position: new THREE.Vector3(0, 0.2, 0.04) }));
+    // Ammo belt across chest
+    const beltMat = new THREE.MeshStandardMaterial({ color: 0x332211, roughness: 0.7 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.04), beltMat), { position: new THREE.Vector3(0.08, 0.25, 0.18), rotation: new THREE.Euler(0, 0, -0.4) }));
+    // Brass ammo rounds on belt
+    const ammoMat = new THREE.MeshStandardMaterial({ color: 0xddaa44, metalness: 0.8 });
+    for (let i = 0; i < 4; i++) {
+      _a(_mk(new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.03, 4), ammoMat), { position: new THREE.Vector3(0.05 + i * 0.02, 0.22 + i * 0.04, 0.2), rotation: new THREE.Euler(0, 0, -0.4) }));
+    }
+    // Combat knife on back
+    const knifeMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.7 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.2, 0.01), knifeMat), { position: new THREE.Vector3(-0.1, 0.35, -0.18), rotation: new THREE.Euler(0.2, 0, -0.1) }));
 
   } else if (name === 'catalina') {
-    // Red beret replacing hat
+    // Wild hair + red beret tilted
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const beretGeo = new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-    const beretMat = new THREE.MeshStandardMaterial({ color: 0xcc2222 });
-    const beret = new THREE.Mesh(beretGeo, beretMat);
-    beret.position.set(0, 0.72, 0.1);
-    duckGroup.add(beret);
-    characterAccessories.push(beret);
-    // Hoop earrings
-    const earGeo = new THREE.TorusGeometry(0.06, 0.01, 8, 12);
-    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1 });
-    for (const sx of [-0.2, 0.2]) {
-      const earring = new THREE.Mesh(earGeo, earMat);
-      earring.position.set(sx, 0.5, 0.2);
-      duckGroup.add(earring);
-      characterAccessories.push(earring);
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x331100, roughness: 0.6 });
+    // Wild hair strands
+    for (const [hx,hy,hz,rx] of [[-0.12,0.72,-0.05,0.3],[0.12,0.72,-0.05,-0.3],[0,0.75,-0.08,0.4],[-0.08,0.73,0.02,0.1],[0.08,0.73,0.02,-0.1]]) {
+      _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.03), hairMat), { position: new THREE.Vector3(hx,hy,hz), rotation: new THREE.Euler(rx,0,0) }));
+    }
+    // Red beret
+    const beretMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, emissive: 0x881111, emissiveIntensity: 0.3 });
+    _a(_mk(new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI*2, 0, Math.PI/2), beretMat), { position: new THREE.Vector3(0.04, 0.73, 0.1), rotation: new THREE.Euler(0, 0, 0.2) }));
+    // Huge gold hoop earrings
+    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.5 });
+    for (const sx of [-0.23, 0.23]) {
+      _a(_mk(new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.014, 8, 20), earMat), { position: new THREE.Vector3(sx, 0.47, 0.16) }));
+    }
+    // Red lipstick
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.025, 0.02), new THREE.MeshStandardMaterial({ color: 0xff1111, emissive: 0xff1111, emissiveIntensity: 0.4 })), { position: new THREE.Vector3(0, 0.5, 0.36) }));
+    // Leather crop top
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.26), new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.3, metalness: 0.3 })), { position: new THREE.Vector3(0, 0.25, 0.05) }));
+    // Belt with buckle
+    const buckMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, emissive: 0x886600, emissiveIntensity: 0.3 });
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.03, 0.28), new THREE.MeshStandardMaterial({ color: 0x222222 })), { position: new THREE.Vector3(0, 0.14, 0.05) }));
+    _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.01), buckMat), { position: new THREE.Vector3(0, 0.14, 0.2) }));
+    // Dual pistols on hips
+    const gunMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6 });
+    for (const sx of [-0.17, 0.17]) {
+      _a(_mk(new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.06, 0.04), gunMat), { position: new THREE.Vector3(sx, 0.12, 0.12) }));
     }
 
   } else if (name === 'oz') {
-    // Hoodie over head
+    // Dark hoodie over head
     for (const h of defaultHat) { duckGroup.remove(h); characterAccessories.push(h); }
-    const hoodGeo = new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.6);
-    const hoodMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
-    const hood = new THREE.Mesh(hoodGeo, hoodMat);
-    hood.position.set(0, 0.6, 0.08);
-    duckGroup.add(hood);
-    characterAccessories.push(hood);
-    // Glowing green glasses
-    const cyberGeo = new THREE.BoxGeometry(0.28, 0.04, 0.04);
-    const cyberMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.8 });
-    const cyber = new THREE.Mesh(cyberGeo, cyberMat);
-    cyber.position.set(0, 0.6, 0.33);
-    duckGroup.add(cyber);
-    characterAccessories.push(cyber);
-    // Glow light
-    const glow = new THREE.PointLight(0x00ff00, 0.5, 2);
-    glow.position.set(0, 0.6, 0.4);
-    duckGroup.add(glow);
-    characterAccessories.push(glow);
+    const hoodMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18 });
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 8, 0, Math.PI*2, 0, Math.PI*0.6), hoodMat);
+    hood.position.set(0, 0.6, 0.06); duckGroup.add(hood); characterAccessories.push(hood);
+    // Glowing cyber visor
+    const cyberMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.2 });
+    const cyber = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.045, 0.04), cyberMat);
+    cyber.position.set(0, 0.6, 0.33); duckGroup.add(cyber); characterAccessories.push(cyber);
+    // Matrix-style code drip (small glowing dots)
+    const dotMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.5 });
+    for (const [dx,dy] of [[-0.1,0.55],[0.08,0.53],[0.0,0.5],[-0.05,0.47],[0.12,0.48]]) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 4, 4), dotMat);
+      dot.position.set(dx, dy, 0.34); duckGroup.add(dot); characterAccessories.push(dot);
+    }
+    // Green glow light
+    const glow = new THREE.PointLight(0x00ff00, 0.8, 3);
+    glow.position.set(0, 0.6, 0.4); duckGroup.add(glow); characterAccessories.push(glow);
+    // Hoodie body
+    const hoodBody = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.28), new THREE.MeshStandardMaterial({ color: 0x0a0a18 }));
+    hoodBody.position.set(0, 0.2, 0.05); duckGroup.add(hoodBody); characterAccessories.push(hoodBody);
   }
   // Default (unknown names) keep the standard hat — no changes
+
+  // Character glow ring — colored halo under the duck for visibility
+  const glowColors = { cj: 0x44ff44, tommy: 0xff4488, claude: 0x8888aa, niko: 0x88aa44, catalina: 0xff2244, oz: 0x00ff00 };
+  const ringColor = glowColors[name];
+  if (ringColor) {
+    const ringGeo = new THREE.RingGeometry(0.35, 0.5, 24);
+    const ringMat = new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.8, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    duckGroup.add(ring);
+    characterAccessories.push(ring);
+  }
 }
 
 // --------------------------------------------------------
@@ -321,25 +453,60 @@ export function buildCity3D() {
   }
   cityGroup = new THREE.Group();
   poiMeshes = [];
+  invalidateMinimapCache();
 
   if (!currentMapGrid) return;
 
-  // Ground plane
+  // Seeded RNG for deterministic world objects (parked cars, dock posts, etc.)
+  const _cityRng = _seededRNG(_npcSeed + 7919);
+
+  // Ground plane with procedural noise texture
   const groundGeo = new THREE.PlaneGeometry(MAP_SIZE + 4, MAP_SIZE + 4);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2a1a, roughness: 1 });
+  const gtCanvas = document.createElement('canvas');
+  gtCanvas.width = 256; gtCanvas.height = 256;
+  const gtCtx = gtCanvas.getContext('2d');
+  gtCtx.fillStyle = '#1a2a1a';
+  gtCtx.fillRect(0, 0, 256, 256);
+  for (let py = 0; py < 256; py++) {
+    for (let px = 0; px < 256; px++) {
+      const n = (Math.sin(px * 0.3) * Math.cos(py * 0.3) + Math.random() * 0.4) * 12;
+      const r = 26 + n, g = 42 + n, b = 26 + n * 0.5;
+      gtCtx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+      gtCtx.fillRect(px, py, 1, 1);
+    }
+  }
+  const groundTex = new THREE.CanvasTexture(gtCanvas);
+  groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+  groundTex.repeat.set(8, 8);
+  groundTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(MAP_SIZE / 2, -0.01, MAP_SIZE / 2);
   ground.receiveShadow = true;
   cityGroup.add(ground);
 
-  // Reusable geometries
-  const roadGeo = new THREE.BoxGeometry(1, 0.02, 1);
-  const buildingMats = [];
-  for (let i = 0; i < 8; i++) {
-    const shade = 40 + i * 12;
-    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+10},${shade+10},${shade+20})`), roughness: 0.8 }));
-  }
+  // ---- PASS 1: Collect tile positions by type ----
+  const roadMainPositions = [];
+  const roadSidePositions = [];
+  const waterPositions = [];
+  const parkPositions = [];
+  const sandPositions = [];
+  const treePositions = [];
+  const bridgePositions = [];
+  const dockPositions = [];
+  const industrialPositions = [];
+  const highwayPositions = [];
+  const plazaPositions = [];
+  const parkingPositions = [];
+  const roadMarkPositions = []; // every 8th main road tile
+  // Buildings grouped by material index
+  const buildingGroups = new Map(); // matIdx -> [{x, z, height}]
+  for (let i = 0; i < 8; i++) buildingGroups.set(i, []);
+  // Windows collected for instancing
+  const windowPositions = [];
+  // POI data collected for individual meshes (small count)
+  const poiTiles = [];
 
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
@@ -347,124 +514,561 @@ export function buildCity3D() {
       const wx = x + 0.5;
       const wz = y + 0.5;
 
-      if (tile === T.ROAD_MAIN || tile === T.ROAD_SIDE) {
-        const roadMat = new THREE.MeshStandardMaterial({
-          color: tile === T.ROAD_MAIN ? 0x444444 : 0x3a3a3a,
-          roughness: 0.9
-        });
-        const road = new THREE.Mesh(roadGeo, roadMat);
-        road.position.set(wx, 0.01, wz);
-        road.receiveShadow = true;
-        cityGroup.add(road);
-
-        if (tile === T.ROAD_MAIN && (x + y) % 3 === 0) {
-          const markGeo = new THREE.BoxGeometry(0.08, 0.025, 0.4);
-          const markMat = new THREE.MeshStandardMaterial({ color: 0xaaaa00, emissive: 0x333300 });
-          const mark = new THREE.Mesh(markGeo, markMat);
-          mark.position.set(wx, 0.025, wz);
-          cityGroup.add(mark);
+      if (tile === T.ROAD_MAIN) {
+        roadMainPositions.push({ x: wx, z: wz });
+        if ((x + y) % 8 === 0) {
+          roadMarkPositions.push({ x: wx, z: wz });
         }
+      } else if (tile === T.ROAD_SIDE) {
+        roadSidePositions.push({ x: wx, z: wz });
       } else if (tile === T.WALL) {
         const heightSeed = (x * 7 + y * 13) % 10;
-        const height = 0.8 + heightSeed * 0.4;
-        const bGeo = new THREE.BoxGeometry(0.9, height, 0.9);
-        const bMat = buildingMats[heightSeed % buildingMats.length];
-        const building = new THREE.Mesh(bGeo, bMat);
-        building.position.set(wx, height / 2, wz);
-        building.castShadow = true;
-        building.receiveShadow = true;
-        cityGroup.add(building);
+        const height = 0.5 + heightSeed * 0.2;
+        const matIdx = heightSeed % 8;
+        buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
 
-        if (height > 1.2) {
-          const windowGeo = new THREE.BoxGeometry(0.06, 0.06, 0.01);
-          const windowMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 0.8 });
-          const wSide = Math.random() < 0.5 ? 0.46 : -0.46;
+        // Windows only on tall buildings (height > 2.0), reduced probability
+        if (height > 2.0) {
+          const wSide = ((x * 31 + y * 17) % 2 === 0) ? 0.46 : -0.46;
           for (let wy = 0.4; wy < height - 0.2; wy += 0.35) {
-            if (Math.random() < 0.6) {
-              const win = new THREE.Mesh(windowGeo, windowMat);
-              win.position.set(wx + wSide, wy, wz + (Math.random() - 0.5) * 0.5);
-              if (Math.abs(wSide) > 0.4) win.rotation.y = Math.PI / 2;
-              cityGroup.add(win);
+            if (((x * 11 + y * 7 + Math.floor(wy * 100)) % 100) < 30) {
+              windowPositions.push({
+                x: wx + wSide,
+                y: wy,
+                z: wz + (((x * 37 + y * 53 + Math.floor(wy * 10)) % 100) / 100 - 0.5) * 0.5,
+                rotated: Math.abs(wSide) > 0.4
+              });
             }
           }
         }
       } else if (tile === T.WATER) {
-        const waterGeo = new THREE.BoxGeometry(1, 0.05, 1);
-        const waterMat = new THREE.MeshStandardMaterial({
-          color: 0x2266aa, transparent: true, opacity: 0.7, roughness: 0.2, metalness: 0.3
-        });
-        const water = new THREE.Mesh(waterGeo, waterMat);
-        water.position.set(wx, -0.05, wz);
-        water.receiveShadow = true;
-        cityGroup.add(water);
+        waterPositions.push({ x: wx, z: wz });
       } else if (tile === T.TREE) {
-        const trunkGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.5, 6);
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.set(wx, 0.25, wz);
-        trunk.castShadow = true;
-        cityGroup.add(trunk);
-
-        const canopyGeo = new THREE.SphereGeometry(0.3, 8, 6);
-        const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
-        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-        canopy.position.set(wx, 0.65, wz);
-        canopy.castShadow = true;
-        cityGroup.add(canopy);
+        treePositions.push({ x: wx, z: wz });
       } else if (tile === T.PARK) {
-        const parkGeo = new THREE.BoxGeometry(1, 0.02, 1);
-        const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 1 });
-        const park = new THREE.Mesh(parkGeo, parkMat);
-        park.position.set(wx, 0.01, wz);
-        park.receiveShadow = true;
-        cityGroup.add(park);
+        parkPositions.push({ x: wx, z: wz });
       } else if (tile === T.SAND) {
-        const sandGeo = new THREE.BoxGeometry(1, 0.02, 1);
-        const sandMat = new THREE.MeshStandardMaterial({ color: 0xaa8844, roughness: 1 });
-        const sand = new THREE.Mesh(sandGeo, sandMat);
-        sand.position.set(wx, 0.01, wz);
-        sand.receiveShadow = true;
-        cityGroup.add(sand);
+        sandPositions.push({ x: wx, z: wz });
+      } else if (tile === T.BRIDGE) {
+        bridgePositions.push({ x: wx, z: wz });
+      } else if (tile === T.DOCK) {
+        dockPositions.push({ x: wx, z: wz });
+      } else if (tile === T.INDUSTRIAL) {
+        // Low squat buildings
+        const height = 0.4 + ((x * 7 + y * 13) % 5) * 0.15;
+        const matIdx = ((x * 7 + y * 13) % 10) % 8;
+        buildingGroups.get(matIdx).push({ x: wx, z: wz, height });
+      } else if (tile === T.HIGHWAY) {
+        highwayPositions.push({ x: wx, z: wz });
+      } else if (tile === T.PLAZA) {
+        plazaPositions.push({ x: wx, z: wz });
+      } else if (tile === T.PARKING) {
+        parkingPositions.push({ x: wx, z: wz });
       }
 
-      // POI markers
       if (POI_DEFS[tile]) {
-        const poi = POI_DEFS[tile];
-        const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8);
-        const pillarMat = new THREE.MeshStandardMaterial({
-          color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 0.6,
-          transparent: true, opacity: 0.7
-        });
-        const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-        pillar.position.set(wx, 0.6, wz);
-        pillar.castShadow = false;
-        pillar.userData = { poiType: tile, baseY: 0.6 };
-        cityGroup.add(pillar);
-        poiMeshes.push(pillar);
-
-        const diamGeo = new THREE.OctahedronGeometry(0.12, 0);
-        const diamMat = new THREE.MeshStandardMaterial({
-          color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 1.0
-        });
-        const diamond = new THREE.Mesh(diamGeo, diamMat);
-        diamond.position.set(wx, 1.3, wz);
-        diamond.userData = { baseY: 1.3 };
-        cityGroup.add(diamond);
-        poiMeshes.push(diamond);
-
-        const poiLight = new THREE.PointLight(poi.colorHex, 0.5, 3);
-        poiLight.position.set(wx, 1.0, wz);
-        cityGroup.add(poiLight);
+        poiTiles.push({ x: wx, z: wz, tile, poi: POI_DEFS[tile] });
       }
     }
   }
 
-  // Street lamps on main roads (every 4 tiles)
+  // ---- PASS 2: Create InstancedMeshes for flat tiles ----
+  const dummy = new THREE.Object3D();
+  const flatGeo = new THREE.BoxGeometry(1, 0.02, 1);
+
+  // Shared asphalt texture for roads
+  const asphaltCanvas = document.createElement('canvas');
+  asphaltCanvas.width = 64; asphaltCanvas.height = 64;
+  const asCtx = asphaltCanvas.getContext('2d');
+  asCtx.fillStyle = '#444';
+  asCtx.fillRect(0, 0, 64, 64);
+  for (let py = 0; py < 64; py++) for (let px = 0; px < 64; px++) {
+    const n = (Math.random() - 0.5) * 20;
+    asCtx.fillStyle = `rgb(${68+n|0},${68+n|0},${68+n|0})`;
+    asCtx.fillRect(px, py, 1, 1);
+  }
+  const asphaltTex = new THREE.CanvasTexture(asphaltCanvas);
+  asphaltTex.wrapS = asphaltTex.wrapT = THREE.RepeatWrapping;
+  asphaltTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  // Road main
+  if (roadMainPositions.length > 0) {
+    const mat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, mat, roadMainPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    roadMainPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Road side
+  if (roadSidePositions.length > 0) {
+    const mat = new THREE.MeshStandardMaterial({ map: asphaltTex.clone(), color: 0xdddddd, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, mat, roadSidePositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    roadSidePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Road markings (every 8 tiles instead of every 3)
+  if (roadMarkPositions.length > 0) {
+    const markGeo = new THREE.BoxGeometry(0.08, 0.025, 0.4);
+    const markMat = new THREE.MeshStandardMaterial({ color: 0xaaaa00, emissive: 0x333300 });
+    const inst = new THREE.InstancedMesh(markGeo, markMat, roadMarkPositions.length);
+    inst.castShadow = false;
+    roadMarkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.025, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Water
+  if (waterPositions.length > 0) {
+    const waterMat = new THREE.MeshPhysicalMaterial({
+      color: 0x2266aa, transparent: true, opacity: 0.6,
+      roughness: 0.05, metalness: 0.1,
+      transmission: 0.3, thickness: 0.5,
+      envMap: _envMap, envMapIntensity: 0.8,
+      depthWrite: false
+    });
+    const inst = new THREE.InstancedMesh(flatGeo, waterMat, waterPositions.length);
+    inst.name = 'waterMesh';
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    waterPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, -0.05, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Park
+  if (parkPositions.length > 0) {
+    const parkMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 1 });
+    const inst = new THREE.InstancedMesh(flatGeo, parkMat, parkPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    parkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Sand
+  if (sandPositions.length > 0) {
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xaa8844, roughness: 1 });
+    const inst = new THREE.InstancedMesh(flatGeo, sandMat, sandPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    sandPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.01, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Bridge (raised wooden planks over water)
+  if (bridgePositions.length > 0) {
+    const bridgeGeo = new THREE.BoxGeometry(1, 0.08, 1);
+    const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x6a5a3a, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(bridgeGeo, bridgeMat, bridgePositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = true;
+    bridgePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.15, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Bridge railings
+    const railGeo = new THREE.BoxGeometry(0.05, 0.3, 1);
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5 });
+    const railInst = new THREE.InstancedMesh(railGeo, railMat, bridgePositions.length * 2);
+    railInst.castShadow = false;
+    bridgePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x - 0.45, 0.3, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      railInst.setMatrixAt(i * 2, dummy.matrix);
+      dummy.position.set(pos.x + 0.45, 0.3, pos.z);
+      dummy.updateMatrix();
+      railInst.setMatrixAt(i * 2 + 1, dummy.matrix);
+    });
+    cityGroup.add(railInst);
+  }
+
+  // Dock (wooden planks at water level)
+  if (dockPositions.length > 0) {
+    const dockGeo = new THREE.BoxGeometry(1, 0.06, 1);
+    const dockMat = new THREE.MeshStandardMaterial({ color: 0x5a4a30, roughness: 1 });
+    const inst = new THREE.InstancedMesh(dockGeo, dockMat, dockPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    dockPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.04, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Dock posts
+    const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.4, 6);
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x443322 });
+    const posts = [];
+    dockPositions.forEach(pos => {
+      if (_cityRng() < 0.3) posts.push(pos);
+    });
+    if (posts.length > 0) {
+      const postInst = new THREE.InstancedMesh(postGeo, postMat, posts.length);
+      postInst.castShadow = true;
+      posts.forEach((pos, i) => {
+        dummy.position.set(pos.x + 0.35, 0.2, pos.z + 0.35);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        postInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(postInst);
+    }
+  }
+
+  // Highway (wider, slightly raised, darker road)
+  if (highwayPositions.length > 0) {
+    const hwGeo = new THREE.BoxGeometry(1, 0.06, 1);
+    const hwMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.8 });
+    const inst = new THREE.InstancedMesh(hwGeo, hwMat, highwayPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    highwayPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.05, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Highway lane markings (yellow center line)
+    const hwMarkGeo = new THREE.BoxGeometry(0.06, 0.07, 0.5);
+    const hwMarkMat = new THREE.MeshStandardMaterial({ color: 0xdddd00, emissive: 0x555500 });
+    const marks = highwayPositions.filter((_, i) => i % 3 === 0);
+    if (marks.length > 0) {
+      const markInst = new THREE.InstancedMesh(hwMarkGeo, hwMarkMat, marks.length);
+      markInst.castShadow = false;
+      marks.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.065, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        markInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(markInst);
+    }
+  }
+
+  // Plaza (flat open spaces with subtle pattern)
+  if (plazaPositions.length > 0) {
+    const plazaMat = new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.95 });
+    const inst = new THREE.InstancedMesh(flatGeo, plazaMat, plazaPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    plazaPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.015, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // Parking lots (dark asphalt with line markings)
+  if (parkingPositions.length > 0) {
+    const parkingMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+    const inst = new THREE.InstancedMesh(flatGeo, parkingMat, parkingPositions.length);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    parkingPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.012, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+    // Parking space line markings
+    const lineGeo = new THREE.BoxGeometry(0.04, 0.02, 0.6);
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+    const lines = parkingPositions.filter((_, i) => i % 2 === 0);
+    if (lines.length > 0) {
+      const lineInst = new THREE.InstancedMesh(lineGeo, lineMat, lines.length);
+      lineInst.castShadow = false;
+      lines.forEach((pos, i) => {
+        dummy.position.set(pos.x + 0.3, 0.02, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        lineInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(lineInst);
+    }
+  }
+
+  // ---- Sidewalks along roads ----
+  const sidewalkPositions = [];
+  for (let y = 1; y < MAP_SIZE - 1; y++) {
+    for (let x = 1; x < MAP_SIZE - 1; x++) {
+      const t = currentMapGrid[y][x];
+      if (t !== T.GROUND && t !== T.PLAZA && t !== T.SAND) continue;
+      const adj = [currentMapGrid[y-1]?.[x], currentMapGrid[y+1]?.[x], currentMapGrid[y]?.[x-1], currentMapGrid[y]?.[x+1]];
+      if (adj.some(a => a === T.ROAD_MAIN || a === T.ROAD_SIDE)) {
+        sidewalkPositions.push({ x: x + 0.5, z: y + 0.5 });
+      }
+    }
+  }
+  if (sidewalkPositions.length > 0) {
+    const swMat = new THREE.MeshStandardMaterial({ color: 0x999088, roughness: 0.95 });
+    const swGeo = new THREE.BoxGeometry(1, 0.04, 1);
+    const swInst = new THREE.InstancedMesh(swGeo, swMat, sidewalkPositions.length);
+    swInst.receiveShadow = true; swInst.castShadow = false;
+    sidewalkPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.02, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); swInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(swInst);
+    // Curb strips (thin raised edge between sidewalk and road)
+    const curbGeo = new THREE.BoxGeometry(1, 0.06, 0.08);
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0xaaa898 });
+    const curbCount = Math.min(sidewalkPositions.length, 800);
+    const curbInst = new THREE.InstancedMesh(curbGeo, curbMat, curbCount);
+    curbInst.castShadow = false;
+    for (let i = 0; i < curbCount; i++) {
+      dummy.position.set(sidewalkPositions[i].x, 0.05, sidewalkPositions[i].z + 0.46);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); curbInst.setMatrixAt(i, dummy.matrix);
+    }
+    cityGroup.add(curbInst);
+  }
+
+  // ---- Crosswalks at road intersections ----
+  const crosswalkPositions = [];
+  for (let y = 2; y < MAP_SIZE - 2; y++) {
+    for (let x = 2; x < MAP_SIZE - 2; x++) {
+      if (currentMapGrid[y][x] !== T.ROAD_MAIN) continue;
+      // Intersection: road in all 4 directions
+      const n = currentMapGrid[y-1]?.[x], s = currentMapGrid[y+1]?.[x];
+      const w = currentMapGrid[y]?.[x-1], e = currentMapGrid[y]?.[x+1];
+      const isRoadTile = t => t === T.ROAD_MAIN || t === T.ROAD_SIDE;
+      if (isRoadTile(n) && isRoadTile(s) && isRoadTile(w) && isRoadTile(e)) {
+        crosswalkPositions.push({ x: x + 0.5, z: y + 0.5 });
+      }
+    }
+  }
+  if (crosswalkPositions.length > 0) {
+    const cwGeo = new THREE.BoxGeometry(0.6, 0.025, 0.08);
+    const cwMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+    const stripes = Math.min(crosswalkPositions.length * 4, 2000);
+    const cwInst = new THREE.InstancedMesh(cwGeo, cwMat, stripes);
+    cwInst.castShadow = false;
+    let ci = 0;
+    for (const pos of crosswalkPositions) {
+      for (let s = -2; s <= 1; s++) {
+        if (ci >= stripes) break;
+        dummy.position.set(pos.x, 0.025, pos.z + s * 0.15);
+        dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix(); cwInst.setMatrixAt(ci++, dummy.matrix);
+      }
+    }
+    cwInst.count = ci;
+    cityGroup.add(cwInst);
+  }
+
+  // ---- Buildings: InstancedMesh per material group ----
+  const buildingMats = [];
+  for (let i = 0; i < 8; i++) {
+    const shade = 40 + i * 12;
+    const hue = [10, 8, 12, 6, 15, 5, 20, 10][i]; // varied warm/cool tints
+    buildingMats.push(new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${shade+hue},${shade+hue-2},${shade+20})`), roughness: 0.85, metalness: 0.05 }));
+  }
+  // Base building geo is 0.9 x 1.0 x 0.9 (height=1 will be scaled per instance)
+  const buildGeo = new THREE.BoxGeometry(0.9, 1, 0.9);
+  for (let matIdx = 0; matIdx < 8; matIdx++) {
+    const group = buildingGroups.get(matIdx);
+    if (group.length === 0) continue;
+    const inst = new THREE.InstancedMesh(buildGeo, buildingMats[matIdx], group.length);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    group.forEach((b, i) => {
+      dummy.position.set(b.x, b.height / 2, b.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, b.height, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(inst);
+  }
+
+  // ---- Windows: InstancedMesh with variation (some dark) ----
+  if (windowPositions.length > 0) {
+    const winGeo = new THREE.BoxGeometry(0.06, 0.06, 0.01);
+    const winMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 0.8 });
+    const inst = new THREE.InstancedMesh(winGeo, winMat, windowPositions.length);
+    inst.castShadow = false;
+    const litColor = new THREE.Color(0xffeeaa);
+    const darkColor = new THREE.Color(0x222233);
+    windowPositions.forEach((w, i) => {
+      dummy.position.set(w.x, w.y, w.z);
+      dummy.rotation.set(0, w.rotated ? Math.PI / 2 : 0, 0);
+      // ~35% of windows are dark — seeded by position for consistency
+      const isLit = ((w.x * 17 + w.y * 31 + w.z * 7) | 0) % 100 > 35;
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+      inst.setColorAt(i, isLit ? litColor : darkColor);
+    });
+    inst.instanceColor.needsUpdate = true;
+    cityGroup.add(inst);
+  }
+
+  // ---- Rooftop details: AC units, antennas on taller buildings ----
+  const rooftopPositions = [];
+  const antennaPositions = [];
+  for (let matIdx = 0; matIdx < 8; matIdx++) {
+    for (const b of buildingGroups.get(matIdx)) {
+      if (b.height > 1.2 && ((b.x * 7 + b.z * 11) | 0) % 3 === 0) {
+        rooftopPositions.push({ x: b.x + 0.15, y: b.height + 0.05, z: b.z + 0.15 });
+      }
+      if (b.height > 1.5 && ((b.x * 13 + b.z * 3) | 0) % 5 === 0) {
+        antennaPositions.push({ x: b.x, y: b.height, z: b.z });
+      }
+    }
+  }
+  if (rooftopPositions.length > 0) {
+    const acGeo = new THREE.BoxGeometry(0.18, 0.1, 0.18);
+    const acMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6, metalness: 0.3 });
+    const acInst = new THREE.InstancedMesh(acGeo, acMat, rooftopPositions.length);
+    acInst.castShadow = false;
+    rooftopPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); acInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(acInst);
+  }
+  if (antennaPositions.length > 0) {
+    const antGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4);
+    const antMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.7 });
+    const antInst = new THREE.InstancedMesh(antGeo, antMat, antennaPositions.length);
+    antInst.castShadow = false;
+    antennaPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y + 0.25, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); antInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(antInst);
+    // Red beacon lights on antennas
+    const beaconGeo = new THREE.SphereGeometry(0.025, 4, 4);
+    const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.0 });
+    const beaconInst = new THREE.InstancedMesh(beaconGeo, beaconMat, antennaPositions.length);
+    beaconInst.castShadow = false;
+    antennaPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, pos.y + 0.5, pos.z);
+      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix(); beaconInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(beaconInst);
+  }
+
+  // ---- Trees: 2 InstancedMeshes (trunk + canopy) ----
+  if (treePositions.length > 0) {
+    const trunkGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.5, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
+    const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
+    trunkInst.castShadow = true;
+    treePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.25, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      trunkInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(trunkInst);
+
+    const canopyGeo = new THREE.SphereGeometry(0.3, 8, 6);
+    const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.8 });
+    const canopyInst = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
+    canopyInst.castShadow = true;
+    treePositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.65, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      canopyInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(canopyInst);
+  }
+
+  // ---- POI markers (individual meshes — small count, need animation) ----
+  for (const { x: wx, z: wz, tile, poi } of poiTiles) {
+    const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8);
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 0.6,
+      transparent: true, opacity: 0.7, depthWrite: false
+    });
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+    pillar.position.set(wx, 0.6, wz);
+    pillar.castShadow = false;
+    pillar.userData = { poiType: tile, baseY: 0.6 };
+    cityGroup.add(pillar);
+    poiMeshes.push(pillar);
+
+    const diamGeo = new THREE.OctahedronGeometry(0.12, 0);
+    const diamMat = new THREE.MeshStandardMaterial({
+      color: poi.colorHex, emissive: poi.colorHex, emissiveIntensity: 1.0
+    });
+    const diamond = new THREE.Mesh(diamGeo, diamMat);
+    diamond.position.set(wx, 1.3, wz);
+    diamond.userData = { baseY: 1.3 };
+    cityGroup.add(diamond);
+    poiMeshes.push(diamond);
+    // No PointLight — emissive materials provide the visual glow
+  }
+
+  // ---- Street lamps: InstancedMesh for posts and heads, NO PointLights ----
   streetLamps = [];
-  const lampPostGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.5, 6);
-  const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6 });
-  const lampHeadGeo = new THREE.SphereGeometry(0.1, 8, 6);
-  const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffeeaa, emissiveIntensity: 0.3 });
+  const lampPostPositions = [];
+  const lampHeadPositions = [];
 
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
@@ -477,63 +1081,138 @@ export function buildCity3D() {
         const adj = currentMapGrid[nz][nx];
         if (adj === T.GROUND || adj === T.SAND || adj === T.PARK) {
           const wx = nx + 0.5, wz = nz + 0.5;
-          const post = new THREE.Mesh(lampPostGeo, lampPostMat);
-          post.position.set(wx, 0.75, wz);
-          post.castShadow = true;
-          cityGroup.add(post);
-          const head = new THREE.Mesh(lampHeadGeo, lampHeadMat.clone());
-          head.position.set(wx, 1.55, wz);
-          cityGroup.add(head);
-          const light = new THREE.PointLight(0xffeeaa, 0, 5);
-          light.position.set(wx, 1.5, wz);
-          cityGroup.add(light);
-          streetLamps.push({ head, light, x: wx, z: wz });
+          lampPostPositions.push({ x: wx, z: wz });
+          lampHeadPositions.push({ x: wx, z: wz });
           break;
         }
       }
     }
   }
 
-  // Parked cars on side roads
+  // Shared material for all lamp heads — toggle emissiveIntensity globally for night
+  const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffeeaa, emissiveIntensity: 0.3 });
+
+  if (lampPostPositions.length > 0) {
+    const lampPostGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.5, 6);
+    const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6 });
+    const postInst = new THREE.InstancedMesh(lampPostGeo, lampPostMat, lampPostPositions.length);
+    postInst.castShadow = false;
+    lampPostPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.75, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      postInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(postInst);
+
+    const lampHeadGeo = new THREE.SphereGeometry(0.1, 8, 6);
+    const headInst = new THREE.InstancedMesh(lampHeadGeo, lampHeadMat, lampHeadPositions.length);
+    headInst.castShadow = false;
+    lampHeadPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 1.55, pos.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      headInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(headInst);
+  }
+
+  // Store reference to shared material for night toggling
+  // streetLamps now just holds the shared material and positions for compatibility
+  streetLamps = lampHeadPositions.map(pos => ({ x: pos.x, z: pos.z }));
+  streetLamps._sharedHeadMat = lampHeadMat;
+
+  // ---- Parked cars on side roads (max 40, no castShadow) ----
   parkedCars = [];
   const carBodyGeo = new THREE.BoxGeometry(0.35, 0.2, 0.65);
   const carTopGeo = new THREE.BoxGeometry(0.28, 0.15, 0.35);
   const carColors = [0xcc2222, 0x2244cc, 0x22aa22, 0xcccc22, 0xeeeeee, 0x222222, 0xcc6600, 0x8822aa];
+  const carBodyPositions = [];
+  const carTopPositions = [];
+  const carWheelPositions = [];
   let carCount = 0;
   for (let y = 2; y < MAP_SIZE - 2 && carCount < 40; y++) {
     for (let x = 2; x < MAP_SIZE - 2 && carCount < 40; x++) {
       if (currentMapGrid[y][x] !== T.ROAD_SIDE) continue;
-      if (Math.random() > 0.06) continue;
+      if (_cityRng() > 0.06) continue;
       const adjWall = [[1,0],[-1,0],[0,1],[0,-1]].some(([ox,oz]) => {
         const t = currentMapGrid[y+oz]?.[x+ox];
         return t === T.WALL;
       });
       if (!adjWall) continue;
       const wx = x + 0.5, wz = y + 0.5;
-      const color = carColors[Math.floor(Math.random() * carColors.length)];
-      const carMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
-      const body = new THREE.Mesh(carBodyGeo, carMat);
-      body.position.set(wx, 0.12, wz);
-      body.castShadow = true;
-      cityGroup.add(body);
-      const top = new THREE.Mesh(carTopGeo, carMat);
-      top.position.set(wx, 0.27, wz - 0.05);
-      top.castShadow = true;
-      cityGroup.add(top);
-      const wheelGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8);
-      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+      const colorIdx = Math.floor(_cityRng() * carColors.length);
+      carBodyPositions.push({ x: wx, z: wz, colorIdx });
+      carTopPositions.push({ x: wx, z: wz - 0.05, colorIdx });
       for (const [sx, sz] of [[-0.18, -0.2], [0.18, -0.2], [-0.18, 0.2], [0.18, 0.2]]) {
-        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(wx + sx, 0.05, wz + sz);
-        cityGroup.add(wheel);
+        carWheelPositions.push({ x: wx + sx, z: wz + sz });
       }
       parkedCars.push({ x: wx, z: wz });
       carCount++;
     }
   }
 
-  // NPC cars on main roads (stealable)
+  // Parked car bodies — one InstancedMesh per color
+  const carsByColor = new Map();
+  carBodyPositions.forEach((pos) => {
+    if (!carsByColor.has(pos.colorIdx)) carsByColor.set(pos.colorIdx, { bodies: [], tops: [] });
+    carsByColor.get(pos.colorIdx).bodies.push(pos);
+  });
+  carTopPositions.forEach((pos) => {
+    if (carsByColor.has(pos.colorIdx)) carsByColor.get(pos.colorIdx).tops.push(pos);
+  });
+
+  for (const [colorIdx, data] of carsByColor) {
+    const color = carColors[colorIdx];
+    const carMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
+    if (data.bodies.length > 0) {
+      const bodyInst = new THREE.InstancedMesh(carBodyGeo, carMat, data.bodies.length);
+      bodyInst.castShadow = false;
+      bodyInst.receiveShadow = true;
+      data.bodies.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.12, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        bodyInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(bodyInst);
+    }
+    if (data.tops.length > 0) {
+      const topInst = new THREE.InstancedMesh(carTopGeo, carMat, data.tops.length);
+      topInst.castShadow = false;
+      topInst.receiveShadow = true;
+      data.tops.forEach((pos, i) => {
+        dummy.position.set(pos.x, 0.27, pos.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        topInst.setMatrixAt(i, dummy.matrix);
+      });
+      cityGroup.add(topInst);
+    }
+  }
+
+  // Parked car wheels — single InstancedMesh
+  if (carWheelPositions.length > 0) {
+    const wheelGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const wheelInst = new THREE.InstancedMesh(wheelGeo, wheelMat, carWheelPositions.length);
+    wheelInst.castShadow = false;
+    carWheelPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 0.05, pos.z);
+      dummy.rotation.set(0, 0, Math.PI / 2);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      wheelInst.setMatrixAt(i, dummy.matrix);
+    });
+    cityGroup.add(wheelInst);
+  }
+
+  // NPC cars on main roads (stealable) — seeded for multiplayer sync
+  const _carRng = _seededRNG(_npcSeed + 1337);
   npcCars = [];
   const npcCarColors = [
     0xff00ff, 0x00ffff, 0xff4400, 0x44ff00, 0xffff00, 0xff0066,
@@ -550,17 +1229,17 @@ export function buildCity3D() {
       if (currentMapGrid[y][x] === T.ROAD_MAIN) mainRoadTiles.push({x, y});
     }
   }
-  const npcCarCount = Math.min(8, Math.floor(mainRoadTiles.length / 30));
+  const npcCarCount = Math.min(40, Math.floor(mainRoadTiles.length / 15));
   for (let i = 0; i < npcCarCount; i++) {
-    const rt = mainRoadTiles[Math.floor(Math.random() * mainRoadTiles.length)];
-    const colorIdx = Math.floor(Math.random() * npcCarColors.length);
+    const rt = mainRoadTiles[Math.floor(_carRng() * mainRoadTiles.length)];
+    const colorIdx = Math.floor(_carRng() * npcCarColors.length);
     const color = npcCarColors[colorIdx];
     const vName = npcCarNames[colorIdx];
     const wx = rt.x + 0.5, wz = rt.y + 0.5;
     const carGroup = new THREE.Group();
     // Wider/sportier body
-    const bodyW = 0.3 + Math.random() * 0.15;
-    const bodyL = 0.6 + Math.random() * 0.2;
+    const bodyW = 0.3 + _carRng() * 0.15;
+    const bodyL = 0.6 + _carRng() * 0.2;
     const cBodyGeo = new THREE.BoxGeometry(bodyW, 0.2, bodyL);
     const cBodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0.5 });
     const cBody = new THREE.Mesh(cBodyGeo, cBodyMat);
@@ -597,8 +1276,8 @@ export function buildCity3D() {
       carGroup.add(hl);
     }
     carGroup.position.set(wx, 0, wz);
-    const driveAxis = Math.random() < 0.5 ? 'x' : 'z';
-    const driveDir = Math.random() < 0.5 ? 1 : -1;
+    const driveAxis = _carRng() < 0.5 ? 'x' : 'z';
+    const driveDir = _carRng() < 0.5 ? 1 : -1;
     // Align car rotation with drive direction
     if (driveAxis === 'x') {
       carGroup.rotation.y = driveDir > 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -610,10 +1289,10 @@ export function buildCity3D() {
       group: carGroup, x: wx, z: wz, name: vName,
       color: '#' + color.toString(16).padStart(6, '0'),
       dir: driveDir,
-      speed: 0.5 + Math.random() * 0.8,
+      speed: 0.5 + _carRng() * 0.8,
       startX: wx, startZ: wz,
       driveAxis,
-      driveDist: 4 + Math.random() * 8,
+      driveDist: 6 + _carRng() * 14,
       driven: 0
     });
   }
@@ -649,13 +1328,29 @@ export function buildCity3D() {
   scene.add(cityGroup);
 }
 
+// Seeded PRNG (mulberry32) for deterministic NPC spawning across peers
+function _seededRNG(seed) {
+  let s = seed | 0;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // --------------------------------------------------------
 //  NPC PEDESTRIANS
 // --------------------------------------------------------
+let _npcSeed = 42;
+export function setNPCSeed(seed) { _npcSeed = seed; }
 export function spawnNPCs() {
   for (const npc of npcs) { scene.remove(npc.group); }
   npcs = [];
   if (!currentMapGrid) { console.warn('spawnNPCs: no map grid'); return; }
+
+  // Use seeded RNG so all multiplayer peers get identical NPC placement
+  const rng = _seededRNG(_npcSeed);
 
   const npcColors = [0xcc4444, 0x4444cc, 0x44cc44, 0xcccc44, 0xcc44cc, 0x44cccc, 0xff8844, 0x884422, 0xffffff, 0x888888];
   const roadTiles = [];
@@ -665,11 +1360,11 @@ export function spawnNPCs() {
     }
   }
 
-  const count = Math.max(10, Math.min(20, Math.floor(roadTiles.length / 25)));
-  console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs`);
+  const count = Math.max(60, Math.min(120, Math.floor(roadTiles.length / 15)));
+  console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs (seed: ${_npcSeed})`);
   for (let i = 0; i < count; i++) {
-    const rt = roadTiles[Math.floor(Math.random() * roadTiles.length)];
-    const color = npcColors[Math.floor(Math.random() * npcColors.length)];
+    const rt = roadTiles[Math.floor(rng() * roadTiles.length)];
+    const color = npcColors[Math.floor(rng() * npcColors.length)];
     const group = new THREE.Group();
 
     // Body - bigger and more visible
@@ -683,7 +1378,7 @@ export function spawnNPCs() {
 
     // Head - bigger
     const headGeo = new THREE.SphereGeometry(0.1, 8, 6);
-    const skinColor = Math.random() < 0.5 ? 0xddaa77 : 0x885533;
+    const skinColor = rng() < 0.5 ? 0xddaa77 : 0x885533;
     const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6, emissive: 0xffddaa, emissiveIntensity: 0.1 });
     const head = new THREE.Mesh(headGeo, headMat);
     head.position.y = 0.65;
@@ -703,7 +1398,7 @@ export function spawnNPCs() {
 
     // Small marker light above NPC head so they're always visible
     const markerGeo = new THREE.SphereGeometry(0.04, 6, 6);
-    const isHostile = Math.random() < 0.25;
+    const isHostile = rng() < 0.25;
     const markerColor = isHostile ? 0xff4444 : 0x44ff44;
     const markerMat = new THREE.MeshStandardMaterial({ color: markerColor, emissive: markerColor, emissiveIntensity: 1.0 });
     const marker = new THREE.Mesh(markerGeo, markerMat);
@@ -713,17 +1408,19 @@ export function spawnNPCs() {
     group.position.set(rt.x + 0.5, 0, rt.y + 0.5);
     scene.add(group);
 
-    const dir = Math.random() < 0.5 ? 'x' : 'z';
-    const speed = 0.3 + Math.random() * 0.4;
-    const facing = Math.random() < 0.5 ? 1 : -1;
+    const dir = rng() < 0.5 ? 'x' : 'z';
+    const speed = 0.3 + rng() * 0.4;
+    const facing = rng() < 0.5 ? 1 : -1;
     group.rotation.y = dir === 'x' ? (facing > 0 ? Math.PI / 2 : -Math.PI / 2) : (facing > 0 ? 0 : Math.PI);
 
     npcs.push({
-      group, dir, speed, facing,
+      group, dir, speed, facing, id: i,
       startX: rt.x + 0.5, startZ: rt.y + 0.5,
-      walkDist: 3 + Math.random() * 6,
-      walked: 0, phase: Math.random() * Math.PI * 2,
-      hostile: isHostile
+      walkDist: 3 + rng() * 6,
+      walked: 0, phase: rng() * Math.PI * 2,
+      hostile: isHostile,
+      // Cached child references (avoid per-frame getObjectByName)
+      _legL: legL, _legR: legR, _body: body, _head: head
     });
   }
 }
@@ -758,11 +1455,18 @@ export function getNearestPoliceNPC(maxDist = 5) {
 
 export function killNPC(npc) {
   const pos = { x: npc.group.position.x, z: npc.group.position.z };
+  const npcId = npc.id;
   scene.remove(npc.group);
   npc.group.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) obj.material.dispose(); });
   const idx = npcs.indexOf(npc);
   if (idx >= 0) npcs.splice(idx, 1);
-  return pos;
+  return { ...pos, id: npcId };
+}
+
+export function killNPCById(npcId) {
+  const npc = npcs.find(n => n.id === npcId);
+  if (npc) return killNPC(npc);
+  return null;
 }
 
 export function damagePoliceNPC(cop, dmg) {
@@ -796,6 +1500,19 @@ export function removeNPCCar(car) {
   if (idx >= 0) npcCars.splice(idx, 1);
 }
 
+// Shared particle pool (used by particles + bullet trails)
+const _particleGeo = new THREE.SphereGeometry(0.05, 4, 4);
+const _particleMatCache = new Map(); // color -> MeshBasicMaterial
+
+function _getParticleMat(color) {
+  let mat = _particleMatCache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    _particleMatCache.set(color, mat);
+  }
+  return mat;
+}
+
 // Projectile system
 let projectiles = [];
 
@@ -820,11 +1537,11 @@ export function spawnMuzzleFlash() {
   }, 100);
 }
 
-export function fireProjectile(targetX, targetZ) {
-  if (!duckGroup) return;
-  const startX = duckGroup.position.x;
-  const startZ = duckGroup.position.z;
+export function fireProjectile(targetX, targetZ, srcX, srcZ, color) {
+  const startX = srcX != null ? srcX : (duckGroup ? duckGroup.position.x : 0);
+  const startZ = srcZ != null ? srcZ : (duckGroup ? duckGroup.position.z : 0);
   const startY = 0.45;
+  const bulletColor = color || 0xffff00;
 
   const dx = targetX - startX;
   const dz = targetZ - startZ;
@@ -836,13 +1553,13 @@ export function fireProjectile(targetX, targetZ) {
 
   // Main bullet — bright glowing orb
   const bulletGeo = new THREE.SphereGeometry(0.08, 6, 6);
-  const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 1 });
+  const bulletMat = new THREE.MeshBasicMaterial({ color: bulletColor, transparent: true, opacity: 1 });
   const bullet = new THREE.Mesh(bulletGeo, bulletMat);
   bullet.position.set(startX + nx * 0.5, startY, startZ + nz * 0.5);
   scene.add(bullet);
 
   // Bullet glow light
-  const bulletLight = new THREE.PointLight(0xffaa00, 2, 3);
+  const bulletLight = new THREE.PointLight(bulletColor, 2, 3);
   bulletLight.position.copy(bullet.position);
   scene.add(bulletLight);
 
@@ -879,9 +1596,9 @@ function updateProjectiles(dt) {
     p.trailTimer += dt;
     if (p.trailTimer > 0.02) {
       p.trailTimer = 0;
-      const trailGeo = new THREE.SphereGeometry(0.04, 4, 4);
-      const trailMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8 });
-      const trail = new THREE.Mesh(trailGeo, trailMat);
+      const trailMat = _getParticleMat(0xff6600).clone();
+      trailMat.opacity = 0.8;
+      const trail = new THREE.Mesh(_particleGeo, trailMat);
       trail.position.copy(p.mesh.position);
       scene.add(trail);
       particles.push({
@@ -901,13 +1618,14 @@ function updateProjectiles(dt) {
 }
 
 // --------------------------------------------------------
-//  PARTICLE SYSTEM
+//  PARTICLE SYSTEM (pooled geometry + materials)
 // --------------------------------------------------------
 export function spawnParticles(worldX, worldZ, color, count, speed, life, gravity) {
+  const baseMat = _getParticleMat(color);
   for (let i = 0; i < count; i++) {
-    const geo = new THREE.SphereGeometry(0.04 + Math.random() * 0.04, 4, 4);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
-    const mesh = new THREE.Mesh(geo, mat);
+    // Clone material so each particle can fade independently
+    const mat = baseMat.clone();
+    const mesh = new THREE.Mesh(_particleGeo, mat);
     mesh.position.set(
       worldX + (Math.random() - 0.5) * 0.3,
       0.5 + Math.random() * 0.5,
@@ -937,7 +1655,7 @@ function updateParticles(dt) {
     p.life -= dt;
     if (p.life <= 0) {
       scene.remove(p.mesh);
-      p.mesh.geometry.dispose();
+      // Only dispose cloned materials, not the shared geometry
       p.mesh.material.dispose();
       particles.splice(i, 1);
       continue;
@@ -953,69 +1671,124 @@ function updateParticles(dt) {
 
 // Police NPCs
 let policeNPCs = [];
+let _nextPoliceId = 0;
 
-export function spawnPoliceNPC(nearX, nearZ) {
+export function spawnPoliceNPC(nearX, nearZ, inVehicle = false) {
   const group = new THREE.Group();
 
-  // Body (blue uniform)
-  const bodyGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.38, 8);
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2233aa, roughness: 0.7 });
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = 0.3;
-  body.castShadow = true;
-  group.add(body);
+  if (inVehicle) {
+    // Police car — black & white cruiser with siren bar
+    const carBody = new THREE.BoxGeometry(0.55, 0.25, 0.9);
+    const carMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3, metalness: 0.5 });
+    const body = new THREE.Mesh(carBody, carMat);
+    body.position.y = 0.15;
+    body.castShadow = true;
+    group.add(body);
+    // White door panels
+    const panelGeo = new THREE.BoxGeometry(0.56, 0.12, 0.35);
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+    const panel = new THREE.Mesh(panelGeo, panelMat);
+    panel.position.set(0, 0.17, -0.05);
+    group.add(panel);
+    // Cabin
+    const topGeo = new THREE.BoxGeometry(0.42, 0.18, 0.45);
+    const topMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+    const top = new THREE.Mesh(topGeo, topMat);
+    top.position.set(0, 0.33, -0.05);
+    group.add(top);
+    // Siren bar (red + blue)
+    const barGeo = new THREE.BoxGeometry(0.35, 0.04, 0.08);
+    const barMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const bar = new THREE.Mesh(barGeo, barMat);
+    bar.position.set(0, 0.44, -0.05);
+    group.add(bar);
+    const sRed = new THREE.SphereGeometry(0.03, 6, 6);
+    const sRedMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.5 });
+    const sirenR = new THREE.Mesh(sRed, sRedMat);
+    sirenR.position.set(-0.1, 0.46, -0.05);
+    sirenR.name = 'siren';
+    group.add(sirenR);
+    const sBlueMat = new THREE.MeshStandardMaterial({ color: 0x0044ff, emissive: 0x0044ff, emissiveIntensity: 1.5 });
+    const sirenB = new THREE.Mesh(sRed, sBlueMat);
+    sirenB.position.set(0.1, 0.46, -0.05);
+    sirenB.name = 'siren2';
+    group.add(sirenB);
+    // Wheels
+    const wGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.1, 8);
+    const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    for (const [sx, sz] of [[-0.28, -0.3], [0.28, -0.3], [-0.28, 0.3], [0.28, 0.3]]) {
+      const w = new THREE.Mesh(wGeo, wMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(sx, 0.07, sz);
+      group.add(w);
+    }
+    // Headlights
+    const hlGeo = new THREE.SphereGeometry(0.035, 6, 6);
+    const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffffaa, emissiveIntensity: 1.0 });
+    for (const sx of [-0.17, 0.17]) {
+      const hl = new THREE.Mesh(hlGeo, hlMat);
+      hl.position.set(sx, 0.15, 0.45);
+      group.add(hl);
+    }
+  } else {
+    // Foot cop — existing design
+    const bodyGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.38, 8);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2233aa, roughness: 0.7 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.3;
+    body.castShadow = true;
+    group.add(body);
+    const headGeo = new THREE.SphereGeometry(0.08, 8, 6);
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xddaa77, roughness: 0.6 });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 0.57;
+    group.add(head);
+    const capGeo = new THREE.CylinderGeometry(0.09, 0.1, 0.04, 8);
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x111155 });
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.y = 0.65;
+    group.add(cap);
+    const badgeGeo = new THREE.SphereGeometry(0.02, 6, 6);
+    const badgeMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.8 });
+    const badge = new THREE.Mesh(badgeGeo, badgeMat);
+    badge.position.set(0, 0.4, 0.1);
+    group.add(badge);
+    const legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x111133 });
+    const legL = new THREE.Mesh(legGeo, legMat);
+    legL.position.set(-0.04, 0.1, 0);
+    legL.name = 'legL';
+    group.add(legL);
+    const legR = new THREE.Mesh(legGeo, legMat);
+    legR.position.set(0.04, 0.1, 0);
+    legR.name = 'legR';
+    group.add(legR);
+    const sirenGeo = new THREE.SphereGeometry(0.04, 6, 6);
+    const sirenMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.0 });
+    const siren = new THREE.Mesh(sirenGeo, sirenMat);
+    siren.position.y = 0.7;
+    siren.name = 'siren';
+    group.add(siren);
+  }
 
-  // Head
-  const headGeo = new THREE.SphereGeometry(0.08, 8, 6);
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xddaa77, roughness: 0.6 });
-  const head = new THREE.Mesh(headGeo, headMat);
-  head.position.y = 0.57;
-  group.add(head);
-
-  // Police cap
-  const capGeo = new THREE.CylinderGeometry(0.09, 0.1, 0.04, 8);
-  const capMat = new THREE.MeshStandardMaterial({ color: 0x111155 });
-  const cap = new THREE.Mesh(capGeo, capMat);
-  cap.position.y = 0.65;
-  group.add(cap);
-
-  // Badge glow
-  const badgeGeo = new THREE.SphereGeometry(0.02, 6, 6);
-  const badgeMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.8 });
-  const badge = new THREE.Mesh(badgeGeo, badgeMat);
-  badge.position.set(0, 0.4, 0.1);
-  group.add(badge);
-
-  // Legs
-  const legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6);
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x111133 });
-  const legL = new THREE.Mesh(legGeo, legMat);
-  legL.position.set(-0.04, 0.1, 0);
-  legL.name = 'legL';
-  group.add(legL);
-  const legR = new THREE.Mesh(legGeo, legMat);
-  legR.position.set(0.04, 0.1, 0);
-  legR.name = 'legR';
-  group.add(legR);
-
-  // Siren light on top
-  const sirenGeo = new THREE.SphereGeometry(0.04, 6, 6);
-  const sirenMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.0 });
-  const siren = new THREE.Mesh(sirenGeo, sirenMat);
-  siren.position.y = 0.7;
-  siren.name = 'siren';
-  group.add(siren);
-
-  // Spawn offset from player
+  // Spawn further from player so they're visible approaching
   const angle = Math.random() * Math.PI * 2;
-  const dist = 3 + Math.random() * 3;
+  const dist = 10 + Math.random() * 5;
   group.position.set(nearX + Math.cos(angle) * dist, 0, nearZ + Math.sin(angle) * dist);
+
+  const legL = group.getObjectByName('legL');
+  const legR = group.getObjectByName('legR');
+  const siren = group.getObjectByName('siren');
+  const siren2 = group.getObjectByName('siren2');
 
   scene.add(group);
   policeNPCs.push({
     group, phase: Math.random() * Math.PI * 2,
-    speed: 1.2 + Math.random() * 0.6,
-    health: 100, alive: true
+    speed: inVehicle ? 1.8 + Math.random() * 0.5 : 0.8 + Math.random() * 0.5,
+    health: inVehicle ? 150 : 100, alive: true, inVehicle,
+    nextShootTime: performance.now() + 3000 + Math.random() * 3000,
+    lastMeleeTime: 0,
+    _legL: legL, _legR: legR, _siren: siren, _siren2: siren2
   });
   return policeNPCs[policeNPCs.length - 1];
 }
@@ -1029,6 +1802,10 @@ export function clearPoliceNPCs() {
 }
 
 export function getPoliceNPCs() { return policeNPCs; }
+
+// Callback for police attacks (set by game.js)
+let _onPoliceAttack = null;
+export function setPoliceAttackCallback(fn) { _onPoliceAttack = fn; }
 
 export function removePoliceNPC(cop) {
   scene.remove(cop.group);
@@ -1061,45 +1838,119 @@ export function stopSiren() {
   sirenLights = [];
 }
 
+// Vehicle visual configs by name pattern
+const VEHICLE_STYLES = {
+  'Motorcycle':     { color: 0x222222, bodyW: 0.25, bodyH: 0.2, bodyL: 0.7, topW: 0, noTop: true, wheelR: 0.08 },
+  'Dirt Bike':      { color: 0x886622, bodyW: 0.25, bodyH: 0.2, bodyL: 0.7, topW: 0, noTop: true, wheelR: 0.09 },
+  'Pickup Truck':   { color: 0x445588, bodyW: 0.55, bodyH: 0.3, bodyL: 1.0, topW: 0.4, topL: 0.35, topOff: 0.15 },
+  'Monster Truck':  { color: 0x338833, bodyW: 0.6, bodyH: 0.35, bodyL: 1.0, topW: 0.45, topL: 0.4, wheelR: 0.14, liftY: 0.1 },
+  'Tank':           { color: 0x556644, bodyW: 0.7, bodyH: 0.3, bodyL: 1.1, topW: 0.35, topL: 0.35, wheelR: 0.06, barrel: true },
+  'Helicopter':     { color: 0x888888, bodyW: 0.5, bodyH: 0.35, bodyL: 0.9, topW: 0.4, topL: 0.5, noWheels: true, rotor: true, liftY: 0.5 },
+  'Race Car':       { color: 0xcc0000, bodyW: 0.48, bodyH: 0.18, bodyL: 0.9, topW: 0.3, topL: 0.3, topH: 0.12, low: true },
+  'Lamborduckni':   { color: 0xffcc00, bodyW: 0.5, bodyH: 0.16, bodyL: 0.95, topW: 0.35, topL: 0.35, topH: 0.12, low: true },
+  'Sports Car':     { color: 0xdd2200, bodyW: 0.48, bodyH: 0.2, bodyL: 0.85, topW: 0.34, topL: 0.35, topH: 0.14 },
+  'Muscle Car':     { color: 0x333333, bodyW: 0.52, bodyH: 0.25, bodyL: 0.9, topW: 0.38, topL: 0.4 },
+  'SUV':            { color: 0x224466, bodyW: 0.55, bodyH: 0.35, bodyL: 0.9, topW: 0.48, topL: 0.55, wheelR: 0.09 },
+  'Gold Plated SUV':{ color: 0xddaa00, bodyW: 0.55, bodyH: 0.35, bodyL: 0.9, topW: 0.48, topL: 0.55, wheelR: 0.09, metalness: 0.9 },
+  'Lowrider':       { color: 0x660066, bodyW: 0.5, bodyH: 0.22, bodyL: 0.85, topW: 0.38, topL: 0.4, low: true },
+  'Luxury Sedan':   { color: 0x111111, bodyW: 0.5, bodyH: 0.25, bodyL: 0.9, topW: 0.4, topL: 0.5, metalness: 0.7 },
+  'Armored Limo':   { color: 0x111111, bodyW: 0.5, bodyH: 0.28, bodyL: 1.1, topW: 0.42, topL: 0.6, metalness: 0.6 },
+  'Delivery Van':   { color: 0xeeeeee, bodyW: 0.55, bodyH: 0.4, bodyL: 0.9, topW: 0.52, topL: 0.7, topH: 0.35 },
+  'Taxi Cab':       { color: 0xddcc00, bodyW: 0.5, bodyH: 0.25, bodyL: 0.8, topW: 0.4, topL: 0.45 },
+  'Convertible':    { color: 0xcc4444, bodyW: 0.48, bodyH: 0.22, bodyL: 0.85, topW: 0, noTop: true },
+  'Jet Ski':        { color: 0x0066cc, bodyW: 0.3, bodyH: 0.2, bodyL: 0.7, topW: 0, noTop: true, noWheels: true },
+};
+const DEFAULT_STYLE = { color: 0xcc6600, bodyW: 0.5, bodyH: 0.25, bodyL: 0.8, topW: 0.4, topL: 0.45 };
+
+let _currentVehicleName = null;
+
 // Player vehicle display
-export function updatePlayerVehicle(hasVehicle) {
+export function updatePlayerVehicle(hasVehicle, vehicleName) {
+  // Skip rebuild if same vehicle
+  if (playerVehicleMesh && vehicleName === _currentVehicleName && hasVehicle) return;
   if (playerVehicleMesh) {
     scene.remove(playerVehicleMesh);
     playerVehicleMesh = null;
   }
+  _currentVehicleName = hasVehicle ? vehicleName : null;
   if (!hasVehicle || !duckGroup) return;
+
+  const s = VEHICLE_STYLES[vehicleName] || DEFAULT_STYLE;
   const vGroup = new THREE.Group();
-  const bodyGeo = new THREE.BoxGeometry(0.5, 0.25, 0.8);
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xcc6600, roughness: 0.3, metalness: 0.4 });
+  const liftY = s.liftY || 0;
+
+  // Body
+  const bodyGeo = new THREE.BoxGeometry(s.bodyW, s.bodyH, s.bodyL);
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    color: s.color, roughness: s.metalness ? 0.1 : 0.25, metalness: s.metalness || 0.4,
+    clearcoat: 0.8, clearcoatRoughness: 0.1,
+    envMap: _envMap, envMapIntensity: 0.6
+  });
   const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = 0.15;
+  body.position.y = (s.low ? 0.1 : 0.15) + liftY;
   body.castShadow = true;
   vGroup.add(body);
-  const topGeo = new THREE.BoxGeometry(0.4, 0.18, 0.45);
-  const top = new THREE.Mesh(topGeo, bodyMat);
-  top.position.set(0, 0.32, -0.05);
-  vGroup.add(top);
-  const wGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.1, 8);
-  const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-  for (const [sx, sz] of [[-0.25, -0.28], [0.25, -0.28], [-0.25, 0.28], [0.25, 0.28]]) {
-    const w = new THREE.Mesh(wGeo, wMat);
-    w.rotation.z = Math.PI / 2;
-    w.position.set(sx, 0.07, sz);
-    vGroup.add(w);
+
+  // Top/cabin
+  if (!s.noTop && s.topW > 0) {
+    const topH = s.topH || 0.18;
+    const topGeo = new THREE.BoxGeometry(s.topW, topH, s.topL || 0.45);
+    const top = new THREE.Mesh(topGeo, bodyMat);
+    top.position.set(0, (s.low ? 0.1 : 0.15) + s.bodyH / 2 + topH / 2 + liftY, -0.05);
+    vGroup.add(top);
   }
+
+  // Wheels
+  if (!s.noWheels) {
+    const wr = s.wheelR || 0.07;
+    const wGeo = new THREE.CylinderGeometry(wr, wr, 0.1, 8);
+    const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const wz = s.bodyL * 0.35;
+    const wx = s.bodyW * 0.5;
+    for (const [sx, sz] of [[-wx, -wz], [wx, -wz], [-wx, wz], [wx, wz]]) {
+      const w = new THREE.Mesh(wGeo, wMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(sx, wr + liftY, sz);
+      vGroup.add(w);
+    }
+  }
+
+  // Headlights
   const hlGeo = new THREE.SphereGeometry(0.035, 6, 6);
   const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffffaa, emissiveIntensity: 0.8 });
-  for (const sx of [-0.15, 0.15]) {
+  for (const sx of [-s.bodyW * 0.3, s.bodyW * 0.3]) {
     const hl = new THREE.Mesh(hlGeo, hlMat);
-    hl.position.set(sx, 0.15, 0.4);
+    hl.position.set(sx, 0.15 + liftY, s.bodyL * 0.5);
     vGroup.add(hl);
   }
+
+  // Taillights
   const tlMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 });
-  for (const sx of [-0.15, 0.15]) {
+  for (const sx of [-s.bodyW * 0.3, s.bodyW * 0.3]) {
     const tl = new THREE.Mesh(hlGeo, tlMat);
-    tl.position.set(sx, 0.15, -0.4);
+    tl.position.set(sx, 0.15 + liftY, -s.bodyL * 0.5);
     vGroup.add(tl);
   }
+
+  // Tank barrel
+  if (s.barrel) {
+    const barrelGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.6, 6);
+    const barrelMesh = new THREE.Mesh(barrelGeo, bodyMat);
+    barrelMesh.rotation.x = Math.PI / 2;
+    barrelMesh.position.set(0, 0.4 + liftY, 0.5);
+    vGroup.add(barrelMesh);
+  }
+
+  // Helicopter rotor
+  if (s.rotor) {
+    const rotorGeo = new THREE.BoxGeometry(1.2, 0.02, 0.06);
+    const rotorMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+    const rotorMesh = new THREE.Mesh(rotorGeo, rotorMat);
+    rotorMesh.position.set(0, 0.55 + s.bodyH + liftY, 0);
+    rotorMesh.name = 'rotor';
+    vGroup.add(rotorMesh);
+  }
+
   playerVehicleMesh = vGroup;
   scene.add(vGroup);
 }
@@ -1115,45 +1966,101 @@ export function updateLighting(hour) {
     const sunAngle = progress * Math.PI;
     sunLight.position.set(Math.cos(sunAngle) * 30, Math.sin(sunAngle) * 25 + 5, 20);
     sunLight.intensity = 1.2 + Math.sin(sunAngle) * 0.5;
-    sunLight.color.setHex(hour <= 6 || hour >= 20 ? 0xffaa55 : 0xffeedd);
-    ambientLight.intensity = 0.4;
+
+    // Golden hour: warm tones at sunrise (5-7) and sunset (19-21)
+    const isGoldenHour = hour <= 7 || hour >= 19;
+    const isDawnDusk = hour <= 6 || hour >= 20;
+    sunLight.color.setHex(isDawnDusk ? 0xff8833 : isGoldenHour ? 0xffbb66 : 0xffeedd);
+    ambientLight.intensity = isGoldenHour ? 0.35 : 0.4;
     hemiLight.intensity = 0.6;
-    scene.background.setHex(hour <= 6 || hour >= 20 ? 0x2a2040 : 0x4477aa);
+
+    if (isDawnDusk) {
+      scene.background.setHex(0x2a1830);
+      renderer.toneMappingExposure = 0.9;
+    } else if (isGoldenHour) {
+      scene.background.setHex(hour < 12 ? 0x664488 : 0x885533);
+      renderer.toneMappingExposure = 1.1;
+    } else {
+      scene.background.setHex(0x4477aa);
+      renderer.toneMappingExposure = 1.0;
+    }
     scene.fog.color.copy(scene.background);
-    renderer.toneMappingExposure = 1.0;
+    scene.fog.density = 0.018;
   } else {
     sunLight.position.set(-20, 12, 15);
     sunLight.intensity = 0.3;
-    sunLight.color.setHex(0x6688cc);
-    ambientLight.intensity = 0.3;
-    hemiLight.intensity = 0.3;
-    scene.background.setHex(0x0f1528);
+    sunLight.color.setHex(0x4466aa);
+    ambientLight.intensity = 0.25;
+    hemiLight.intensity = 0.25;
+    scene.background.setHex(0x0a0e1a);
     scene.fog.color.copy(scene.background);
-    renderer.toneMappingExposure = 0.8;
+    scene.fog.density = 0.022; // slightly thicker fog at night
+    renderer.toneMappingExposure = 0.7;
   }
 }
 
 // --------------------------------------------------------
-//  MINIMAP (2D canvas in corner)
+//  MINIMAP (2D canvas in corner) — cached background
 // --------------------------------------------------------
 const minimapCanvas = document.getElementById('minimap');
 const mctx = minimapCanvas.getContext('2d');
 const MCELL = minimapCanvas.width / MAP_SIZE;
 
-export function renderMinimap(px, py) {
-  if (!currentMapGrid) return;
-  mctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+// Offscreen canvas for tile background (rebuilt only when city changes)
+let _minimapBg = null;
 
+export function invalidateMinimapCache() { _minimapBg = null; }
+
+function _buildMinimapBg() {
+  if (!currentMapGrid) return;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = minimapCanvas.width;
+  offscreen.height = minimapCanvas.height;
+  const ctx = offscreen.getContext('2d');
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
       const tile = currentMapGrid[y][x];
       let color = TILE_COLORS[tile] || TILE_COLORS[T.GROUND];
       if (POI_DEFS[tile]) color = POI_DEFS[tile].color;
-      mctx.fillStyle = color;
-      mctx.fillRect(x * MCELL, y * MCELL, MCELL, MCELL);
+      ctx.fillStyle = color;
+      ctx.fillRect(x * MCELL, y * MCELL, MCELL, MCELL);
     }
   }
+  _minimapBg = offscreen;
+}
 
+export function renderMinimap(px, py) {
+  if (!currentMapGrid) return;
+  if (!_minimapBg) _buildMinimapBg();
+
+  mctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+  mctx.drawImage(_minimapBg, 0, 0);
+
+  // Police NPCs (red dots)
+  for (const cop of policeNPCs) {
+    if (!cop.alive) continue;
+    const cx = cop.group.position.x * MCELL;
+    const cz = cop.group.position.z * MCELL;
+    mctx.fillStyle = cop.inVehicle ? '#ff4444' : '#ff0000';
+    mctx.beginPath();
+    mctx.arc(cx, cz, cop.inVehicle ? 2.5 : 1.5, 0, Math.PI * 2);
+    mctx.fill();
+  }
+
+  // Remote players (cyan dots)
+  for (const [, rd] of remoteDucks) {
+    const rx = rd.group.position.x * MCELL;
+    const rz = rd.group.position.z * MCELL;
+    mctx.fillStyle = '#00ffff';
+    mctx.beginPath();
+    mctx.arc(rx, rz, 2.5, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.strokeStyle = '#006666';
+    mctx.lineWidth = 0.5;
+    mctx.stroke();
+  }
+
+  // Player (yellow dot with black border)
   mctx.fillStyle = '#ffdd00';
   mctx.beginPath();
   mctx.arc(px * MCELL + MCELL / 2, py * MCELL + MCELL / 2, 3, 0, Math.PI * 2);
@@ -1166,9 +2073,262 @@ export function renderMinimap(px, py) {
 // --------------------------------------------------------
 //  GAME LOOP
 // --------------------------------------------------------
+// --------------------------------------------------------
+//  REMOTE PLAYER DUCKS (Multiplayer)
+// --------------------------------------------------------
+const remoteDucks = new Map(); // peerId -> { group, targetX, targetZ, label }
+
+export function spawnRemoteDuck(peerId, charType, name) {
+  if (remoteDucks.has(peerId)) return remoteDucks.get(peerId);
+
+  const { group, footL, footR } = _buildDuckGroup({ eyeWhites: false, castShadows: true, hat: false });
+
+  // Name label (sprite)
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#00ff00';
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(name || peerId.slice(0, 8), 128, 40);
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const label = new THREE.Sprite(spriteMat);
+  label.position.set(0, 1.1, 0);
+  label.scale.set(1.5, 0.4, 1);
+  group.add(label);
+
+  scene.add(group);
+
+  const entry = { group, targetX: 0, targetZ: 0, label, waddle: 0, _footL: footL, _footR: footR };
+  remoteDucks.set(peerId, entry);
+
+  // Apply character skin if available
+  if (charType) {
+    _applyRemoteSkin(group, charType);
+  }
+
+  return entry;
+}
+
+function _applyRemoteSkin(group, charName) {
+  const name = (charName || '').toLowerCase();
+  // Remove default hat
+  const defaultHat = group.children.filter(c =>
+    c.geometry && c.geometry.type === 'CylinderGeometry' && c.position.y > 0.7
+  );
+
+  function _add(mesh) { group.add(mesh); }
+
+  if (name === 'cj') {
+    for (const h of defaultHat) group.remove(h);
+    const bandana = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.28), new THREE.MeshStandardMaterial({ color: 0x44ff44, emissive: 0x22aa22, emissiveIntensity: 0.3 }));
+    bandana.position.set(0, 0.7, 0.1); _add(bandana);
+    const chain = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.02, 8, 16), new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1, emissive: 0xaa8800, emissiveIntensity: 0.3 }));
+    chain.rotation.x = Math.PI / 2; chain.position.set(0, 0.35, 0.2); _add(chain);
+  } else if (name === 'tommy') {
+    for (const h of defaultHat) group.remove(h);
+    const glasses = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 0.04), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.1 }));
+    glasses.position.set(0, 0.6, 0.32); _add(glasses);
+    const shirt = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.25), new THREE.MeshStandardMaterial({ color: 0xff4488, emissive: 0x882244, emissiveIntensity: 0.2 }));
+    shirt.position.set(0, 0.2, 0.05); _add(shirt);
+  } else if (name === 'claude') {
+    for (const h of defaultHat) group.remove(h);
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.1, 0.3), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.4 }));
+    collar.position.set(0, 0.42, 0.05); _add(collar);
+    const zipper = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.1, 0.01), new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 }));
+    zipper.position.set(0, 0.42, 0.2); _add(zipper);
+  } else if (name === 'niko') {
+    for (const h of defaultHat) group.remove(h);
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x556644 });
+    const capBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.02, 16), capMat);
+    capBrim.position.set(0, 0.72, 0.1); _add(capBrim);
+    const capTop = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16), capMat);
+    capTop.position.set(0, 0.78, 0.1); _add(capTop);
+    const scar = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.12, 0.01), new THREE.MeshStandardMaterial({ color: 0xcc6644, emissive: 0x662222, emissiveIntensity: 0.3 }));
+    scar.position.set(0.15, 0.58, 0.3); scar.rotation.z = 0.3; _add(scar);
+  } else if (name === 'catalina') {
+    for (const h of defaultHat) group.remove(h);
+    const beret = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI*2, 0, Math.PI/2), new THREE.MeshStandardMaterial({ color: 0xcc2222, emissive: 0x661111, emissiveIntensity: 0.2 }));
+    beret.position.set(0, 0.72, 0.1); _add(beret);
+    const earMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.3 });
+    for (const sx of [-0.2, 0.2]) {
+      const ear = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 12), earMat);
+      ear.position.set(sx, 0.5, 0.2); _add(ear);
+    }
+  } else if (name === 'oz') {
+    for (const h of defaultHat) group.remove(h);
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI*2, 0, Math.PI*0.6), new THREE.MeshStandardMaterial({ color: 0x1a1a2e }));
+    hood.position.set(0, 0.6, 0.08); _add(hood);
+    const cyber = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.04), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.0 }));
+    cyber.position.set(0, 0.6, 0.33); _add(cyber);
+  }
+
+  // Glow ring for remote ducks — colored halo for character identification
+  const _remoteGlowColors = { cj: 0x44ff44, tommy: 0xff4488, claude: 0x8888aa, niko: 0x88aa44, catalina: 0xff2244, oz: 0x00ff00 };
+  const rc = _remoteGlowColors[name];
+  if (rc) {
+    const rGeo = new THREE.RingGeometry(0.35, 0.5, 24);
+    const rMat = new THREE.MeshStandardMaterial({ color: rc, emissive: rc, emissiveIntensity: 0.8, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const rRing = new THREE.Mesh(rGeo, rMat);
+    rRing.rotation.x = -Math.PI / 2; rRing.position.y = 0.02;
+    _add(rRing);
+  }
+}
+
+export function updateRemoteDuck(peerId, x, y, data) {
+  let entry = remoteDucks.get(peerId);
+  if (!entry) {
+    entry = spawnRemoteDuck(peerId, data?.char, data?.name);
+  }
+  entry.targetX = x + 0.5;
+  entry.targetZ = y + 0.5;
+
+  // Apply character skin if not yet applied (or char type changed)
+  if (data?.char && data.char !== entry._appliedChar) {
+    entry._appliedChar = data.char;
+    _applyRemoteSkin(entry.group, data.char);
+  }
+
+  // Update wanted stars indicator
+  const wanted = data?.wanted || 0;
+  if (wanted !== (entry._lastWanted || 0)) {
+    entry._lastWanted = wanted;
+    // Remove old indicator
+    if (entry._wantedSprite) {
+      entry.group.remove(entry._wantedSprite);
+      if (entry._wantedSprite.material.map) entry._wantedSprite.material.map.dispose();
+      entry._wantedSprite.material.dispose();
+      entry._wantedSprite = null;
+    }
+    if (wanted > 0) {
+      const wCanvas = document.createElement('canvas');
+      wCanvas.width = 128; wCanvas.height = 32;
+      const wCtx = wCanvas.getContext('2d');
+      wCtx.fillStyle = '#ff2222';
+      wCtx.font = '24px sans-serif';
+      wCtx.textAlign = 'center';
+      wCtx.fillText('\u2605'.repeat(wanted), 64, 24);
+      const wTex = new THREE.CanvasTexture(wCanvas);
+      const wMat = new THREE.SpriteMaterial({ map: wTex, transparent: true, depthTest: false });
+      const wSprite = new THREE.Sprite(wMat);
+      wSprite.position.set(0, 1.4, 0);
+      wSprite.scale.set(1.2, 0.3, 1);
+      entry.group.add(wSprite);
+      entry._wantedSprite = wSprite;
+    }
+  }
+}
+
+function _disposeGroup(group) {
+  group.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+      else obj.material.dispose();
+    }
+  });
+}
+
+export function despawnRemoteDuck(peerId) {
+  const entry = remoteDucks.get(peerId);
+  if (entry) {
+    scene.remove(entry.group);
+    _disposeGroup(entry.group);
+    if (entry.label?.material?.map) entry.label.material.map.dispose();
+    remoteDucks.delete(peerId);
+  }
+}
+
+export function clearRemoteDucks() {
+  for (const [, entry] of remoteDucks) {
+    scene.remove(entry.group);
+    _disposeGroup(entry.group);
+    if (entry.label?.material?.map) entry.label.material.map.dispose();
+  }
+  remoteDucks.clear();
+}
+
+export function getRemoteDucks() { return remoteDucks; }
+
+export function getNearestRemoteDuck(maxDist = 6) {
+  if (!duckGroup) return null;
+  let nearest = null, nearestDist = maxDist;
+  for (const [peerId, entry] of remoteDucks) {
+    const dx = entry.group.position.x - duckGroup.position.x;
+    const dz = entry.group.position.z - duckGroup.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = { peerId, entry, dist };
+    }
+  }
+  return nearest;
+}
+
+// --------------------------------------------------------
+//  WEATHER SYSTEM — rain via Points (1 draw call)
+// --------------------------------------------------------
+const RAIN_COUNT = 600;
+let _rainPoints = null;
+let _rainPositions = null;
+let _rainVelocities = null;
+let _rainActive = false;
+
+function _initRain() {
+  const geo = new THREE.BufferGeometry();
+  _rainPositions = new Float32Array(RAIN_COUNT * 3);
+  _rainVelocities = new Float32Array(RAIN_COUNT);
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    _rainPositions[i * 3] = (Math.random() - 0.5) * 40;
+    _rainPositions[i * 3 + 1] = Math.random() * 12;
+    _rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 40;
+    _rainVelocities[i] = 10 + Math.random() * 6;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(_rainPositions, 3));
+  const mat = new THREE.PointsMaterial({
+    color: 0xaabbdd, size: 0.08, transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  _rainPoints = new THREE.Points(geo, mat);
+  _rainPoints.frustumCulled = false;
+  _rainPoints.visible = false;
+  scene.add(_rainPoints);
+}
+
+function _updateWeather(dt, elapsed, isNight) {
+  if (!duckGroup) return;
+  if (!_rainPoints) _initRain();
+  const shouldRain = isNight && Math.sin(elapsed * 0.05) > 0.3;
+
+  if (shouldRain !== _rainActive) {
+    _rainActive = shouldRain;
+    _rainPoints.visible = shouldRain;
+  }
+  if (!shouldRain) return;
+
+  // Center rain on player
+  _rainPoints.position.set(duckGroup.position.x, 0, duckGroup.position.z);
+
+  // Animate drops
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    _rainPositions[i * 3 + 1] -= _rainVelocities[i] * dt;
+    if (_rainPositions[i * 3 + 1] < 0) {
+      _rainPositions[i * 3] = (Math.random() - 0.5) * 40;
+      _rainPositions[i * 3 + 1] = 10 + Math.random() * 4;
+      _rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 40;
+    }
+  }
+  _rainPoints.geometry.attributes.position.needsUpdate = true;
+
+  // Thicken fog during rain
+  scene.fog.density = 0.025;
+}
+
 export function gameLoop() {
   requestAnimationFrame(gameLoop);
-  if (!gameActive) { renderer.render(scene, camera); return; }
+  if (!gameActive) { if (_composer) _composer.render(); else renderer.render(scene, camera); return; }
 
   const dt = clock.getDelta();
   const elapsed = clock.getElapsedTime();
@@ -1187,13 +2347,30 @@ export function gameLoop() {
     const moving = Math.abs(duckTargetX - duckGroup.position.x) > 0.02 || Math.abs(duckTargetZ - duckGroup.position.z) > 0.02;
     if (moving) {
       waddle += dt * 12;
-      const footL = duckGroup.getObjectByName('footL');
-      const footR = duckGroup.getObjectByName('footR');
-      if (footL) footL.position.z = 0.05 + Math.sin(waddle) * 0.08;
-      if (footR) footR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.08;
+      if (_duckFootL) _duckFootL.position.z = 0.05 + Math.sin(waddle) * 0.08;
+      if (_duckFootR) _duckFootR.position.z = 0.05 + Math.sin(waddle + Math.PI) * 0.08;
       duckGroup.position.y = Math.sin(waddle * 2) * 0.02;
     } else {
       duckGroup.position.y = 0;
+    }
+  }
+
+  // Remote duck interpolation (multiplayer)
+  for (const [, rd] of remoteDucks) {
+    const g = rd.group;
+    const dx = rd.targetX - g.position.x;
+    const dz = rd.targetZ - g.position.z;
+    g.position.x += dx * 0.15;
+    g.position.z += dz * 0.15;
+    const moving = Math.abs(dx) > 0.02 || Math.abs(dz) > 0.02;
+    if (moving) {
+      g.rotation.y = Math.atan2(dx, dz);
+      rd.waddle += dt * 12;
+      if (rd._footL) rd._footL.position.z = 0.05 + Math.sin(rd.waddle) * 0.08;
+      if (rd._footR) rd._footR.position.z = 0.05 + Math.sin(rd.waddle + Math.PI) * 0.08;
+      g.position.y = Math.sin(rd.waddle * 2) * 0.02;
+    } else {
+      g.position.y = 0;
     }
   }
 
@@ -1232,10 +2409,8 @@ export function gameLoop() {
     npc.walked += step;
     npc.phase += dt * 8;
 
-    const legL = npc.group.getObjectByName('legL');
-    const legR = npc.group.getObjectByName('legR');
-    if (legL) legL.rotation.x = Math.sin(npc.phase) * 0.4;
-    if (legR) legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.4;
+    if (npc._legL) npc._legL.rotation.x = Math.sin(npc.phase) * 0.4;
+    if (npc._legR) npc._legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.4;
 
     if (npc.walked >= npc.walkDist) {
       npc.facing *= -1;
@@ -1252,14 +2427,12 @@ export function gameLoop() {
     }
 
     // Night glow — make NPCs visible in the dark
-    const npcBody = npc.group.getObjectByName('npcBody');
-    const npcHead = npc.group.getObjectByName('npcHead');
     const nightGlow = isNight ? 0.4 : 0;
-    if (npcBody) npcBody.material.emissiveIntensity = nightGlow;
-    if (npcHead) npcHead.material.emissiveIntensity = nightGlow;
+    if (npc._body) npc._body.material.emissiveIntensity = nightGlow;
+    if (npc._head) npc._head.material.emissiveIntensity = nightGlow;
   }
 
-  // NPC car driving
+  // NPC car driving — stay on roads only
   for (const car of npcCars) {
     const step = car.speed * dt;
     if (car.driveAxis === 'x') {
@@ -1268,25 +2441,31 @@ export function gameLoop() {
       car.group.position.z += car.dir * step;
     }
     car.driven += step;
-    if (car.driven >= car.driveDist) {
-      car.dir *= -1;
-      car.driven = 0;
-      car.group.rotation.y += Math.PI;
-    }
     const gx = Math.floor(car.group.position.x);
     const gz = Math.floor(car.group.position.z);
+    // Reverse if off-road, at map edge, or past drive distance
+    let shouldReverse = car.driven >= car.driveDist;
     if (gx < 2 || gx >= MAP_SIZE - 2 || gz < 2 || gz >= MAP_SIZE - 2) {
+      shouldReverse = true;
+    } else if (currentMapGrid) {
+      const tile = currentMapGrid[gz]?.[gx];
+      if (tile !== T.ROAD_MAIN && tile !== T.ROAD_SIDE && tile !== T.HIGHWAY) {
+        shouldReverse = true;
+      }
+    }
+    if (shouldReverse) {
       car.dir *= -1;
       car.driven = 0;
       car.group.rotation.y += Math.PI;
+      // Nudge back onto road
+      if (car.driveAxis === 'x') car.group.position.x += car.dir * 0.5;
+      else car.group.position.z += car.dir * 0.5;
     }
   }
 
-  // Street lamp glow — brighter at night
-  for (const lamp of streetLamps) {
-    lamp.light.intensity = isNight ? 2.5 : 0;
-    lamp.light.distance = isNight ? 8 : 5;
-    lamp.head.material.emissiveIntensity = isNight ? 2.0 : 0.3;
+  // Street lamp glow — toggle shared material emissive for night
+  if (streetLamps._sharedHeadMat) {
+    streetLamps._sharedHeadMat.emissiveIntensity = isNight ? 2.0 : 0.3;
   }
 
   // Neon sign pulse — brighter at night
@@ -1297,19 +2476,7 @@ export function gameLoop() {
     ns.border.material.emissiveIntensity = (pulse * 0.5) * nightBoost;
   }
 
-  // Parked car headlights at night
-  for (const car of parkedCars) {
-    if (!car.headlight && isNight) {
-      const hl = new THREE.PointLight(0xffffcc, 1.5, 4);
-      hl.position.set(car.x, 0.3, car.z);
-      scene.add(hl);
-      car.headlight = hl;
-    } else if (car.headlight && !isNight) {
-      scene.remove(car.headlight);
-      car.headlight.dispose();
-      car.headlight = null;
-    }
-  }
+  // Parked car headlights at night — removed for performance (no PointLights)
 
   // Police siren flash
   if (sirenActive && sirenLights.length === 2) {
@@ -1317,27 +2484,56 @@ export function gameLoop() {
     sirenLights[1].intensity = Math.sin(elapsed * 12) > 0 ? 0 : 3;
   }
 
-  // Police NPC chase + siren flash
+  // Police NPC chase + shoot + melee
+  const now = performance.now();
   for (const cop of policeNPCs) {
     if (!cop.alive || !duckGroup) continue;
     const dx = duckGroup.position.x - cop.group.position.x;
     const dz = duckGroup.position.z - cop.group.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist > 0.5) {
+
+    // Chase player (zombie-walk toward them)
+    if (dist > 0.6) {
       const nx = dx / dist, nz = dz / dist;
       cop.group.position.x += nx * cop.speed * dt;
       cop.group.position.z += nz * cop.speed * dt;
       cop.group.rotation.y = Math.atan2(nx, nz);
     }
+
+    // Melee: beat player when touching (within 0.8 units)
+    if (dist < 0.8 && now - cop.lastMeleeTime > 1200) {
+      cop.lastMeleeTime = now;
+      if (_onPoliceAttack) _onPoliceAttack('melee', cop, 0);
+    }
+
+    // Ranged: fire projectile when within 8 units, every 2.5-4s
+    if (dist < 8 && dist > 0.8 && now > cop.nextShootTime) {
+      cop.nextShootTime = now + 2500 + Math.random() * 1500;
+      // Fire visible projectile toward the player
+      fireProjectile(
+        duckGroup.position.x + (Math.random() - 0.5) * 1.5,
+        duckGroup.position.z + (Math.random() - 0.5) * 1.5,
+        cop.group.position.x, cop.group.position.z, 0x4444ff
+      );
+      if (_onPoliceAttack) _onPoliceAttack('shoot', cop, dist);
+    }
+
     cop.phase += dt * 8;
-    const legL = cop.group.getObjectByName('legL');
-    const legR = cop.group.getObjectByName('legR');
-    if (legL) legL.rotation.x = Math.sin(cop.phase) * 0.5;
-    if (legR) legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
-    const siren = cop.group.getObjectByName('siren');
-    if (siren) {
-      siren.material.color.setHex(Math.sin(elapsed * 10 + cop.phase) > 0 ? 0xff0000 : 0x0044ff);
-      siren.material.emissive.setHex(siren.material.color.getHex());
+    if (!cop.inVehicle) {
+      if (cop._legL) cop._legL.rotation.x = Math.sin(cop.phase) * 0.5;
+      if (cop._legR) cop._legR.rotation.x = Math.sin(cop.phase + Math.PI) * 0.5;
+    }
+    if (cop._siren) {
+      const flash = Math.sin(elapsed * 10 + cop.phase) > 0;
+      cop._siren.material.color.setHex(flash ? 0xff0000 : 0x0044ff);
+      cop._siren.material.emissive.setHex(cop._siren.material.color.getHex());
+    }
+    // Police car siren2 alternates opposite (cached at spawn)
+    const siren2 = cop._siren2;
+    if (siren2) {
+      const flash2 = Math.sin(elapsed * 10 + cop.phase) > 0;
+      siren2.material.color.setHex(flash2 ? 0x0044ff : 0xff0000);
+      siren2.material.emissive.setHex(siren2.material.color.getHex());
     }
   }
 
@@ -1349,11 +2545,23 @@ export function gameLoop() {
       duckGroup.position.z
     );
     playerVehicleMesh.rotation.y = duckGroup.rotation.y;
+    // Animate helicopter rotor
+    const rotor = playerVehicleMesh.getObjectByName('rotor');
+    if (rotor) rotor.rotation.y += 0.3;
   }
+
+  // Water animation — gentle wave
+  const waterMesh = scene.getObjectByName('waterMesh');
+  if (waterMesh) {
+    waterMesh.position.y = -0.05 + Math.sin(elapsed * 0.8) * 0.02;
+  }
+
+  // Weather — rain at night, light particles during storms
+  _updateWeather(dt, elapsed, isNight);
 
   // Particles
   updateParticles(dt);
   updateProjectiles(dt);
 
-  renderer.render(scene, camera);
+  if (_composer) _composer.render(); else renderer.render(scene, camera);
 }
