@@ -1486,7 +1486,7 @@ export function buildCity3D() {
       speed: 0.5 + _carRng() * 0.8,
       startX: wx, startZ: wz,
       driveAxis,
-      driveDist: 6 + _carRng() * 14,
+      driveDist: 20 + _carRng() * 40,
       driven: 0
     });
   }
@@ -2755,12 +2755,34 @@ export function gameLoop() {
       }
     }
     if (shouldReverse) {
-      car.dir *= -1;
       car.driven = 0;
-      car.group.rotation.y += Math.PI;
-      // Nudge back onto road
-      if (car.driveAxis === 'x') car.group.position.x += car.dir * 0.5;
-      else car.group.position.z += car.dir * 0.5;
+      car.driveDist = 20 + Math.random() * 40;
+      // Try to turn at intersection instead of reversing
+      let turned = false;
+      if (currentMapGrid && gx > 2 && gx < MAP_SIZE - 2 && gz > 2 && gz < MAP_SIZE - 2) {
+        const crossAxis = car.driveAxis === 'x' ? 'z' : 'x';
+        const checkDir = Math.random() < 0.5 ? 1 : -1;
+        const cx = crossAxis === 'x' ? gx + checkDir : gx;
+        const cz = crossAxis === 'z' ? gz + checkDir : gz;
+        const crossTile = currentMapGrid[cz]?.[cx];
+        if (crossTile === T.ROAD_MAIN || crossTile === T.ROAD_SIDE || crossTile === T.HIGHWAY) {
+          car.driveAxis = crossAxis;
+          car.dir = checkDir;
+          turned = true;
+        }
+      }
+      if (!turned) {
+        car.dir *= -1;
+      }
+      // Set rotation to match direction
+      if (car.driveAxis === 'x') {
+        car.group.rotation.y = car.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      } else {
+        car.group.rotation.y = car.dir > 0 ? 0 : Math.PI;
+      }
+      // Nudge forward
+      if (car.driveAxis === 'x') car.group.position.x += car.dir * 0.3;
+      else car.group.position.z += car.dir * 0.3;
     }
   }
 
