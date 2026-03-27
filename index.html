@@ -413,21 +413,18 @@ body {
   </div>
   <div style="margin-top:6px"><input type="text" id="player-name-input" value="" maxlength="20" placeholder="Enter your name (optional)"></div>
   <div id="saved-sessions" style="margin-top:8px;display:none">
-    <div style="color:#ffcc00;font-size:12px;margin-bottom:6px">Your Saved Games (Local):</div>
+    <div style="color:#888;font-size:11px;margin-bottom:4px">Saved Games:</div>
     <div id="saved-list" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center"></div>
   </div>
   <div style="margin-top:8px">
     <button onclick="startNewGame()">New Game</button>
   </div>
   <div style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
-    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)
-      <button id="mp-show-games-btn" style="font-size:9px;padding:1px 6px;margin-left:6px;background:#222;color:#888;border:1px solid #444;cursor:pointer;border-radius:3px" onclick="var el=document.getElementById('mp-game-list');el.style.display=el.style.display==='none'?'block':'none';this.textContent=el.style.display==='none'?'Show Games':'Hide Games'">Show Games</button>
-    </div>
-    <div id="mp-game-list" style="display:none;margin-bottom:6px"></div>
+    <div style="color:#ff6600;font-size:12px;margin-bottom:6px">Multiplayer (P2P)</div>
+    <div id="mp-game-list" style="margin-bottom:6px"></div>
     <div style="margin-bottom:4px"><input type="password" id="mp-password" maxlength="32" placeholder="Room password (optional)" style="width:200px;font-size:11px"></div>
-    <div style="margin-bottom:4px"><input type="text" id="mp-room-input" maxlength="6" placeholder="Room code (to join)" style="width:120px;text-transform:uppercase;text-align:center;font-size:11px"></div>
+    <div style="margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:4px"><input type="text" id="mp-room-input" maxlength="6" placeholder="Room code" style="width:100px;text-transform:uppercase;text-align:center;font-size:11px"><button onclick="joinMultiplayer()" title="Join by code" style="font-size:11px;padding:2px 6px;background:#222;color:#ff6600;border:1px solid #444;cursor:pointer;border-radius:3px">&#9654;</button></div>
     <button onclick="hostMultiplayer()">Host Game</button>
-    <button onclick="joinMultiplayer()">Join by Code</button>
   </div>
   <div id="mp-lobby" style="display:none;margin-top:8px;border:1px solid #333;padding:8px;text-align:left;max-width:300px">
     <div style="color:#00ff00;font-size:12px">Room: <span id="mp-room-code" style="color:#ff6600;font-weight:bold;cursor:pointer;text-decoration:underline dotted" title="Click to copy"></span> &mdash; Players: <span id="mp-peer-count">1</span></div>
@@ -501,7 +498,7 @@ import './js/game.js';
 import {
   hostGame, joinGame, leaveGame, generateRoomCode,
   isMultiplayer, getIsHost, broadcastChat, broadcastAction,
-  joinLobby, leaveLobby, getDiscoveredGames, setOnGamesUpdated
+  joinLobby, leaveLobby, queryLobby, getDiscoveredGames, setOnGamesUpdated
 } from './js/multiplayer.js';
 
 const $ = id => document.getElementById(id);
@@ -532,7 +529,8 @@ const $ = id => document.getElementById(id);
         const lock = info.hasPassword ? '<span title="Password required" style="color:#ff8800">&#128274;</span> ' : '';
         const label = document.createElement('span');
         label.style.color = '#aaa';
-        label.innerHTML = `${lock}<span style="color:#ffcc00">${info.host}</span> — ${info.city} — ${info.players} player${info.players !== 1 ? 's' : ''}`;
+        const _esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        label.innerHTML = `${lock}<span style="color:#ffcc00">${_esc(info.host)}</span> — ${_esc(info.city)} — ${Math.floor(Number(info.players)||1)} player${info.players !== 1 ? 's' : ''}`;
         row.appendChild(label);
         const joinBtn = document.createElement('button');
         joinBtn.textContent = 'Join';
@@ -551,8 +549,9 @@ const $ = id => document.getElementById(id);
         listEl.appendChild(row);
       }
     });
-    // Trigger initial render
+    // Trigger initial render & start polling
     $('mp-game-list').innerHTML = '<div style="color:#666;font-size:10px">Searching for games...</div>';
+    setInterval(() => { if ($('title-screen').style.display !== 'none') queryLobby(); }, 8000);
 
     // Character card selection
     const cards = document.querySelectorAll('.char-card');
@@ -608,37 +607,44 @@ const $ = id => document.getElementById(id);
     });
 
     // Multiplayer handlers
-    window.hostMultiplayer = () => {
-      const card = document.querySelector('.char-card.selected');
-      const charName = card?.dataset.name || 'CJ';
-      const charCity = card?.dataset.city || 'Los Santos';
+    window.hostMultiplayer = async () => {
+      let card = document.querySelector('.char-card.selected');
+      if (!card) {
+        card = document.querySelector('.char-card');
+        if (card) card.classList.add('selected');
+      }
+      if (!card) return;
+      const charName = card.dataset.name || 'CJ';
       const playerName = $('player-name-input').value.trim() || charName;
       const code = generateRoomCode();
       const password = $('mp-password').value;
       hostGame(code, playerName, charName, password);
-      $('mp-lobby').style.display = 'block';
-      $('mp-room-code').textContent = code;
-      $('mp-start-btn').style.display = 'inline';
-      $('mp-waiting').style.display = 'none';
-    };
-
-    window.showJoinUI = () => {
-      $('mp-join-ui').style.display = $('mp-join-ui').style.display === 'none' ? 'block' : 'none';
+      // Start game immediately — others join in-progress
+      try {
+        await window.startNewGame();
+      } catch(err) { console.error('hostMultiplayer startNewGame failed:', err); alert('Failed to start: ' + err.message); return; }
+      broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue, city: card.dataset.city });
     };
 
     window.joinMultiplayer = () => {
       const code = $('mp-room-input').value.trim().toUpperCase();
       if (!code || code.length < 2) return;
-      const card = document.querySelector('.char-card.selected');
-      const charName = card?.dataset.name || 'CJ';
+      let card = document.querySelector('.char-card.selected');
+      if (!card) {
+        card = document.querySelector('.char-card');
+        if (card) card.classList.add('selected');
+      }
+      if (!card) return;
+      const charName = card.dataset.name || 'CJ';
       const playerName = $('player-name-input').value.trim() || charName;
       const password = $('mp-password').value;
       joinGame(code, playerName, charName, password);
+      // Don't start yet — wait for host's worldSync which carries the map seed
+      // onWorldSyncReceived in game.js will call startNewGame() with correct seed
       $('mp-lobby').style.display = 'block';
       $('mp-room-code').textContent = code;
-      $('mp-join-ui').style.display = 'none';
-      $('mp-start-btn').style.display = 'inline';
-      $('mp-waiting').style.display = 'none';
+      $('mp-waiting').textContent = 'Connecting to host...';
+      $('mp-waiting').style.display = 'inline';
     };
 
     window.leaveMultiplayer = () => {

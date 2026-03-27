@@ -43,7 +43,7 @@ export const TILE_COLORS = {
 // --------------------------------------------------------
 //  CONSTANTS
 // --------------------------------------------------------
-export const MAP_SIZE = 120;
+export const MAP_SIZE = 200;
 export const CELL = 1; // world units per cell
 
 export const CITIES = {

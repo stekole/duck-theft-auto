@@ -10,7 +10,11 @@ export let db, conn;
 // --------------------------------------------------------
 export async function initDB() {
   const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-  const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+  // Force MVP bundle when not cross-origin isolated (e.g. GitHub Pages)
+  // to avoid SharedArrayBuffer requirement
+  const bundle = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
+    ? await duckdb.selectBundle(JSDELIVR_BUNDLES)
+    : await duckdb.selectBundle({ mvp: JSDELIVR_BUNDLES.mvp });
   const worker_url = URL.createObjectURL(
     new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' })
   );
@@ -26,6 +30,15 @@ export async function initSchema() {
   await conn.query(`
     CREATE SEQUENCE IF NOT EXISTS event_id_seq START 1;
     CREATE SEQUENCE IF NOT EXISTS recruit_id_seq START 1;
+    CREATE SEQUENCE IF NOT EXISTS action_log_seq START 1;
+    CREATE TABLE IF NOT EXISTS action_log(
+      id INT DEFAULT nextval('action_log_seq'),
+      tick BIGINT,
+      action VARCHAR,
+      detail VARCHAR,
+      x INT,
+      y INT
+    );
     CREATE TABLE IF NOT EXISTS player(
       name VARCHAR, city VARCHAR, district VARCHAR,
       x INT DEFAULT 5, y INT DEFAULT 5,
@@ -70,25 +83,30 @@ export async function initSchema() {
       event VARCHAR
     );
   `);
-  for (const p of PERKS) await conn.query(`INSERT INTO perks VALUES ('${p.name}', 0) ON CONFLICT DO NOTHING`);
+  await conn.query(PERKS.map(p => `INSERT INTO perks VALUES ('${p.name}', 0) ON CONFLICT DO NOTHING`).join(';'));
 }
 
 export async function initWorld() {
+  const territoryVals = [];
+  const heatVals = [];
+  const gangUpdates = [];
   for (const [city, data] of Object.entries(CITIES)) {
+    const safeC = city.replace(/'/g, "''");
     for (const d of data.districts) {
       const safeD = d.replace(/'/g, "''");
-      const safeC = city.replace(/'/g, "''");
-      await conn.query(`INSERT INTO territories VALUES ('${safeD}','${safeC}','Unaffiliated')`);
-      await conn.query(`INSERT INTO district_heat VALUES ('${safeD}','${safeC}',0)`);
+      territoryVals.push(`('${safeD}','${safeC}','Unaffiliated')`);
+      heatVals.push(`('${safeD}','${safeC}',0)`);
     }
     const localGangs = GANGS[city];
     for (let i = 0; i < data.districts.length && i < localGangs.length * 2; i++) {
       const gang = localGangs[i % localGangs.length].replace(/'/g, "''");
       const dist = data.districts[i].replace(/'/g, "''");
-      const safeC = city.replace(/'/g, "''");
-      await conn.query(`UPDATE territories SET owner='${gang}' WHERE district='${dist}' AND city='${safeC}'`);
+      gangUpdates.push(`UPDATE territories SET owner='${gang}' WHERE district='${dist}' AND city='${safeC}'`);
     }
   }
+  await conn.query(`INSERT INTO territories VALUES ${territoryVals.join(',')}`);
+  await conn.query(`INSERT INTO district_heat VALUES ${heatVals.join(',')}`);
+  if (gangUpdates.length > 0) await conn.query(gangUpdates.join(';'));
 }
 
 export async function loadCityMap(cityName) {
@@ -124,37 +142,34 @@ export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none',
     if ((t.tile === T.ROAD_MAIN || t.tile === T.ROAD_SIDE) && t.x > 3 && t.y > 3) { startX = t.x; startY = t.y; break; }
   }
   const safeCharType = (charType || name).replace(/'/g, "''");
-  await conn.query(`INSERT INTO player VALUES ('${safeName}','${safeCity}','${district}',${startX},${startY},${cash},100,0,0,'','',0,0,0,'${safeCharType}')`);
-  await conn.query(`INSERT INTO game_clock VALUES (1,8)`);
+  const stmts = [
+    `INSERT INTO player VALUES ('${safeName}','${safeCity}','${district}',${startX},${startY},${cash},100,0,0,'','',0,0,0,'${safeCharType}')`,
+    `INSERT INTO game_clock VALUES (1,8)`
+  ];
   if (bonus !== 'none' && bonus !== 'cash') {
-    await conn.query(`UPDATE skills SET level = level + 2 WHERE name='${bonus}'`);
+    stmts.push(`UPDATE skills SET level = level + 2 WHERE name='${bonus}'`);
   }
 
   // Character-specific starting perks & gear
   if (!isOz) {
     switch (ct) {
       case 'cj':
-        // CJ: balanced — +2 charisma, starts with brass knuckles respect
-        await conn.query(`UPDATE skills SET level = level + 2 WHERE name='charisma'`);
-        await conn.query(`UPDATE player SET respect = 50`);
+        stmts.push(`UPDATE skills SET level = level + 2 WHERE name='charisma'`);
+        stmts.push(`UPDATE player SET respect = 50`);
         break;
       case 'tommy':
-        // Tommy: street smart — starts with a pistol and body armor
-        await conn.query(`INSERT INTO guns VALUES ('Hawk 9','Pistol',5) ON CONFLICT DO NOTHING`);
-        await conn.query(`UPDATE player SET armor = 50`);
+        stmts.push(`INSERT INTO guns VALUES ('Hawk 9','Pistol',5) ON CONFLICT DO NOTHING`);
+        stmts.push(`UPDATE player SET armor = 50`);
         break;
       case 'claude':
-        // Claude: silent killer — +2 stealth (from bonus) + lockpick kit boost + extra respect
-        await conn.query(`UPDATE player SET respect = 100`);
+        stmts.push(`UPDATE player SET respect = 100`);
         break;
       case 'niko':
-        // Niko: tough — +2 strength (from bonus) + starts with body armor and extra HP via respect
-        await conn.query(`UPDATE player SET armor = 75, respect = 75`);
+        stmts.push(`UPDATE player SET armor = 75, respect = 75`);
         break;
       case 'catalina':
-        // Catalina: wild — +2 driving (from bonus) + starts with an SMG
-        await conn.query(`INSERT INTO guns VALUES ('Viper SMG','SMG',16) ON CONFLICT DO NOTHING`);
-        await conn.query(`UPDATE player SET respect = 25`);
+        stmts.push(`INSERT INTO guns VALUES ('Viper SMG','SMG',16) ON CONFLICT DO NOTHING`);
+        stmts.push(`UPDATE player SET respect = 25`);
         break;
     }
   }
@@ -162,11 +177,12 @@ export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none',
   // Oz hacker: all weapons, max skills, armor
   if (isOz) {
     for (const gun of GUNS) {
-      await conn.query(`INSERT INTO guns VALUES ('${gun.name.replace(/'/g,"''")}','${gun.cat}',${gun.bonus}) ON CONFLICT DO NOTHING`);
+      stmts.push(`INSERT INTO guns VALUES ('${gun.name.replace(/'/g,"''")}','${gun.cat}',${gun.bonus}) ON CONFLICT DO NOTHING`);
     }
-    await conn.query(`UPDATE skills SET level = 10`);
-    await conn.query(`UPDATE player SET armor = 100, respect = 5000`);
+    stmts.push(`UPDATE skills SET level = 10`);
+    stmts.push(`UPDATE player SET armor = 100, respect = 5000`);
   }
+  await conn.query(stmts.join(';'));
   await loadCityMap(startCity);
 
   // Position duck
@@ -180,6 +196,17 @@ export async function initPlayer(name, startCity = 'Los Santos', bonus = 'none',
 // --------------------------------------------------------
 //  QUERY HELPERS
 // --------------------------------------------------------
+export async function exec(sql) {
+  await conn.query(sql);
+}
+
+export async function logAction(action, detail = '', x = null, y = null) {
+  const tick = Date.now();
+  const safeAction = action.replace(/'/g, "''");
+  const safeDetail = String(detail).slice(0, 200).replace(/'/g, "''");
+  await conn.query(`INSERT INTO action_log(tick, action, detail, x, y) VALUES (${tick}, '${safeAction}', '${safeDetail}', ${x ?? 'NULL'}, ${y ?? 'NULL'})`);
+}
+
 export async function q(sql) {
   const result = await conn.query(sql);
   return result.toArray().map(row => {
@@ -200,7 +227,7 @@ export async function qv(sql) { const row = await q1(sql); if (!row) return null
 // --------------------------------------------------------
 export async function saveGame() {
   try {
-    const tables = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events'];
+    const tables = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events','action_log'];
     const saveData = {};
     for (const t of tables) saveData[t] = await q(`SELECT * FROM ${t}`);
     // Save to named slot and legacy key
@@ -228,7 +255,7 @@ export function getSaveIndex() {
   return raw ? JSON.parse(raw) : {};
 }
 
-const VALID_TABLES = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events'];
+const VALID_TABLES = ['player','game_clock','skills','guns','inventory','drugs','vehicles','territories','businesses','recruits','gang_upgrades','gang_relations','district_heat','perks','world_events','action_log'];
 const VALID_COLUMNS = {
   player: ['name','city','district','x','y','cash','health','armor','wanted_level','gang','gang_rank','respect','perk_points','adrenaline','char_type'],
   game_clock: ['day','hour'],
@@ -244,7 +271,8 @@ const VALID_COLUMNS = {
   gang_relations: ['gang','relation'],
   district_heat: ['district','city','heat'],
   perks: ['name','unlocked'],
-  world_events: ['id','day','hour','description']
+  world_events: ['id','day','hour','description'],
+  action_log: ['id','tick','action','detail','x','y']
 };
 
 export async function loadGameData(callbacks, slotName) {
@@ -326,6 +354,8 @@ export async function removeRemotePlayer(peerId) {
 export async function getRemotePlayers() {
   return await q('SELECT * FROM remote_players');
 }
+
+
 
 // log is injected after game.js loads
 let _dbLog = () => {};
