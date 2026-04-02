@@ -63,6 +63,7 @@ export async function initSchema() {
     CREATE TABLE IF NOT EXISTS gang_upgrades(name VARCHAR PRIMARY KEY, level INT DEFAULT 0);
     INSERT INTO gang_upgrades VALUES ('safe_house',0),('weapon_locker',0),('smuggling_routes',0) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS gang_relations(gang VARCHAR PRIMARY KEY, relation VARCHAR DEFAULT 'Hostile');
+    CREATE TABLE IF NOT EXISTS heist_progress(heist_id INT PRIMARY KEY, step INT DEFAULT 0, completed BOOLEAN DEFAULT FALSE);
     CREATE TABLE IF NOT EXISTS district_heat(district VARCHAR, city VARCHAR, heat INT DEFAULT 0, PRIMARY KEY(district, city));
     CREATE TABLE IF NOT EXISTS perks(name VARCHAR PRIMARY KEY, unlocked INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS world_events(id INT DEFAULT nextval('event_id_seq'), day INT, hour INT, description VARCHAR);

@@ -1,6 +1,6 @@
 import {
   T, POI_DEFS, CITIES, GANGS, JOBS, CRIMES, GUNS, VEHICLES,
-  DRUGS, RANK_THRESHOLDS, PERKS, ITEMS, MAP_SIZE
+  DRUGS, RANK_THRESHOLDS, PERKS, ITEMS, MAP_SIZE, HEISTS
 } from './constants.js';
 import { currentMapGrid, setMapSeed } from './city.js';
 import {
@@ -48,6 +48,8 @@ const peerShootTimestamps = new Map();
 // NPC seed for deterministic spawning across multiplayer peers
 let _npcSeedValue = Math.floor(Math.random() * 2147483647);
 let _mpCityOverride = null; // set by worldSync so joiner uses host's city
+const _activeBounties = new Map(); // peerId -> { amount, placedBy, placedByName }
+let _lastAttackerPeerId = null;
 
 // --------------------------------------------------------
 //  EVENT LOG
@@ -214,12 +216,40 @@ setCallbacks({
       case 'police': log(`${name} has cops on them!`, 'c-yellow'); break;
       case 'death': {
         log(`${name} was WASTED!`, 'c-red');
-        // Show death particles at remote duck's position
         const rd = getRemoteDucks().get(peerId);
         if (rd) spawnParticles(rd.group.position.x, rd.group.position.z, 0xff0000, 25, 2, 2);
+        // Check if WE killed them and there's a bounty
+        const localId = getLocalPeerId();
+        if (data.killedBy === localId && _activeBounties.has(peerId)) {
+          const bounty = _activeBounties.get(peerId);
+          _activeBounties.delete(peerId);
+          (async () => {
+            await exec(`UPDATE player SET cash=cash+${bounty.amount}`);
+            log(`BOUNTY COLLECTED: $${bounty.amount.toLocaleString()} for killing ${name}!`, 'c-gold');
+            spawnParticlesAtDuck(0xffd700, 20, 2, 2);
+            broadcastAction({ action: 'bounty_claimed', targetId: peerId, targetName: name, amount: bounty.amount });
+            await updateHUD();
+          })();
+        }
         break;
       }
       case 'gang_join': log(`${name} joined your gang: ${data.gang}!`, 'c-magenta'); break;
+      case 'bounty_placed': {
+        if (data.targetId && data.amount > 0) {
+          _activeBounties.set(data.targetId, { amount: data.amount, placedBy: peerId, placedByName: name });
+          const targetName = data.targetId === getLocalPeerId() ? 'YOU' : (getPeers().get(data.targetId)?.name || 'someone');
+          log(`BOUNTY: ${name} placed $${data.amount.toLocaleString()} on ${targetName}!`, 'c-red');
+          if (data.targetId === getLocalPeerId()) {
+            log('There\'s a price on your head! Watch your back!', 'c-red');
+          }
+        }
+        break;
+      }
+      case 'bounty_claimed': {
+        log(`BOUNTY CLAIMED: ${name} collected $${data.amount?.toLocaleString() || '?'} for killing ${data.targetName || 'someone'}!`, 'c-gold');
+        _activeBounties.delete(data.targetId);
+        break;
+      }
       case 'race_challenge': {
         const buyIn = safeInt(data.buyIn, 0, 100000);
         if (buyIn <= 0) break;
@@ -329,6 +359,7 @@ setCallbacks({
       spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
       const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
       log(`${shooterName} shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed by armor)` : ''}`, 'c-red');
+      _lastAttackerPeerId = peerId;
       await checkDeath();
       await updateHUD();
     } else {
@@ -886,7 +917,8 @@ async function checkDeath() {
     log('╚══════════════════════════════════════╝', 'c-red');
     if (isMultiplayer()) {
       const mp = await q1('SELECT name, char_type, x, y, health, wanted_level, gang FROM player');
-      broadcastAction({ action: 'death', name: mp.name });
+      broadcastAction({ action: 'death', name: mp.name, killedBy: _lastAttackerPeerId });
+      _lastAttackerPeerId = null;
       // Broadcast new position so peers see respawn at hospital (with small delay so death particles show first)
       setTimeout(() => {
         broadcastMove({ x: mp.x, y: mp.y, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level, gang: mp.gang || '' });
@@ -1310,6 +1342,8 @@ function showMainActions() {
     { key: 'F5', label: 'Save Game',     action: saveGame },
     { key: 'X', label: 'Strip Club',     action: menuStripClub },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
+    { key: 'J', label: 'Heists',         action: menuHeists },
+    ...(isMultiplayer() ? [{ key: 'B', label: 'Bounties',       action: menuBounties }] : []),
     { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
   const el = $('actions');
@@ -2344,6 +2378,188 @@ async function menuPerks() {
 }
 
 // --------------------------------------------------------
+//  PVP BOUNTIES
+// --------------------------------------------------------
+async function menuBounties() {
+  if (!isMultiplayer()) { log('Bounties are multiplayer only.', 'c-gray'); showMainActions(); return; }
+  const p = await q1('SELECT cash, name FROM player');
+  const peers = getPeers();
+  const localId = getLocalPeerId();
+  let html = '';
+
+  // Show active bounties
+  if (_activeBounties.size > 0) {
+    html += '<div class="c-red" style="margin-bottom:6px">--- Active Bounties ---</div>';
+    for (const [targetId, bounty] of _activeBounties) {
+      const targetName = targetId === localId ? 'YOU' : (peers.get(targetId)?.name || targetId.slice(0, 8));
+      html += `<div style="color:#ff8800;margin:2px 0">$${bounty.amount.toLocaleString()} on ${targetName} (placed by ${bounty.placedByName})</div>`;
+    }
+  } else {
+    html += '<div class="c-gray" style="margin-bottom:6px">No active bounties.</div>';
+  }
+
+  // Place bounty options
+  html += '<div class="c-yellow" style="margin-top:8px">--- Place a Bounty ---</div>';
+  if (peers.size === 0) {
+    html += '<div class="c-gray">No other players to target.</div>';
+  } else {
+    for (const [pid, info] of peers) {
+      const amounts = [500, 1000, 5000, 10000];
+      for (const amt of amounts) {
+        if (p.cash >= amt) {
+          html += `<div style="margin:2px 0"><button class="btn place-bounty" data-target="${pid}" data-amount="${amt}" data-name="${info.name || pid.slice(0, 8)}">$${amt.toLocaleString()} on ${info.name || pid.slice(0, 8)}</button></div>`;
+        }
+      }
+    }
+  }
+
+  showSubMenuHTML('Bounty Board', html);
+  $('sub-menu').querySelectorAll('.place-bounty').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetId = btn.dataset.target;
+      const amount = parseInt(btn.dataset.amount);
+      const targetName = btn.dataset.name;
+      const cash = await qv('SELECT cash FROM player');
+      if (cash < amount) { log('Not enough cash!', 'c-red'); return; }
+      await exec(`UPDATE player SET cash=cash-${amount}`);
+      _activeBounties.set(targetId, { amount, placedBy: localId, placedByName: p.name });
+      broadcastAction({ action: 'bounty_placed', targetId, amount, targetName });
+      log(`Placed $${amount.toLocaleString()} bounty on ${targetName}!`, 'c-red');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    });
+  });
+}
+
+// --------------------------------------------------------
+//  HEISTS
+// --------------------------------------------------------
+async function menuHeists() {
+  const p = await q1('SELECT city, cash, respect FROM player');
+  const completed = await q('SELECT heist_id, step, completed FROM heist_progress');
+  const completedMap = new Map(completed.map(h => [h.heist_id, h]));
+
+  // Available heists: in current city, not completed, meets skill req
+  const available = [];
+  const inProgress = [];
+  const done = [];
+  for (const h of HEISTS) {
+    const prog = completedMap.get(h.id);
+    if (prog?.completed) { done.push(h); continue; }
+    if (h.city !== p.city) continue;
+    const skill = await getSkill(h.skill);
+    if (skill < h.skillReq) continue;
+    if (prog && prog.step > 0) { inProgress.push({ heist: h, step: prog.step }); continue; }
+    available.push(h);
+  }
+
+  const tierNames = { 1: 'Petty', 2: 'Small Job', 3: 'Professional', 4: 'Major', 5: 'Legendary' };
+  const tierColors = { 1: '#aaa', 2: '#4488ff', 3: '#ff8800', 4: '#ff4444', 5: '#ff00ff' };
+  let html = `<div class="c-gray" style="font-size:10px;margin-bottom:6px">${done.length}/${HEISTS.length} heists completed</div>`;
+
+  if (inProgress.length > 0) {
+    html += '<div class="c-yellow">--- In Progress ---</div>';
+    for (const { heist: h, step } of inProgress) {
+      html += `<div style="margin:3px 0"><button class="btn heist-continue" data-id="${h.id}" style="text-align:left;width:100%">`;
+      html += `<span style="color:${tierColors[h.tier]}">[${tierNames[h.tier]}]</span> ${h.name} — Step ${step + 1}/${h.steps.length}: ${h.steps[step]}`;
+      html += `</button></div>`;
+    }
+  }
+
+  if (available.length > 0) {
+    html += '<div class="c-yellow" style="margin-top:6px">--- Available ---</div>';
+    for (const h of available) {
+      const payRange = `$${(h.payout[0]/1000).toFixed(0)}K-$${(h.payout[1]/1000).toFixed(0)}K`;
+      const crewTxt = h.crew > 0 ? `, ${h.crew} crew` : '';
+      const costTxt = h.setupCost > 0 ? `, $${h.setupCost.toLocaleString()} setup` : '';
+      html += `<div style="margin:3px 0"><button class="btn heist-start" data-id="${h.id}" style="text-align:left;width:100%">`;
+      html += `<span style="color:${tierColors[h.tier]}">[${tierNames[h.tier]}]</span> ${h.name} — ${payRange}${crewTxt}${costTxt}`;
+      html += `</button></div>`;
+    }
+  } else if (inProgress.length === 0) {
+    html += '<div class="c-gray" style="margin-top:6px">No heists available here. Travel to another city or level up skills.</div>';
+  }
+
+  if (done.length > 0) {
+    html += `<div class="c-gray" style="margin-top:6px;font-size:10px">Completed: ${done.map(h => h.name).join(', ')}</div>`;
+  }
+
+  showSubMenuHTML(`Heists — ${p.city}`, html);
+
+  $('sub-menu').querySelectorAll('.heist-start').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const h = HEISTS.find(x => x.id === parseInt(btn.dataset.id));
+      if (!h) return;
+      const cash = await qv('SELECT cash FROM player');
+      if (cash < h.setupCost) { log(`Need $${h.setupCost.toLocaleString()} for setup costs!`, 'c-red'); return; }
+      const recruits = (await qv('SELECT COUNT(*) FROM recruits')) || 0;
+      if (h.crew > 0 && recruits < h.crew) { log(`Need ${h.crew} crew members! Recruit at Gang HQ [8].`, 'c-red'); return; }
+      hideSubMenu();
+      if (h.setupCost > 0) await exec(`UPDATE player SET cash=cash-${h.setupCost}`);
+      await exec(`INSERT INTO heist_progress VALUES (${h.id}, 0, FALSE) ON CONFLICT(heist_id) DO UPDATE SET step=0, completed=FALSE`);
+      log(`Started heist: ${h.name}`, 'c-gold');
+      log(`Step 1/${h.steps.length}: ${h.steps[0]}`, 'c-yellow');
+      logAction('heist_start', h.name);
+      await _executeHeistStep(h, 0);
+    });
+  });
+
+  $('sub-menu').querySelectorAll('.heist-continue').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const h = HEISTS.find(x => x.id === parseInt(btn.dataset.id));
+      if (!h) return;
+      const prog = await q1(`SELECT step FROM heist_progress WHERE heist_id=${h.id}`);
+      if (!prog) return;
+      hideSubMenu();
+      await _executeHeistStep(h, prog.step);
+    });
+  });
+}
+
+async function _executeHeistStep(heist, stepIdx) {
+  const step = heist.steps[stepIdx];
+  const skill = await getSkill(heist.skill);
+  const baseChance = 50 + skill * 4 - heist.tier * 5;
+  const successChance = Math.min(95, Math.max(20, baseChance));
+
+  setStatus(`Heist: ${step}...`);
+  await advanceTime(1);
+
+  if (chance(successChance)) {
+    // Step succeeded
+    if (stepIdx >= heist.steps.length - 1) {
+      // HEIST COMPLETE!
+      const payout = rand(heist.payout[0], heist.payout[1]);
+      await exec(`UPDATE player SET cash=cash+${payout}, wanted_level=LEAST(5,wanted_level+${heist.wanted}), respect=respect+${heist.tier * 50}`);
+      await exec(`UPDATE heist_progress SET step=${stepIdx + 1}, completed=TRUE WHERE heist_id=${heist.id}`);
+      log(`HEIST COMPLETE: ${heist.name}!`, 'c-gold');
+      log(`Payout: $${payout.toLocaleString()} | +${heist.tier * 50} Respect | +${heist.wanted} Wanted`, 'c-green');
+      spawnParticlesAtDuck(0xffd700, 30, 3, 2);
+      logAction('heist_complete', `${heist.name} +$${payout}`);
+      await maybeSkillUp(heist.skill);
+    } else {
+      // Advance to next step
+      await exec(`UPDATE heist_progress SET step=${stepIdx + 1} WHERE heist_id=${heist.id}`);
+      log(`Step ${stepIdx + 1}/${heist.steps.length} complete: ${step}`, 'c-green');
+      log(`Next: ${heist.steps[stepIdx + 1]}`, 'c-yellow');
+      spawnParticlesAtDuck(0x44ff44, 10, 1.5, 1);
+    }
+  } else {
+    // Step failed
+    const dmg = rand(5, 15) * heist.tier;
+    const lostCash = rand(100, 500) * heist.tier;
+    await exec(`UPDATE player SET health=GREATEST(0,health-${dmg}), cash=GREATEST(0,cash-${lostCash}), wanted_level=LEAST(5,wanted_level+${Math.ceil(heist.wanted/2)})`);
+    log(`Heist step FAILED: ${step}`, 'c-red');
+    log(`-${dmg} HP, -$${lostCash}, +${Math.ceil(heist.wanted/2)} Wanted. Try again from this step.`, 'c-red');
+    spawnParticlesAtDuck(0xff2222, 15, 2, 1);
+    logAction('heist_fail', `${heist.name} step ${stepIdx + 1}`);
+    await checkDeath();
+  }
+  clearStatus();
+  await updateHUD();
+  showMainActions();
+}
+
+// --------------------------------------------------------
 //  INVENTORY
 // --------------------------------------------------------
 async function menuInventory() {
@@ -2725,7 +2941,7 @@ function rebuildActionKeys() {
     { key: '7', action: menuDrugs }, { key: '8', action: menuGang }, { key: '9', action: menuPerks },
     { key: '0', action: menuInventory }, { key: 'h', action: menuHookers },
     { key: 'n', action: menuNews }, { key: 'l', action: menuStats }, { key: 'f5', action: saveGame },
-    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: '/', action: menuHelp }
+    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists }, { key: 'b', action: menuBounties }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
@@ -2905,6 +3121,23 @@ window.startNewGame = async function() {
   await updateHUD(); await checkPOI();
   showMainActions();
   if (!window._autoSaveInterval) window._autoSaveInterval = setInterval(() => { if (gameActive) saveGame(); }, 5 * 60 * 1000);
+  // Wanted decay: -1 every 2 minutes of play
+  if (!window._wantedDecayInterval) window._wantedDecayInterval = setInterval(async () => {
+    if (!gameActive) return;
+    const wanted = await qv('SELECT wanted_level FROM player');
+    if (wanted > 0) {
+      await exec('UPDATE player SET wanted_level = wanted_level - 1');
+      const newW = await qv('SELECT wanted_level FROM player');
+      if (newW <= 0) {
+        clearPoliceNPCs(); stopSiren(); _policeActive = false;
+        if (isMultiplayer()) broadcastAction({ action: 'police_clear' });
+        log('Cops lost your trail. Wanted level cleared.', 'c-green');
+      } else {
+        log(`Laying low... wanted level dropped to ${newW}.`, 'c-cyan');
+      }
+      await updateHUD();
+    }
+  }, 120000);
   startPolicePresenceLoop();
 };
 

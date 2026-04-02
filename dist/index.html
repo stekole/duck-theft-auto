@@ -269,6 +269,53 @@ body {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: inset 0 0 40px #ff000044; }
 }
+
+/* Mobile touch controls */
+#touch-controls {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+#touch-controls button {
+  pointer-events: auto;
+  background: rgba(255,255,255,0.12);
+  border: 2px solid rgba(255,255,255,0.25);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 20px;
+  width: 54px; height: 54px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+#touch-controls button:active { background: rgba(255,255,255,0.3); }
+#touch-dpad { position: absolute; bottom: 20px; left: 20px; }
+#touch-dpad button { position: absolute; border-radius: 8px; width: 50px; height: 50px; font-size: 18px; }
+#touch-dpad .up { left: 52px; top: 0; }
+#touch-dpad .down { left: 52px; top: 104px; }
+#touch-dpad .left { left: 0; top: 52px; }
+#touch-dpad .right { left: 104px; top: 52px; }
+#touch-actions { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: 180px; }
+#touch-actions button { font-size: 14px; width: 50px; height: 50px; }
+
+@media (max-width: 768px) {
+  #hud { font-size: 10px; padding: 6px; max-width: 140px; }
+  #right-panel { width: 100%; right: 0; top: auto; bottom: 0; max-height: 35vh; }
+  #event-log { max-height: 60px; }
+  #actions { display: flex; flex-wrap: wrap; gap: 2px; }
+  #actions .btn { font-size: 9px; padding: 3px 5px; }
+  #minimap-container { width: 100px; height: 100px; }
+  #minimap { width: 100px; height: 100px; }
+  #sub-menu { max-width: 95vw; max-height: 70vh; font-size: 11px; }
+  #title-screen { padding: 10px; }
+  .char-card { width: 70px; padding: 4px; }
+  .char-card .char-avatar { width: 36px; height: 36px; }
+  .char-card .char-name { font-size: 10px; }
+  .char-card .char-desc { font-size: 8px; }
+  #touch-controls { display: block; }
+}
 </style>
 </head>
 <body>
@@ -501,6 +548,20 @@ body {
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="map-label">District Map</div>
   </div>
+  <div id="touch-controls">
+    <div id="touch-dpad">
+      <button class="up" data-dir="up">&#9650;</button>
+      <button class="down" data-dir="down">&#9660;</button>
+      <button class="left" data-dir="left">&#9664;</button>
+      <button class="right" data-dir="right">&#9654;</button>
+    </div>
+    <div id="touch-actions">
+      <button data-key="f" style="background:rgba(255,50,50,0.25);border-color:rgba(255,50,50,0.5)">&#128299;</button>
+      <button data-key="Enter" style="background:rgba(50,255,50,0.25);border-color:rgba(50,255,50,0.5)">&#9989;</button>
+      <button data-key="Escape" style="font-size:11px">ESC</button>
+      <button data-key="0" style="font-size:11px">INV</button>
+    </div>
+  </div>
 </div>
 
 <script type="importmap">
@@ -725,6 +786,73 @@ const ITEMS = {
   'Duffle Bag': { price: 800, desc: 'Crime loot +25%' },
   'Smoke Grenade': { price: 200, desc: 'Escape police instantly once' }
 };
+
+// --------------------------------------------------------
+//  HEISTS — 52 multi-step missions across 5 tiers
+// --------------------------------------------------------
+const HEISTS = [
+  // TIER 1: Petty (no crew needed, low risk) — $500-$3K
+  { id: 1, name: 'Corner Store Stickup', city: 'Los Santos', tier: 1, crew: 0, setupCost: 0, payout: [800, 1500], wanted: 1, steps: ['Scout the store', 'Wait for closing time', 'Rob the register'], skill: 'stealth', skillReq: 1 },
+  { id: 2, name: 'ATM Smash & Grab', city: 'Los Santos', tier: 1, crew: 0, setupCost: 100, payout: [600, 2000], wanted: 1, steps: ['Find isolated ATM', 'Disable camera', 'Crack it open'], skill: 'strength', skillReq: 1 },
+  { id: 3, name: 'Purse Snatcher Ring', city: 'San Fierro', tier: 1, crew: 0, setupCost: 0, payout: [500, 1200], wanted: 1, steps: ['Stake out tourist area', 'Pick your mark', 'Grab and run'], skill: 'stealth', skillReq: 1 },
+  { id: 4, name: 'Parking Meter Raid', city: 'Las Venturas', tier: 1, crew: 0, setupCost: 50, payout: [400, 900], wanted: 1, steps: ['Get a crowbar', 'Hit meters at night', 'Collect coins'], skill: 'strength', skillReq: 1 },
+  { id: 5, name: 'Pizza Delivery Hijack', city: 'Vice City', tier: 1, crew: 0, setupCost: 0, payout: [500, 1000], wanted: 1, steps: ['Follow delivery driver', 'Block the road', 'Take the cash'], skill: 'driving', skillReq: 1 },
+  { id: 6, name: 'Tip Jar Heist', city: 'Liberty City', tier: 1, crew: 0, setupCost: 0, payout: [300, 800], wanted: 1, steps: ['Find busy cafe', 'Create distraction', 'Swipe the jar'], skill: 'charisma', skillReq: 1 },
+  { id: 7, name: 'Bike Chop Shop', city: 'Los Santos', tier: 1, crew: 0, setupCost: 200, payout: [1000, 2500], wanted: 1, steps: ['Steal bikes from campus', 'Bring to chop shop', 'Collect payment'], skill: 'stealth', skillReq: 2 },
+  { id: 8, name: 'Valet Scam', city: 'Vice City', tier: 1, crew: 0, setupCost: 100, payout: [800, 2000], wanted: 1, steps: ['Get a valet uniform', 'Park at fancy restaurant', 'Drive off with a car'], skill: 'charisma', skillReq: 2 },
+  { id: 9, name: 'Copper Wire Strip', city: 'Liberty City', tier: 1, crew: 0, setupCost: 50, payout: [600, 1500], wanted: 1, steps: ['Find construction site', 'Cut the wire', 'Sell to scrapyard'], skill: 'strength', skillReq: 1 },
+  { id: 10, name: 'Food Truck Robbery', city: 'San Fierro', tier: 1, crew: 0, setupCost: 0, payout: [700, 1800], wanted: 1, steps: ['Wait for lunch rush', 'Threaten the cook', 'Empty the register'], skill: 'strength', skillReq: 1 },
+
+  // TIER 2: Small Jobs (solo or 1 crew, medium risk) — $3K-$10K
+  { id: 11, name: 'Liquor Store Chain Hit', city: 'Los Santos', tier: 2, crew: 0, setupCost: 500, payout: [3000, 6000], wanted: 2, steps: ['Case three stores', 'Plan the route', 'Hit all three in one night', 'Ditch the car'], skill: 'driving', skillReq: 3 },
+  { id: 12, name: 'Warehouse Burglary', city: 'San Fierro', tier: 2, crew: 1, setupCost: 800, payout: [4000, 8000], wanted: 2, steps: ['Get warehouse layout', 'Cut the fence', 'Load the truck', 'Escape before dawn'], skill: 'stealth', skillReq: 3 },
+  { id: 13, name: 'Jewelry Store Smash', city: 'Las Venturas', tier: 2, crew: 0, setupCost: 1000, payout: [5000, 10000], wanted: 2, steps: ['Buy a hammer', 'Disable the alarm', 'Smash display cases', 'Flee through back alley'], skill: 'strength', skillReq: 3 },
+  { id: 14, name: 'Drug Stash Raid', city: 'Vice City', tier: 2, crew: 1, setupCost: 500, payout: [4000, 9000], wanted: 2, steps: ['Get intel on stash house', 'Watch guard patterns', 'Break in during shift change', 'Grab the product'], skill: 'stealth', skillReq: 3 },
+  { id: 15, name: 'Armored Car Tail', city: 'Liberty City', tier: 2, crew: 1, setupCost: 1500, payout: [6000, 10000], wanted: 3, steps: ['Track the armored car route', 'Set up roadblock', 'Ambush the guards', 'Crack the back doors'], skill: 'driving', skillReq: 4 },
+  { id: 16, name: 'Pawn Shop Heist', city: 'Los Santos', tier: 2, crew: 0, setupCost: 300, payout: [3000, 7000], wanted: 2, steps: ['Scout the pawn shop', 'Wait for owner to step out', 'Clean out the safe', 'Fence the goods'], skill: 'stealth', skillReq: 2 },
+  { id: 17, name: 'Gas Station Spree', city: 'Las Venturas', tier: 2, crew: 0, setupCost: 200, payout: [3500, 6000], wanted: 2, steps: ['Map desert gas stations', 'Hit them one by one', 'Stay ahead of the cops', 'Lay low in the desert'], skill: 'driving', skillReq: 3 },
+  { id: 18, name: 'Boat Theft', city: 'Vice City', tier: 2, crew: 1, setupCost: 800, payout: [5000, 9000], wanted: 2, steps: ['Find marina target', 'Neutralize dock guard', 'Hotwire the yacht', 'Deliver to buyer'], skill: 'driving', skillReq: 3 },
+  { id: 19, name: 'Art Gallery Break-in', city: 'San Fierro', tier: 2, crew: 1, setupCost: 1200, payout: [6000, 10000], wanted: 2, steps: ['Visit gallery as tourist', 'Map the security system', 'Enter through skylight', 'Swap paintings with fakes'], skill: 'stealth', skillReq: 4 },
+  { id: 20, name: 'Chop Shop Operation', city: 'Liberty City', tier: 2, crew: 1, setupCost: 2000, payout: [5000, 8000], wanted: 2, steps: ['Steal 3 luxury cars', 'Bring to chop shop', 'Strip and sell parts', 'Clean the trail'], skill: 'driving', skillReq: 3 },
+
+  // TIER 3: Professional (1-2 crew, high risk) — $10K-$50K
+  { id: 21, name: 'Bank Truck Ambush', city: 'Los Santos', tier: 3, crew: 2, setupCost: 5000, payout: [15000, 30000], wanted: 3, steps: ['Get inside info on route', 'Steal a police car', 'Pull over the truck', 'Blow the back doors', 'Escape via highway'], skill: 'strength', skillReq: 5 },
+  { id: 22, name: 'Casino Chip Swap', city: 'Las Venturas', tier: 3, crew: 2, setupCost: 8000, payout: [20000, 40000], wanted: 3, steps: ['Get dealer uniforms', 'Plant counterfeit chips', 'Cash out at multiple windows', 'Exit through kitchen', 'Split the take'], skill: 'charisma', skillReq: 5 },
+  { id: 23, name: 'Yacht Heist', city: 'Vice City', tier: 3, crew: 2, setupCost: 6000, payout: [18000, 35000], wanted: 3, steps: ['Get invite to yacht party', 'Scope the safe location', 'Drug the champagne', 'Crack the safe', 'Escape by speedboat'], skill: 'charisma', skillReq: 5 },
+  { id: 24, name: 'Tech Startup Robbery', city: 'San Fierro', tier: 3, crew: 1, setupCost: 4000, payout: [12000, 25000], wanted: 2, steps: ['Hack security cameras', 'Clone access badges', 'Enter server room', 'Steal prototype hardware', 'Wipe the logs'], skill: 'stealth', skillReq: 5 },
+  { id: 25, name: 'Triad Warehouse Hit', city: 'Liberty City', tier: 3, crew: 2, setupCost: 7000, payout: [20000, 45000], wanted: 3, steps: ['Gather intel on Triads', 'Bribe a guard', 'Infiltrate at night', 'Fight through security', 'Grab the contraband', 'Escape via tunnel'], skill: 'strength', skillReq: 6 },
+  { id: 26, name: 'Train Robbery', city: 'Las Venturas', tier: 3, crew: 2, setupCost: 5000, payout: [15000, 35000], wanted: 3, steps: ['Study the train schedule', 'Board at desert stop', 'Neutralize guards', 'Blow the cargo door', 'Offload before next station'], skill: 'strength', skillReq: 5 },
+  { id: 27, name: 'Museum After Hours', city: 'San Fierro', tier: 3, crew: 1, setupCost: 6000, payout: [20000, 40000], wanted: 2, steps: ['Study exhibit layout', 'Disable laser grid', 'Replace gems with fakes', 'Exit through ventilation', 'Fence through black market'], skill: 'stealth', skillReq: 6 },
+  { id: 28, name: 'Drug Lab Takeover', city: 'Los Santos', tier: 3, crew: 2, setupCost: 8000, payout: [25000, 50000], wanted: 3, steps: ['Locate the lab', 'Cut the power', 'Storm the entrance', 'Secure the product', 'Set up your own crew'], skill: 'strength', skillReq: 5 },
+  { id: 29, name: 'Luxury Car Ring', city: 'Vice City', tier: 3, crew: 1, setupCost: 5000, payout: [15000, 30000], wanted: 2, steps: ['Get a list of targets', 'Steal 5 exotic cars', 'Avoid LoJack tracking', 'Deliver to cargo ship', 'Collect payment'], skill: 'driving', skillReq: 6 },
+  { id: 30, name: 'Nightclub Safe Crack', city: 'Liberty City', tier: 3, crew: 1, setupCost: 4000, payout: [12000, 28000], wanted: 2, steps: ['Get VIP access', 'Plant bug in office', 'Learn safe combo', 'Hit during peak hours', 'Blend into crowd'], skill: 'charisma', skillReq: 5 },
+
+  // TIER 4: Major (2-3 crew, very high risk) — $50K-$200K
+  { id: 31, name: 'Pacific Standard Bank', city: 'Los Santos', tier: 4, crew: 3, setupCost: 20000, payout: [80000, 150000], wanted: 4, steps: ['Steal getaway bikes', 'Get thermal charges', 'Hack the vault timer', 'Enter through sewers', 'Blow the vault', 'Fight through SWAT', 'Escape on bikes'], skill: 'strength', skillReq: 7 },
+  { id: 32, name: 'The Diamond Casino', city: 'Las Venturas', tier: 4, crew: 3, setupCost: 25000, payout: [100000, 200000], wanted: 4, steps: ['Scope all entrances', 'Get security uniforms', 'Plant EMP device', 'Access vault corridor', 'Drill the vault', 'Load cash carts', 'Exit via roof helicopter'], skill: 'stealth', skillReq: 7 },
+  { id: 33, name: 'Federal Reserve Raid', city: 'Liberty City', tier: 4, crew: 3, setupCost: 30000, payout: [120000, 200000], wanted: 5, steps: ['Get building blueprints', 'Tunnel from nearby shop', 'Bypass vault sensors', 'Crack the time lock', 'Load gold bars', 'Collapse the tunnel', 'Switch getaway cars 3 times'], skill: 'stealth', skillReq: 8 },
+  { id: 34, name: 'Cartel Compound Raid', city: 'Vice City', tier: 4, crew: 3, setupCost: 20000, payout: [80000, 180000], wanted: 4, steps: ['Aerial surveillance', 'Recruit ex-military', 'Cut the perimeter', 'Neutralize guards', 'Secure the vault', 'Destroy evidence', 'Escape by helicopter'], skill: 'strength', skillReq: 7 },
+  { id: 35, name: 'Silicon Valley Hack', city: 'San Fierro', tier: 4, crew: 2, setupCost: 15000, payout: [60000, 120000], wanted: 3, steps: ['Social engineer credentials', 'Plant USB in server room', 'Transfer crypto remotely', 'Cover digital tracks', 'Launder through shell companies', 'Collect clean cash'], skill: 'charisma', skillReq: 7 },
+  { id: 36, name: 'Prison Break', city: 'Los Santos', tier: 4, crew: 3, setupCost: 25000, payout: [50000, 100000], wanted: 5, steps: ['Get contact inside', 'Smuggle in tools', 'Bribe a guard', 'Stage a riot', 'Extract the target', 'Helicopter extraction', 'Collect bounty'], skill: 'charisma', skillReq: 7 },
+  { id: 37, name: 'Doomsday Prep', city: 'Las Venturas', tier: 4, crew: 2, setupCost: 18000, payout: [70000, 150000], wanted: 4, steps: ['Infiltrate military base', 'Steal access codes', 'Hack defense network', 'Download classified data', 'Sell to highest bidder', 'Eliminate witnesses'], skill: 'stealth', skillReq: 8 },
+  { id: 38, name: 'Submarine Heist', city: 'Vice City', tier: 4, crew: 2, setupCost: 22000, payout: [90000, 180000], wanted: 4, steps: ['Locate sunken cargo', 'Hire dive team', 'Recover waterproof cases', 'Evade coast guard', 'Open at safehouse', 'Sell contents'], skill: 'driving', skillReq: 7 },
+  { id: 39, name: 'Airport Cargo Heist', city: 'Liberty City', tier: 4, crew: 3, setupCost: 20000, payout: [75000, 160000], wanted: 4, steps: ['Get tarmac access badge', 'Identify target cargo', 'Swap truck during shift', 'Drive through fence', 'Outrun airport security', 'Deliver to warehouse'], skill: 'driving', skillReq: 7 },
+  { id: 40, name: 'Mansion Invasion', city: 'San Fierro', tier: 4, crew: 2, setupCost: 15000, payout: [60000, 130000], wanted: 3, steps: ['Attend charity gala', 'Map the estate', 'Return at 3 AM', 'Disable alarms', 'Crack bedroom safe', 'Steal art collection', 'Vanish into fog'], skill: 'stealth', skillReq: 7 },
+
+  // TIER 5: Legendary (3+ crew, extreme risk) — $200K-$1M+
+  { id: 41, name: 'The Union Depository', city: 'Los Santos', tier: 5, crew: 3, setupCost: 50000, payout: [400000, 800000], wanted: 5, steps: ['Months of planning', 'Acquire military hardware', 'Tunnel under building', 'Disable seismic sensors', 'Breach the vault', 'Load gold into trucks', 'Decoy convoy strategy', 'Final escape'], skill: 'strength', skillReq: 9 },
+  { id: 42, name: 'The Big Score', city: 'Las Venturas', tier: 5, crew: 3, setupCost: 60000, payout: [500000, 1000000], wanted: 5, steps: ['Hit 3 casinos in one night', 'EMP the entire Strip', 'Simultaneous vault breaches', 'Helicopter relay extraction', 'Evade military response', 'Split at desert airfield'], skill: 'stealth', skillReq: 9 },
+  { id: 43, name: 'The Island Job', city: 'Vice City', tier: 5, crew: 3, setupCost: 40000, payout: [350000, 700000], wanted: 5, steps: ['Scope private island', 'Approach by submarine', 'Infiltrate compound', 'Neutralize mercenaries', 'Crack panic room safe', 'Steal bearer bonds', 'Escape before reinforcements', 'Launder internationally'], skill: 'stealth', skillReq: 9 },
+  { id: 44, name: 'Mint Heist', city: 'Liberty City', tier: 5, crew: 3, setupCost: 55000, payout: [450000, 900000], wanted: 5, steps: ['Inside man recruitment', 'Get printing plates', 'Infiltrate through subway', 'Override security grid', 'Access plate storage', 'Print your own money', 'Destroy evidence', 'Multiple extraction routes'], skill: 'charisma', skillReq: 9 },
+  { id: 45, name: 'The Cyber Heist', city: 'San Fierro', tier: 5, crew: 2, setupCost: 35000, payout: [300000, 600000], wanted: 3, steps: ['Hack banking network', 'Create ghost accounts', 'Transfer during maintenance', 'Reroute through 12 countries', 'Convert to crypto', 'Cash out through mixers', 'Eliminate digital trail'], skill: 'charisma', skillReq: 10 },
+  { id: 46, name: 'Fort Zancudo Raid', city: 'Los Santos', tier: 5, crew: 3, setupCost: 45000, payout: [300000, 650000], wanted: 5, steps: ['Get military intel', 'Acquire EMP device', 'Disable radar', 'Breach perimeter', 'Fight to hangar', 'Steal fighter jet', 'Dogfight escape', 'Sell to arms dealer'], skill: 'strength', skillReq: 10 },
+  { id: 47, name: 'Royal Flush', city: 'Las Venturas', tier: 5, crew: 3, setupCost: 50000, payout: [400000, 850000], wanted: 5, steps: ['Rig poker tournament', 'Plant dealers', 'Control the final table', 'Win $500K pot', 'Rob the cage simultaneously', 'Escape through underground', 'Meet at airstrip'], skill: 'charisma', skillReq: 9 },
+  { id: 48, name: 'Hurricane Heist', city: 'Vice City', tier: 5, crew: 3, setupCost: 30000, payout: [250000, 500000], wanted: 4, steps: ['Wait for hurricane warning', 'Hit during evacuation', 'No cops on streets', 'Rob 5 banks in sequence', 'Use storm as cover', 'Rendezvous at warehouse'], skill: 'driving', skillReq: 8 },
+  { id: 49, name: 'Alcatraz Break', city: 'San Fierro', tier: 5, crew: 3, setupCost: 40000, payout: [200000, 500000], wanted: 5, steps: ['Get imprisoned on purpose', 'Map the facility', 'Recruit inside crew', 'Build raft in workshop', 'Stage power outage', 'Cross the bay', 'Disappear forever'], skill: 'strength', skillReq: 9 },
+  { id: 50, name: 'The Grand Finale', city: 'Liberty City', tier: 5, crew: 3, setupCost: 75000, payout: [750000, 1500000], wanted: 5, steps: ['Unite all crews', 'Simultaneous hits across city', 'Federal Reserve + 2 banks', 'Coordinate via encrypted radio', 'Military-grade extraction', 'Private jet escape', 'New identities abroad'], skill: 'charisma', skillReq: 10 },
+  { id: 51, name: 'Area 69 Infiltration', city: 'Las Venturas', tier: 5, crew: 3, setupCost: 60000, payout: [500000, 1000000], wanted: 5, steps: ['Find secret entrance', 'Steal hazmat suits', 'Navigate underground', 'Bypass biometric locks', 'Access classified lab', 'Steal alien tech', 'Fight military response', 'Vanish into desert'], skill: 'stealth', skillReq: 10 },
+  { id: 52, name: 'The One Last Job', city: 'Los Santos', tier: 5, crew: 3, setupCost: 100000, payout: [1000000, 2000000], wanted: 5, steps: ['Call in every favor', 'Assemble dream team', 'Three-pronged assault', 'Land, sea, and air', 'Breach the mega-vault', 'Fight off private army', 'Helicopter to submarine', 'Sail into the sunset'], skill: 'strength', skillReq: 10 }
+];
 
 // === city.js ===
 
@@ -2536,47 +2664,90 @@ function spawnNPCs() {
 
   const count = Math.max(60, Math.min(120, Math.floor(roadTiles.length / 15)));
   console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs (seed: ${_npcSeed})`);
+  const skinTones = [0xffdbac, 0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0x6b4226];
+  const shirtColors = [0xcc4444, 0x4444cc, 0x44cc44, 0xcccc44, 0xcc44cc, 0x44cccc, 0xff8844, 0xffffff, 0x222222, 0xff6699, 0x6644aa, 0x44aa88];
+  const pantColors = [0x222244, 0x333333, 0x443322, 0x224422, 0x111111, 0x444466];
+  const hatStyles = ['none', 'none', 'none', 'cap', 'cap', 'beanie', 'tophat'];
+  const hatColors = [0x222222, 0xcc2222, 0x2222cc, 0x22aa22, 0xffd700, 0xff6600, 0x8822aa];
+
   for (let i = 0; i < count; i++) {
     const rt = roadTiles[Math.floor(rng() * roadTiles.length)];
-    const color = npcColors[Math.floor(rng() * npcColors.length)];
+    const shirt = shirtColors[Math.floor(rng() * shirtColors.length)];
+    const pants = pantColors[Math.floor(rng() * pantColors.length)];
+    const skin = skinTones[Math.floor(rng() * skinTones.length)];
+    const isFemale = rng() < 0.4;
+    const bodyW = isFemale ? 0.1 : 0.12 + rng() * 0.04;
+    const bodyH = 0.35 + rng() * 0.15;
     const group = new THREE.Group();
 
-    // Body - bigger and more visible
-    const bodyGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.45, 8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, emissive: color, emissiveIntensity: 0.15 });
+    // Body/torso
+    const bodyGeo = new THREE.CylinderGeometry(bodyW, bodyW + 0.02, bodyH, 8);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.7 });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.35;
+    body.position.y = bodyH / 2 + 0.12;
     body.castShadow = true;
     body.name = 'npcBody';
     group.add(body);
 
-    // Head - bigger
-    const headGeo = new THREE.SphereGeometry(0.1, 8, 6);
-    const skinColor = rng() < 0.5 ? 0xddaa77 : 0x885533;
-    const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6, emissive: 0xffddaa, emissiveIntensity: 0.1 });
+    // Head
+    const headR = isFemale ? 0.09 : 0.1;
+    const headGeo = new THREE.SphereGeometry(headR, 8, 6);
+    const headMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.6 });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 0.65;
+    head.position.y = bodyH + 0.22;
     head.name = 'npcHead';
     group.add(head);
 
-    const legGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.25, 6);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x222244 });
+    // Hair/hat
+    const hatStyle = hatStyles[Math.floor(rng() * hatStyles.length)];
+    if (hatStyle === 'cap') {
+      const capMat = new THREE.MeshStandardMaterial({ color: hatColors[Math.floor(rng() * hatColors.length)] });
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.015, 8), capMat);
+      brim.position.set(0, bodyH + 0.3, 0.03);
+      group.add(brim);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.06, 8), capMat);
+      top.position.set(0, bodyH + 0.34, 0);
+      group.add(top);
+    } else if (hatStyle === 'beanie') {
+      const bMat = new THREE.MeshStandardMaterial({ color: hatColors[Math.floor(rng() * hatColors.length)] });
+      const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), bMat);
+      beanie.position.set(0, bodyH + 0.27, 0);
+      group.add(beanie);
+    } else if (hatStyle === 'tophat') {
+      const thMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.01, 8), thMat);
+      brim.position.y = bodyH + 0.3;
+      group.add(brim);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 8), thMat);
+      top.position.y = bodyH + 0.37;
+      group.add(top);
+    } else if (isFemale) {
+      // Hair for female NPCs
+      const hairMat = new THREE.MeshStandardMaterial({ color: [0x332211, 0x663311, 0x111111, 0xaa6633, 0xcc8844][Math.floor(rng() * 5)] });
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), hairMat);
+      hair.position.set(0, bodyH + 0.24, -0.02);
+      group.add(hair);
+    }
+
+    // Legs
+    const legGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.2, 6);
+    const legMat = new THREE.MeshStandardMaterial({ color: pants });
     const legL = new THREE.Mesh(legGeo, legMat);
-    legL.position.set(-0.06, 0.12, 0);
+    legL.position.set(-0.05, 0.1, 0);
     legL.name = 'legL';
     group.add(legL);
     const legR = new THREE.Mesh(legGeo, legMat);
-    legR.position.set(0.06, 0.12, 0);
+    legR.position.set(0.05, 0.1, 0);
     legR.name = 'legR';
     group.add(legR);
 
-    // Small marker light above NPC head so they're always visible
-    const markerGeo = new THREE.SphereGeometry(0.04, 6, 6);
+    // Hostile/friendly marker
+    const markerGeo = new THREE.SphereGeometry(0.035, 6, 6);
     const isHostile = rng() < 0.25;
     const markerColor = isHostile ? 0xff4444 : 0x44ff44;
     const markerMat = new THREE.MeshStandardMaterial({ color: markerColor, emissive: markerColor, emissiveIntensity: 1.0 });
     const marker = new THREE.Mesh(markerGeo, markerMat);
-    marker.position.y = 0.85;
+    marker.position.y = bodyH + 0.38;
     group.add(marker);
 
     group.position.set(rt.x + 0.5, 0, rt.y + 0.5);
@@ -3934,6 +4105,7 @@ async function initSchema() {
     CREATE TABLE IF NOT EXISTS gang_upgrades(name VARCHAR PRIMARY KEY, level INT DEFAULT 0);
     INSERT INTO gang_upgrades VALUES ('safe_house',0),('weapon_locker',0),('smuggling_routes',0) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS gang_relations(gang VARCHAR PRIMARY KEY, relation VARCHAR DEFAULT 'Hostile');
+    CREATE TABLE IF NOT EXISTS heist_progress(heist_id INT PRIMARY KEY, step INT DEFAULT 0, completed BOOLEAN DEFAULT FALSE);
     CREATE TABLE IF NOT EXISTS district_heat(district VARCHAR, city VARCHAR, heat INT DEFAULT 0, PRIMARY KEY(district, city));
     CREATE TABLE IF NOT EXISTS perks(name VARCHAR PRIMARY KEY, unlocked INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS world_events(id INT DEFAULT nextval('event_id_seq'), day INT, hour INT, description VARCHAR);
@@ -4929,6 +5101,8 @@ const peerShootTimestamps = new Map();
 // NPC seed for deterministic spawning across multiplayer peers
 let _npcSeedValue = Math.floor(Math.random() * 2147483647);
 let _mpCityOverride = null; // set by worldSync so joiner uses host's city
+const _activeBounties = new Map(); // peerId -> { amount, placedBy, placedByName }
+let _lastAttackerPeerId = null;
 
 // --------------------------------------------------------
 //  EVENT LOG
@@ -5095,12 +5269,40 @@ setCallbacks({
       case 'police': log(`${name} has cops on them!`, 'c-yellow'); break;
       case 'death': {
         log(`${name} was WASTED!`, 'c-red');
-        // Show death particles at remote duck's position
         const rd = getRemoteDucks().get(peerId);
         if (rd) spawnParticles(rd.group.position.x, rd.group.position.z, 0xff0000, 25, 2, 2);
+        // Check if WE killed them and there's a bounty
+        const localId = getLocalPeerId();
+        if (data.killedBy === localId && _activeBounties.has(peerId)) {
+          const bounty = _activeBounties.get(peerId);
+          _activeBounties.delete(peerId);
+          (async () => {
+            await exec(`UPDATE player SET cash=cash+${bounty.amount}`);
+            log(`BOUNTY COLLECTED: $${bounty.amount.toLocaleString()} for killing ${name}!`, 'c-gold');
+            spawnParticlesAtDuck(0xffd700, 20, 2, 2);
+            broadcastAction({ action: 'bounty_claimed', targetId: peerId, targetName: name, amount: bounty.amount });
+            await updateHUD();
+          })();
+        }
         break;
       }
       case 'gang_join': log(`${name} joined your gang: ${data.gang}!`, 'c-magenta'); break;
+      case 'bounty_placed': {
+        if (data.targetId && data.amount > 0) {
+          _activeBounties.set(data.targetId, { amount: data.amount, placedBy: peerId, placedByName: name });
+          const targetName = data.targetId === getLocalPeerId() ? 'YOU' : (getPeers().get(data.targetId)?.name || 'someone');
+          log(`BOUNTY: ${name} placed $${data.amount.toLocaleString()} on ${targetName}!`, 'c-red');
+          if (data.targetId === getLocalPeerId()) {
+            log('There\'s a price on your head! Watch your back!', 'c-red');
+          }
+        }
+        break;
+      }
+      case 'bounty_claimed': {
+        log(`BOUNTY CLAIMED: ${name} collected $${data.amount?.toLocaleString() || '?'} for killing ${data.targetName || 'someone'}!`, 'c-gold');
+        _activeBounties.delete(data.targetId);
+        break;
+      }
       case 'race_challenge': {
         const buyIn = safeInt(data.buyIn, 0, 100000);
         if (buyIn <= 0) break;
@@ -5210,6 +5412,7 @@ setCallbacks({
       spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
       const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
       log(`${shooterName} shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed by armor)` : ''}`, 'c-red');
+      _lastAttackerPeerId = peerId;
       await checkDeath();
       await updateHUD();
     } else {
@@ -5767,7 +5970,8 @@ async function checkDeath() {
     log('╚══════════════════════════════════════╝', 'c-red');
     if (isMultiplayer()) {
       const mp = await q1('SELECT name, char_type, x, y, health, wanted_level, gang FROM player');
-      broadcastAction({ action: 'death', name: mp.name });
+      broadcastAction({ action: 'death', name: mp.name, killedBy: _lastAttackerPeerId });
+      _lastAttackerPeerId = null;
       // Broadcast new position so peers see respawn at hospital (with small delay so death particles show first)
       setTimeout(() => {
         broadcastMove({ x: mp.x, y: mp.y, name: mp.name, char: mp.char_type, health: mp.health, wanted: mp.wanted_level, gang: mp.gang || '' });
@@ -6191,6 +6395,8 @@ function showMainActions() {
     { key: 'F5', label: 'Save Game',     action: saveGame },
     { key: 'X', label: 'Strip Club',     action: menuStripClub },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
+    { key: 'J', label: 'Heists',         action: menuHeists },
+    ...(isMultiplayer() ? [{ key: 'B', label: 'Bounties',       action: menuBounties }] : []),
     { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
   const el = $('actions');
@@ -7225,6 +7431,188 @@ async function menuPerks() {
 }
 
 // --------------------------------------------------------
+//  PVP BOUNTIES
+// --------------------------------------------------------
+async function menuBounties() {
+  if (!isMultiplayer()) { log('Bounties are multiplayer only.', 'c-gray'); showMainActions(); return; }
+  const p = await q1('SELECT cash, name FROM player');
+  const peers = getPeers();
+  const localId = getLocalPeerId();
+  let html = '';
+
+  // Show active bounties
+  if (_activeBounties.size > 0) {
+    html += '<div class="c-red" style="margin-bottom:6px">--- Active Bounties ---</div>';
+    for (const [targetId, bounty] of _activeBounties) {
+      const targetName = targetId === localId ? 'YOU' : (peers.get(targetId)?.name || targetId.slice(0, 8));
+      html += `<div style="color:#ff8800;margin:2px 0">$${bounty.amount.toLocaleString()} on ${targetName} (placed by ${bounty.placedByName})</div>`;
+    }
+  } else {
+    html += '<div class="c-gray" style="margin-bottom:6px">No active bounties.</div>';
+  }
+
+  // Place bounty options
+  html += '<div class="c-yellow" style="margin-top:8px">--- Place a Bounty ---</div>';
+  if (peers.size === 0) {
+    html += '<div class="c-gray">No other players to target.</div>';
+  } else {
+    for (const [pid, info] of peers) {
+      const amounts = [500, 1000, 5000, 10000];
+      for (const amt of amounts) {
+        if (p.cash >= amt) {
+          html += `<div style="margin:2px 0"><button class="btn place-bounty" data-target="${pid}" data-amount="${amt}" data-name="${info.name || pid.slice(0, 8)}">$${amt.toLocaleString()} on ${info.name || pid.slice(0, 8)}</button></div>`;
+        }
+      }
+    }
+  }
+
+  showSubMenuHTML('Bounty Board', html);
+  $('sub-menu').querySelectorAll('.place-bounty').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetId = btn.dataset.target;
+      const amount = parseInt(btn.dataset.amount);
+      const targetName = btn.dataset.name;
+      const cash = await qv('SELECT cash FROM player');
+      if (cash < amount) { log('Not enough cash!', 'c-red'); return; }
+      await exec(`UPDATE player SET cash=cash-${amount}`);
+      _activeBounties.set(targetId, { amount, placedBy: localId, placedByName: p.name });
+      broadcastAction({ action: 'bounty_placed', targetId, amount, targetName });
+      log(`Placed $${amount.toLocaleString()} bounty on ${targetName}!`, 'c-red');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    });
+  });
+}
+
+// --------------------------------------------------------
+//  HEISTS
+// --------------------------------------------------------
+async function menuHeists() {
+  const p = await q1('SELECT city, cash, respect FROM player');
+  const completed = await q('SELECT heist_id, step, completed FROM heist_progress');
+  const completedMap = new Map(completed.map(h => [h.heist_id, h]));
+
+  // Available heists: in current city, not completed, meets skill req
+  const available = [];
+  const inProgress = [];
+  const done = [];
+  for (const h of HEISTS) {
+    const prog = completedMap.get(h.id);
+    if (prog?.completed) { done.push(h); continue; }
+    if (h.city !== p.city) continue;
+    const skill = await getSkill(h.skill);
+    if (skill < h.skillReq) continue;
+    if (prog && prog.step > 0) { inProgress.push({ heist: h, step: prog.step }); continue; }
+    available.push(h);
+  }
+
+  const tierNames = { 1: 'Petty', 2: 'Small Job', 3: 'Professional', 4: 'Major', 5: 'Legendary' };
+  const tierColors = { 1: '#aaa', 2: '#4488ff', 3: '#ff8800', 4: '#ff4444', 5: '#ff00ff' };
+  let html = `<div class="c-gray" style="font-size:10px;margin-bottom:6px">${done.length}/${HEISTS.length} heists completed</div>`;
+
+  if (inProgress.length > 0) {
+    html += '<div class="c-yellow">--- In Progress ---</div>';
+    for (const { heist: h, step } of inProgress) {
+      html += `<div style="margin:3px 0"><button class="btn heist-continue" data-id="${h.id}" style="text-align:left;width:100%">`;
+      html += `<span style="color:${tierColors[h.tier]}">[${tierNames[h.tier]}]</span> ${h.name} — Step ${step + 1}/${h.steps.length}: ${h.steps[step]}`;
+      html += `</button></div>`;
+    }
+  }
+
+  if (available.length > 0) {
+    html += '<div class="c-yellow" style="margin-top:6px">--- Available ---</div>';
+    for (const h of available) {
+      const payRange = `$${(h.payout[0]/1000).toFixed(0)}K-$${(h.payout[1]/1000).toFixed(0)}K`;
+      const crewTxt = h.crew > 0 ? `, ${h.crew} crew` : '';
+      const costTxt = h.setupCost > 0 ? `, $${h.setupCost.toLocaleString()} setup` : '';
+      html += `<div style="margin:3px 0"><button class="btn heist-start" data-id="${h.id}" style="text-align:left;width:100%">`;
+      html += `<span style="color:${tierColors[h.tier]}">[${tierNames[h.tier]}]</span> ${h.name} — ${payRange}${crewTxt}${costTxt}`;
+      html += `</button></div>`;
+    }
+  } else if (inProgress.length === 0) {
+    html += '<div class="c-gray" style="margin-top:6px">No heists available here. Travel to another city or level up skills.</div>';
+  }
+
+  if (done.length > 0) {
+    html += `<div class="c-gray" style="margin-top:6px;font-size:10px">Completed: ${done.map(h => h.name).join(', ')}</div>`;
+  }
+
+  showSubMenuHTML(`Heists — ${p.city}`, html);
+
+  $('sub-menu').querySelectorAll('.heist-start').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const h = HEISTS.find(x => x.id === parseInt(btn.dataset.id));
+      if (!h) return;
+      const cash = await qv('SELECT cash FROM player');
+      if (cash < h.setupCost) { log(`Need $${h.setupCost.toLocaleString()} for setup costs!`, 'c-red'); return; }
+      const recruits = (await qv('SELECT COUNT(*) FROM recruits')) || 0;
+      if (h.crew > 0 && recruits < h.crew) { log(`Need ${h.crew} crew members! Recruit at Gang HQ [8].`, 'c-red'); return; }
+      hideSubMenu();
+      if (h.setupCost > 0) await exec(`UPDATE player SET cash=cash-${h.setupCost}`);
+      await exec(`INSERT INTO heist_progress VALUES (${h.id}, 0, FALSE) ON CONFLICT(heist_id) DO UPDATE SET step=0, completed=FALSE`);
+      log(`Started heist: ${h.name}`, 'c-gold');
+      log(`Step 1/${h.steps.length}: ${h.steps[0]}`, 'c-yellow');
+      logAction('heist_start', h.name);
+      await _executeHeistStep(h, 0);
+    });
+  });
+
+  $('sub-menu').querySelectorAll('.heist-continue').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const h = HEISTS.find(x => x.id === parseInt(btn.dataset.id));
+      if (!h) return;
+      const prog = await q1(`SELECT step FROM heist_progress WHERE heist_id=${h.id}`);
+      if (!prog) return;
+      hideSubMenu();
+      await _executeHeistStep(h, prog.step);
+    });
+  });
+}
+
+async function _executeHeistStep(heist, stepIdx) {
+  const step = heist.steps[stepIdx];
+  const skill = await getSkill(heist.skill);
+  const baseChance = 50 + skill * 4 - heist.tier * 5;
+  const successChance = Math.min(95, Math.max(20, baseChance));
+
+  setStatus(`Heist: ${step}...`);
+  await advanceTime(1);
+
+  if (chance(successChance)) {
+    // Step succeeded
+    if (stepIdx >= heist.steps.length - 1) {
+      // HEIST COMPLETE!
+      const payout = rand(heist.payout[0], heist.payout[1]);
+      await exec(`UPDATE player SET cash=cash+${payout}, wanted_level=LEAST(5,wanted_level+${heist.wanted}), respect=respect+${heist.tier * 50}`);
+      await exec(`UPDATE heist_progress SET step=${stepIdx + 1}, completed=TRUE WHERE heist_id=${heist.id}`);
+      log(`HEIST COMPLETE: ${heist.name}!`, 'c-gold');
+      log(`Payout: $${payout.toLocaleString()} | +${heist.tier * 50} Respect | +${heist.wanted} Wanted`, 'c-green');
+      spawnParticlesAtDuck(0xffd700, 30, 3, 2);
+      logAction('heist_complete', `${heist.name} +$${payout}`);
+      await maybeSkillUp(heist.skill);
+    } else {
+      // Advance to next step
+      await exec(`UPDATE heist_progress SET step=${stepIdx + 1} WHERE heist_id=${heist.id}`);
+      log(`Step ${stepIdx + 1}/${heist.steps.length} complete: ${step}`, 'c-green');
+      log(`Next: ${heist.steps[stepIdx + 1]}`, 'c-yellow');
+      spawnParticlesAtDuck(0x44ff44, 10, 1.5, 1);
+    }
+  } else {
+    // Step failed
+    const dmg = rand(5, 15) * heist.tier;
+    const lostCash = rand(100, 500) * heist.tier;
+    await exec(`UPDATE player SET health=GREATEST(0,health-${dmg}), cash=GREATEST(0,cash-${lostCash}), wanted_level=LEAST(5,wanted_level+${Math.ceil(heist.wanted/2)})`);
+    log(`Heist step FAILED: ${step}`, 'c-red');
+    log(`-${dmg} HP, -$${lostCash}, +${Math.ceil(heist.wanted/2)} Wanted. Try again from this step.`, 'c-red');
+    spawnParticlesAtDuck(0xff2222, 15, 2, 1);
+    logAction('heist_fail', `${heist.name} step ${stepIdx + 1}`);
+    await checkDeath();
+  }
+  clearStatus();
+  await updateHUD();
+  showMainActions();
+}
+
+// --------------------------------------------------------
 //  INVENTORY
 // --------------------------------------------------------
 async function menuInventory() {
@@ -7606,7 +7994,7 @@ function rebuildActionKeys() {
     { key: '7', action: menuDrugs }, { key: '8', action: menuGang }, { key: '9', action: menuPerks },
     { key: '0', action: menuInventory }, { key: 'h', action: menuHookers },
     { key: 'n', action: menuNews }, { key: 'l', action: menuStats }, { key: 'f5', action: saveGame },
-    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: '/', action: menuHelp }
+    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists }, { key: 'b', action: menuBounties }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
@@ -7786,6 +8174,23 @@ window.startNewGame = async function() {
   await updateHUD(); await checkPOI();
   showMainActions();
   if (!window._autoSaveInterval) window._autoSaveInterval = setInterval(() => { if (gameActive) saveGame(); }, 5 * 60 * 1000);
+  // Wanted decay: -1 every 2 minutes of play
+  if (!window._wantedDecayInterval) window._wantedDecayInterval = setInterval(async () => {
+    if (!gameActive) return;
+    const wanted = await qv('SELECT wanted_level FROM player');
+    if (wanted > 0) {
+      await exec('UPDATE player SET wanted_level = wanted_level - 1');
+      const newW = await qv('SELECT wanted_level FROM player');
+      if (newW <= 0) {
+        clearPoliceNPCs(); stopSiren(); _policeActive = false;
+        if (isMultiplayer()) broadcastAction({ action: 'police_clear' });
+        log('Cops lost your trail. Wanted level cleared.', 'c-green');
+      } else {
+        log(`Laying low... wanted level dropped to ${newW}.`, 'c-cyan');
+      }
+      await updateHUD();
+    }
+  }, 120000);
   startPolicePresenceLoop();
 };
 

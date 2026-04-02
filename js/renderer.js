@@ -1556,47 +1556,90 @@ export function spawnNPCs() {
 
   const count = Math.max(60, Math.min(120, Math.floor(roadTiles.length / 15)));
   console.log(`spawnNPCs: ${roadTiles.length} road tiles, spawning ${count} NPCs (seed: ${_npcSeed})`);
+  const skinTones = [0xffdbac, 0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0x6b4226];
+  const shirtColors = [0xcc4444, 0x4444cc, 0x44cc44, 0xcccc44, 0xcc44cc, 0x44cccc, 0xff8844, 0xffffff, 0x222222, 0xff6699, 0x6644aa, 0x44aa88];
+  const pantColors = [0x222244, 0x333333, 0x443322, 0x224422, 0x111111, 0x444466];
+  const hatStyles = ['none', 'none', 'none', 'cap', 'cap', 'beanie', 'tophat'];
+  const hatColors = [0x222222, 0xcc2222, 0x2222cc, 0x22aa22, 0xffd700, 0xff6600, 0x8822aa];
+
   for (let i = 0; i < count; i++) {
     const rt = roadTiles[Math.floor(rng() * roadTiles.length)];
-    const color = npcColors[Math.floor(rng() * npcColors.length)];
+    const shirt = shirtColors[Math.floor(rng() * shirtColors.length)];
+    const pants = pantColors[Math.floor(rng() * pantColors.length)];
+    const skin = skinTones[Math.floor(rng() * skinTones.length)];
+    const isFemale = rng() < 0.4;
+    const bodyW = isFemale ? 0.1 : 0.12 + rng() * 0.04;
+    const bodyH = 0.35 + rng() * 0.15;
     const group = new THREE.Group();
 
-    // Body - bigger and more visible
-    const bodyGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.45, 8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, emissive: color, emissiveIntensity: 0.15 });
+    // Body/torso
+    const bodyGeo = new THREE.CylinderGeometry(bodyW, bodyW + 0.02, bodyH, 8);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.7 });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.35;
+    body.position.y = bodyH / 2 + 0.12;
     body.castShadow = true;
     body.name = 'npcBody';
     group.add(body);
 
-    // Head - bigger
-    const headGeo = new THREE.SphereGeometry(0.1, 8, 6);
-    const skinColor = rng() < 0.5 ? 0xddaa77 : 0x885533;
-    const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6, emissive: 0xffddaa, emissiveIntensity: 0.1 });
+    // Head
+    const headR = isFemale ? 0.09 : 0.1;
+    const headGeo = new THREE.SphereGeometry(headR, 8, 6);
+    const headMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.6 });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 0.65;
+    head.position.y = bodyH + 0.22;
     head.name = 'npcHead';
     group.add(head);
 
-    const legGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.25, 6);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x222244 });
+    // Hair/hat
+    const hatStyle = hatStyles[Math.floor(rng() * hatStyles.length)];
+    if (hatStyle === 'cap') {
+      const capMat = new THREE.MeshStandardMaterial({ color: hatColors[Math.floor(rng() * hatColors.length)] });
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.015, 8), capMat);
+      brim.position.set(0, bodyH + 0.3, 0.03);
+      group.add(brim);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.06, 8), capMat);
+      top.position.set(0, bodyH + 0.34, 0);
+      group.add(top);
+    } else if (hatStyle === 'beanie') {
+      const bMat = new THREE.MeshStandardMaterial({ color: hatColors[Math.floor(rng() * hatColors.length)] });
+      const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), bMat);
+      beanie.position.set(0, bodyH + 0.27, 0);
+      group.add(beanie);
+    } else if (hatStyle === 'tophat') {
+      const thMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.01, 8), thMat);
+      brim.position.y = bodyH + 0.3;
+      group.add(brim);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 8), thMat);
+      top.position.y = bodyH + 0.37;
+      group.add(top);
+    } else if (isFemale) {
+      // Hair for female NPCs
+      const hairMat = new THREE.MeshStandardMaterial({ color: [0x332211, 0x663311, 0x111111, 0xaa6633, 0xcc8844][Math.floor(rng() * 5)] });
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), hairMat);
+      hair.position.set(0, bodyH + 0.24, -0.02);
+      group.add(hair);
+    }
+
+    // Legs
+    const legGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.2, 6);
+    const legMat = new THREE.MeshStandardMaterial({ color: pants });
     const legL = new THREE.Mesh(legGeo, legMat);
-    legL.position.set(-0.06, 0.12, 0);
+    legL.position.set(-0.05, 0.1, 0);
     legL.name = 'legL';
     group.add(legL);
     const legR = new THREE.Mesh(legGeo, legMat);
-    legR.position.set(0.06, 0.12, 0);
+    legR.position.set(0.05, 0.1, 0);
     legR.name = 'legR';
     group.add(legR);
 
-    // Small marker light above NPC head so they're always visible
-    const markerGeo = new THREE.SphereGeometry(0.04, 6, 6);
+    // Hostile/friendly marker
+    const markerGeo = new THREE.SphereGeometry(0.035, 6, 6);
     const isHostile = rng() < 0.25;
     const markerColor = isHostile ? 0xff4444 : 0x44ff44;
     const markerMat = new THREE.MeshStandardMaterial({ color: markerColor, emissive: markerColor, emissiveIntensity: 1.0 });
     const marker = new THREE.Mesh(markerGeo, markerMat);
-    marker.position.y = 0.85;
+    marker.position.y = bodyH + 0.38;
     group.add(marker);
 
     group.position.set(rt.x + 0.5, 0, rt.y + 0.5);

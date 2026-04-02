@@ -1,166 +1,135 @@
 # Duck Theft Auto
 
-A GTA-style open-world crime game where all game state lives in DuckDB. Runs entirely in the browser — no server required. Optional P2P multiplayer via WebRTC.
+A GTA-style open-world crime game where **all game state lives in SQL tables** powered by DuckDB-WASM. Runs entirely in the browser — no server required. P2P multiplayer via WebRTC.
 
-Inspired by some fun projects I've enjoyed
-- [duckdb-doom](https://github.com/nickvdyck/duckdb-doom)
-- [Bash-Theft-Auto](https://github.com/eliasbenaddou/Bash-Theft-Auto)
+Inspired by [duckdb-doom](https://github.com/nickvdyck/duckdb-doom) and [Bash-Theft-Auto](https://github.com/eliasbenaddou/Bash-Theft-Auto).
 
 ## Play
 
-Open `dist/index.html` in a browser. That's it.
+Open `dist/index.html` in a browser. Or visit the [live demo](https://stekole.github.io/duck-theft-auto/).
 
-Enter name "test" for $999,999 starting cash.
+## Why DuckDB as a Game Engine?
 
-## How It Works
+Every game engine has a state model — objects, components, entity systems. This game takes a radically different approach: **every player action is a SQL query against DuckDB-WASM running in your browser.**
 
-Every player action is a SQL query against DuckDB-WASM running in your browser. Player stats, inventory, gang territories, the game clock — all stored in SQL tables. No game objects, no classes, just rows and queries.
+| Traditional Game Engine | Duck Theft Auto |
+|------------------------|-----------------|
+| State in JS objects/classes | State in SQL rows |
+| Mutation via method calls | Mutation via `UPDATE`/`INSERT` |
+| Save = serialize object graph | Save = dump tables to JSON |
+| Query state = traverse objects | Query state = `SELECT` with `WHERE`/`JOIN` |
+| Relationships via references | Relationships via foreign keys |
 
-### Tables
+**Why DuckDB-WASM specifically:**
+- **Analytical engine** — aggregations, joins, GROUP BY are fast even on thousands of rows
+- **In-browser WASM** — no server, no install, works from `file://`
+- **10-100x faster** than sql.js on analytical queries
+- **Zero dependencies** — single CDN import, no npm
+- **Columnar storage** — memory-efficient for tables with many rows
 
-| Table | What it stores |
-|-------|---------------|
+The tradeoff: ~20-30 MB baseline memory for WASM. For a browser game already loading Three.js, this is acceptable.
+
+### SQL Tables
+
+| Table | Purpose |
+|-------|---------|
 | `player` | Name, location, cash, health, armor, wanted level, gang, respect |
-| `map` | 40x40 procedural city grid |
+| `map` | 120x120 procedural city grid |
 | `skills` | Driving, strength, charisma, stealth, dealing |
-| `guns` | Owned weapons with crime success bonuses |
-| `drugs` | Drug inventory with avg buy price |
-| `vehicles` | Owned vehicles for free travel |
-| `territories` | 50 districts across 5 cities with gang ownership |
-| `businesses` | Owned properties generating daily income |
-| `recruits` | Gang members with strength and daily upkeep |
-| `game_clock` | Day and hour, advances with every action |
-| `remote_players` | Connected multiplayer peers (position, character, health) |
-| `connection_log` | P2P connection events with timestamps and remote IPs |
+| `guns` | Owned weapons with damage bonuses, equipped state |
+| `drugs` | Drug inventory with average buy price |
+| `vehicles` | Owned vehicles, active/garaged state |
+| `territories` | Districts across 5 cities with gang ownership |
+| `businesses` | Properties generating daily income |
+| `heist_progress` | Multi-step heist mission state |
+| `game_clock` | Day and hour, advances with actions |
+| `action_log` | Every player action timestamped for analytics |
+
+### Performance
+
+| Dataset | Query Speed |
+|---------|-------------|
+| Game data (~200-2000 rows) | Sub-millisecond |
+| 100K rows | ~10ms |
+| 1M rows | ~100ms |
+
+The game's queries are effectively instant. DuckDB is overkill for the data volume — but that's the point: SQL as a game state interface.
+
+## Architecture
+
+```
+index.html          — HTML, CSS, module bootstrap
+js/constants.js     — game data (cities, jobs, crimes, guns, drugs, gangs, heists)
+js/city.js          — procedural city map generation (120x120, seeded RNG)
+js/renderer.js      — Three.js 3D rendering (duck, city, NPCs, vehicles, particles)
+js/db.js            — DuckDB-WASM init, schema, queries, save/load
+js/multiplayer.js   — P2P multiplayer (Trystero/Nostr, WebRTC)
+js/game.js          — all gameplay logic, menus, keyboard controls
+build.sh            — builds dist/index.html single-file (works offline)
+```
+
+**Key design choices:**
+- ES modules, no npm, CDN imports via import maps
+- All state queries go through `exec()`, `q()`, `q1()`, `qv()` helpers
+- Save/Load: serialize all tables to JSON → localStorage
+- Procedural city generation uses seeded PRNG for multiplayer determinism
+- Single-file dist build via shell script (perl for import stripping)
+
+## Multiplayer
+
+P2P via [Trystero](https://github.com/dmotz/trystero) using Nostr relay signaling → WebRTC data channels.
+
+- **Lobby discovery** — hosts announce via Nostr relays, joiners see available games
+- **Deterministic maps** — seeded PRNG ensures all peers get identical city layouts
+- **Synced state** — player positions, NPC kills, police spawns, time of day, race challenges
+- **PvP** — shoot other players, place bounties
+- **Optional room passwords** — AES-GCM encrypted signaling
+
+| Topology | Max Players | Notes |
+|----------|------------|-------|
+| P2P Mesh (current) | 4-6 | Connections scale quadratically |
+| Star (host relays) | 8-12 | Future upgrade path |
+
+Each player runs their own DuckDB instance. No shared memory pressure.
 
 ## Features
 
-- **3D city** — Three.js isometric view with buildings, roads, trees, water, parked cars
-- **3D duck character** — with hat, waddle animation, and vehicle display
+- **3D city** — Three.js isometric view with downtown skyline, parks, bridges, docks
+- **7 characters** — CJ, Tommy, Claude, Niko, Catalina + god-mode Oz & Izzy
+- **52 heists** — 5 tiers from petty theft to legendary multi-step operations
+- **Crime system** — robberies, drug dealing, carjacking, gang wars
+- **Police** — persistent cops that chase, shoot, and spawn based on wanted level
+- **Wanted decay** — level drops over time, or lay low at gang hangout/strip club
+- **PvP bounties** — place cash bounties on other players in multiplayer
+- **Vehicles** — 19 styles with unique speeds, steal cop cars or NPC cars
 - **Day/night cycle** — dynamic lighting, street lamps, neon signs
-- **City life** — NPC pedestrians, particle effects, police sirens
-- **5 cities** — Los Santos, San Fierro, Las Venturas, Vice City, Liberty City
-- **12 legal jobs** with skill-based pay
-- **8 crime types** — rob, burglary, heist, carjack, pickpocket, mug, arson, kidnap
-- **Wanted system** — 0-5 stars, police encounters (run/bribe/surrender)
-- **Gang empire** — join or create gangs, 7 ranks, territory wars, recruits, upgrades
-- **Drug market** — buy/sell with dynamic pricing
-- **Businesses** — car wash, nightclub, chop shop, drug lab, strip club
-- **Hookers** — 3 service tiers for health restoration
-- **Gambling** — slots, dice, poker
-- **Street racing** — risk it all for cash
-- **Vehicles** — buy or carjack, enables free travel
-- **Perks** — 6 unlockable perks across 3 tiers
-- **Save/Load** — persists to localStorage with auto-save every 5 minutes
-- **AI gang wars** — rival gangs fight over territory in the background
-- **P2P Multiplayer** — optional WebRTC multiplayer via Trystero (Nostr signaling)
-  - Host or join games with a 4-character room code
-  - See other players as colored ducks on the shared map
-  - PvP combat — shoot other players in proximity
-  - In-game chat (press T)
-  - Shared world events — see other players' crimes, robberies, and deaths
-  - Security: rate limiting, tick validation, movement validation, peer kick voting
-
-## Data Persistence
-
-All game state lives in **DuckDB-WASM**, an in-memory SQL database running entirely in your browser. There is no server — everything happens client-side.
-
-**How saving works:**
-
-1. During gameplay, all data (player stats, inventory, territories, etc.) exists as rows in DuckDB tables in memory
-2. When you save (F5 or auto-save), every table is serialized to JSON and written to `localStorage`
-3. When you load, the JSON is read back from `localStorage` and re-inserted into fresh DuckDB tables
-
-**What this means:**
-
-- Saves persist across page refreshes and browser restarts
-- Auto-save runs every 5 minutes during gameplay
-- Clearing your browser data / localStorage will delete your save
-- Each browser profile has its own independent save
-- Save data is stored under the key `duck_theft_auto_save` in localStorage
-- There is one save slot — saving overwrites the previous save
+- **Street racing** — solo or multiplayer with buy-ins
+- **Territory system** — capture districts, manage alliances, earn daily income
+- **Stats dashboard** — SQL analytics with crime streaks, K/D ratio, play time
+- **Parquet export** — save games as shareable .dta files via DuckDB Parquet
 
 ## Controls
 
 | Key | Action |
 |-----|--------|
-| WASD / Arrow Keys | Move your duck around the 3D city |
-| Enter | Interact with POI (glowing markers) |
-| Space / F | Shoot (targets nearest NPC, cop, or player) |
-| 1-9, 0 | Quick-select menu actions |
-| Escape | Close any menu |
-| Scroll wheel / +/- | Zoom in/out |
-| Q / E | Rotate camera |
-| T | Open chat (multiplayer only) |
-| F5 | Quick save |
+| WASD/Arrows | Move |
+| Space/F | Shoot |
+| Enter | Interact (NPCs, cars, POIs) |
+| Q/E | Rotate camera |
+| Z/C | Zoom in/out |
+| 1-9, 0 | Quick menu access |
+| J | Heists |
+| B | Bounties (multiplayer) |
+| T | Chat (multiplayer) |
+| ` | Cheat console |
+| F5 | Save game |
+| Esc | Close menu |
 
-## Development
+## Build
 
-Source code is split into modules under `js/` for easier editing:
-
-```
-index.html          — HTML, CSS, module bootstrap (needs local server)
-js/constants.js     — game data (cities, jobs, crimes, guns, drugs, gangs, perks)
-js/city.js          — procedural city map generation
-js/renderer.js      — Three.js 3D rendering (duck, city, NPCs, particles, lighting)
-js/db.js            — DuckDB-WASM init, schema, queries, save/load
-js/multiplayer.js   — P2P multiplayer (Trystero/WebRTC, lobby, sync, security)
-js/game.js          — all gameplay logic, menus, keyboard controls
-build.sh            — builds dist/index.html from source files
-dist/index.html     — single-file build (works with file://, no server needed)
+```bash
+bash build.sh
+# Creates dist/index.html — single file, works offline, works with file://
 ```
 
-To develop with split files, run a local server (`python3 -m http.server`) and open `index.html`.
-
-After making changes, rebuild the playable single file:
-
-```
-./build.sh
-```
-
-## Multiplayer
-
-Multiplayer is fully peer-to-peer — no game server required. Players connect directly via WebRTC, with signaling handled by free public Nostr relays.
-
-### How to play multiplayer
-
-1. Open the game in two browser tabs (or on two machines)
-2. Both players select a character
-3. Player 1 clicks **Host Game** — a 4-character room code appears
-4. Player 2 clicks **Join Game**, enters the room code, clicks **Connect**
-5. Once both appear in the lobby, the host clicks **Start Game**
-6. Both players start a new game and can see each other on the map
-
-### Architecture
-
-- **Signaling:** Nostr public relays (free, decentralized, no account needed)
-- **Data transport:** WebRTC data channels (direct P2P, encrypted)
-- **State model:** Host-authoritative — the host's DuckDB is the source of truth for world state. Clients send actions, host validates and broadcasts results.
-- **Each player runs their own DuckDB-WASM** — the host syncs world state to joining clients
-
-### Security
-
-| Layer | Protection |
-|-------|-----------|
-| Rate limiting | Max 30 events/sec per peer — excess silently dropped |
-| Tick validation | Monotonic tick counter per peer — rejects stale/duplicate events |
-| Movement validation | Host rejects teleport moves (>3 tiles per step) |
-| Damage capping | Incoming PvP damage capped at 50 HP to limit cheating |
-| Peer kick | Host can force-kick; vote-kick requires majority |
-| Connection logging | All peer joins/leaves logged to DuckDB with remote IP (from WebRTC stats) |
-| Encryption | WebRTC data channels are encrypted by default (DTLS) |
-
-## Tech
-
-- **Three.js** v0.170.0 — 3D rendering (isometric camera, shadows, day/night cycle)
-- **DuckDB-WASM** v1.28.0 — all game state stored in SQL tables
-- **Trystero** — serverless WebRTC matchmaking via Nostr relays
-- Vanilla JS ES modules, zero npm dependencies
-- CDN imports via import maps
-
-## Changelog
-
-- v4: P2P multiplayer via WebRTC/Trystero, PvP combat, in-game chat, security hardening
-- v3: Three.js 3D rendering, procedural cities, 3D duck character, NPCs, particles, day/night cycle
-- v2: Canvas-based visual improvements
-- v1: ASCII terminal-style rendering
+GitHub Actions auto-deploys to GitHub Pages on push to main.
