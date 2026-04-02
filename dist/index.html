@@ -1194,6 +1194,8 @@ let neonSigns = [];
 let particles = [];
 let playerVehicleMesh = null;
 let currentGameHour = 12;
+let currentWantedLevel = 0;
+function setCurrentWantedLevel(v) { currentWantedLevel = v; }
 
 // Camera settings (isometric-ish)
 let camHeight = 22;
@@ -3151,6 +3153,20 @@ function spawnParticles(worldX, worldZ, color, count, speed, life, gravity) {
   }
 }
 
+function spawnExplosion(worldX, worldZ) {
+  // Big explosion — orange/red/yellow particles + screen shake
+  spawnParticles(worldX, worldZ, 0xff4400, 40, 4, 1.5, 0);
+  spawnParticles(worldX, worldZ, 0xffaa00, 30, 3, 1.2, 0);
+  spawnParticles(worldX, worldZ, 0xff0000, 20, 5, 1.0, 0);
+  spawnParticles(worldX, worldZ, 0x333333, 15, 2, 2.0, 0); // smoke
+  screenShake(0.5, 500);
+  // Flash light at explosion point
+  const flash = new THREE.PointLight(0xff6600, 8, 15);
+  flash.position.set(worldX, 2, worldZ);
+  scene.add(flash);
+  setTimeout(() => scene.remove(flash), 200);
+}
+
 function spawnParticlesAtDuck(color, count, speed, life) {
   if (!duckGroup) return;
   spawnParticles(duckGroup.position.x, duckGroup.position.z, color, count, speed || 1.5, life || 1.5);
@@ -4125,16 +4141,34 @@ function gameLoop() {
   // Night check (used by multiple sections)
   const isNight = currentGameHour < 5 || currentGameHour > 21;
 
-  // NPC walking
+  // NPC walking — react to player wanted level
   for (const npc of npcs) {
-    const step = npc.speed * dt;
-    if (npc.dir === 'x') {
-      npc.group.position.x += npc.facing * step;
-    } else {
-      npc.group.position.z += npc.facing * step;
+    let step = npc.speed * dt;
+    let fleeing = false;
+    // NPCs flee from player when wanted is high
+    if (duckGroup && currentWantedLevel >= 3 && !npc.hostile) {
+      const fdx = npc.group.position.x - duckGroup.position.x;
+      const fdz = npc.group.position.z - duckGroup.position.z;
+      const fDist = Math.sqrt(fdx * fdx + fdz * fdz);
+      if (fDist < 8) {
+        // Run away from player at 2x speed
+        step *= 2.5;
+        fleeing = true;
+        const fleeAngle = Math.atan2(fdx, fdz);
+        npc.group.position.x += Math.sin(fleeAngle) * step;
+        npc.group.position.z += Math.cos(fleeAngle) * step;
+        npc.group.rotation.y = fleeAngle;
+      }
+    }
+    if (!fleeing) {
+      if (npc.dir === 'x') {
+        npc.group.position.x += npc.facing * step;
+      } else {
+        npc.group.position.z += npc.facing * step;
+      }
     }
     npc.walked += step;
-    npc.phase += dt * 8;
+    npc.phase += dt * (fleeing ? 16 : 8);
 
     if (npc._legL) npc._legL.rotation.x = Math.sin(npc.phase) * 0.5;
     if (npc._legR) npc._legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.5;
@@ -4251,11 +4285,21 @@ function gameLoop() {
     const dz = duckGroup.position.z - cop.group.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
 
-    // Chase player (zombie-walk toward them)
+    // Chase player — flank at high wanted levels
     if (dist > 0.6) {
-      const nx = dx / dist, nz = dz / dist;
-      cop.group.position.x += nx * cop.speed * dt;
-      cop.group.position.z += nz * cop.speed * dt;
+      let nx = dx / dist, nz = dz / dist;
+      // At wanted 4+, some cops try to flank (approach from the side)
+      if (currentWantedLevel >= 4 && cop.id % 3 === 0) {
+        // Perpendicular approach — circle around
+        const flankAngle = cop.id % 2 === 0 ? Math.PI / 3 : -Math.PI / 3;
+        const ca = Math.cos(flankAngle), sa = Math.sin(flankAngle);
+        const fnx = nx * ca - nz * sa, fnz = nx * sa + nz * ca;
+        nx = dist < 4 ? fnx : nx; // only flank when close
+        nz = dist < 4 ? fnz : nz;
+      }
+      const spd = cop.speed * (currentWantedLevel >= 3 ? 1.2 : 1.0) * dt;
+      cop.group.position.x += nx * spd;
+      cop.group.position.z += nz * spd;
       cop.group.rotation.y = Math.atan2(nx, nz);
     }
 
@@ -5898,6 +5942,7 @@ async function updateHUD() {
 
   const stars = $('hud-wanted').querySelectorAll('.star');
   stars.forEach((s, i) => s.classList.toggle('active', i < p.wanted_level));
+  setCurrentWantedLevel(p.wanted_level);
 
   $('hud-gang').textContent = p.gang || 'None';
   $('hud-rank').textContent = p.gang_rank || '-';
@@ -6494,9 +6539,10 @@ async function playerShoot() {
     const dmg = 20 + gunBonus;
     const killPos = damagePoliceNPC(cop, dmg);
     if (killPos) {
-      spawnParticles(killPos.x, killPos.z, 0xff2222, 15, 2, 1.2);
-      screenShake(0.2, 200);
-      const loot = rand(50, 150);
+      if (cop.inVehicle) spawnExplosion(killPos.x, killPos.z);
+      else spawnParticles(killPos.x, killPos.z, 0xff2222, 15, 2, 1.2);
+      screenShake(cop.inVehicle ? 0.4 : 0.2, cop.inVehicle ? 400 : 200);
+      const loot = cop.inVehicle ? rand(200, 500) : rand(50, 150);
       await exec(`UPDATE player SET cash=cash+${loot}`);
       spawnFloatingText(`+$${loot}`, '#44ff44');
       registerKill();
@@ -7338,11 +7384,18 @@ async function menuDrugs() {
   if (districtHeat >= 5) html = `<div class="c-red" style="margin-bottom:4px;font-size:10px">High heat district! Drug prices ${districtHeat >= 10 ? 'much ' : ''}higher but riskier.</div>` + html;
   for (let di = 0; di < DRUGS.length; di++) {
     const drug = DRUGS[di];
-    const buyPrice = Math.floor((drug.basePrice + seededRand(priceSeed + di, -20, 30)) * heatMul);
-    const sellMul = 1.2 + (dealSkill * 0.1) + (seededRand(priceSeed + di + 100, 0, 50) / 100);
-    const sellPrice = Math.floor(drug.basePrice * sellMul * heatMul);
+    // Dynamic pricing — wider swings based on time, with supply/demand waves
+    const wave = Math.sin(priceSeed * 0.1 + di * 2.3) * 0.3; // -30% to +30%
+    const spike = Math.sin(priceSeed * 0.03 + di * 7.1) > 0.7 ? 0.5 : 0; // occasional 50% spike
+    const crash = Math.sin(priceSeed * 0.07 + di * 3.7) < -0.8 ? -0.4 : 0; // occasional 40% crash
+    const volatility = 1 + wave + spike + crash;
+    const buyPrice = Math.max(5, Math.floor(drug.basePrice * volatility * heatMul));
+    const sellMul = (1.2 + (dealSkill * 0.1)) * volatility;
+    const sellPrice = Math.max(5, Math.floor(drug.basePrice * sellMul * heatMul));
+    const prevPrice = Math.floor((drug.basePrice + seededRand(priceSeed - 1 + di, -20, 30)) * heatMul);
+    const trend = buyPrice > prevPrice ? '<span style="color:#ff4444">▲</span>' : buyPrice < prevPrice ? '<span style="color:#44ff44">▼</span>' : '<span style="color:#888">─</span>';
     const owned = (await qv(`SELECT qty FROM drugs WHERE name='${drug.name}'`)) || 0;
-    html += `<tr><td>${drug.name}</td><td>$${buyPrice}</td><td>$${sellPrice}</td><td>${owned}</td>`;
+    html += `<tr><td>${drug.name}</td><td>$${buyPrice} ${trend}</td><td>$${sellPrice}</td><td>${owned}</td>`;
     html += `<td><button class="btn buy-drug" data-name="${drug.name}" data-price="${buyPrice}">Buy</button> `;
     html += `<button class="btn sell-drug" data-name="${drug.name}" data-price="${sellPrice}">Sell</button></td></tr>`;
   }

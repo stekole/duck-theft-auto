@@ -27,6 +27,8 @@ export let neonSigns = [];
 export let particles = [];
 export let playerVehicleMesh = null;
 export let currentGameHour = 12;
+export let currentWantedLevel = 0;
+export function setCurrentWantedLevel(v) { currentWantedLevel = v; }
 
 // Camera settings (isometric-ish)
 export let camHeight = 22;
@@ -1984,6 +1986,20 @@ export function spawnParticles(worldX, worldZ, color, count, speed, life, gravit
   }
 }
 
+export function spawnExplosion(worldX, worldZ) {
+  // Big explosion — orange/red/yellow particles + screen shake
+  spawnParticles(worldX, worldZ, 0xff4400, 40, 4, 1.5, 0);
+  spawnParticles(worldX, worldZ, 0xffaa00, 30, 3, 1.2, 0);
+  spawnParticles(worldX, worldZ, 0xff0000, 20, 5, 1.0, 0);
+  spawnParticles(worldX, worldZ, 0x333333, 15, 2, 2.0, 0); // smoke
+  screenShake(0.5, 500);
+  // Flash light at explosion point
+  const flash = new THREE.PointLight(0xff6600, 8, 15);
+  flash.position.set(worldX, 2, worldZ);
+  scene.add(flash);
+  setTimeout(() => scene.remove(flash), 200);
+}
+
 export function spawnParticlesAtDuck(color, count, speed, life) {
   if (!duckGroup) return;
   spawnParticles(duckGroup.position.x, duckGroup.position.z, color, count, speed || 1.5, life || 1.5);
@@ -2958,16 +2974,34 @@ export function gameLoop() {
   // Night check (used by multiple sections)
   const isNight = currentGameHour < 5 || currentGameHour > 21;
 
-  // NPC walking
+  // NPC walking — react to player wanted level
   for (const npc of npcs) {
-    const step = npc.speed * dt;
-    if (npc.dir === 'x') {
-      npc.group.position.x += npc.facing * step;
-    } else {
-      npc.group.position.z += npc.facing * step;
+    let step = npc.speed * dt;
+    let fleeing = false;
+    // NPCs flee from player when wanted is high
+    if (duckGroup && currentWantedLevel >= 3 && !npc.hostile) {
+      const fdx = npc.group.position.x - duckGroup.position.x;
+      const fdz = npc.group.position.z - duckGroup.position.z;
+      const fDist = Math.sqrt(fdx * fdx + fdz * fdz);
+      if (fDist < 8) {
+        // Run away from player at 2x speed
+        step *= 2.5;
+        fleeing = true;
+        const fleeAngle = Math.atan2(fdx, fdz);
+        npc.group.position.x += Math.sin(fleeAngle) * step;
+        npc.group.position.z += Math.cos(fleeAngle) * step;
+        npc.group.rotation.y = fleeAngle;
+      }
+    }
+    if (!fleeing) {
+      if (npc.dir === 'x') {
+        npc.group.position.x += npc.facing * step;
+      } else {
+        npc.group.position.z += npc.facing * step;
+      }
     }
     npc.walked += step;
-    npc.phase += dt * 8;
+    npc.phase += dt * (fleeing ? 16 : 8);
 
     if (npc._legL) npc._legL.rotation.x = Math.sin(npc.phase) * 0.5;
     if (npc._legR) npc._legR.rotation.x = Math.sin(npc.phase + Math.PI) * 0.5;
@@ -3084,11 +3118,21 @@ export function gameLoop() {
     const dz = duckGroup.position.z - cop.group.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
 
-    // Chase player (zombie-walk toward them)
+    // Chase player — flank at high wanted levels
     if (dist > 0.6) {
-      const nx = dx / dist, nz = dz / dist;
-      cop.group.position.x += nx * cop.speed * dt;
-      cop.group.position.z += nz * cop.speed * dt;
+      let nx = dx / dist, nz = dz / dist;
+      // At wanted 4+, some cops try to flank (approach from the side)
+      if (currentWantedLevel >= 4 && cop.id % 3 === 0) {
+        // Perpendicular approach — circle around
+        const flankAngle = cop.id % 2 === 0 ? Math.PI / 3 : -Math.PI / 3;
+        const ca = Math.cos(flankAngle), sa = Math.sin(flankAngle);
+        const fnx = nx * ca - nz * sa, fnz = nx * sa + nz * ca;
+        nx = dist < 4 ? fnx : nx; // only flank when close
+        nz = dist < 4 ? fnz : nz;
+      }
+      const spd = cop.speed * (currentWantedLevel >= 3 ? 1.2 : 1.0) * dt;
+      cop.group.position.x += nx * spd;
+      cop.group.position.z += nz * spd;
       cop.group.rotation.y = Math.atan2(nx, nz);
     }
 

@@ -6,7 +6,7 @@ import { currentMapGrid, setMapSeed } from './city.js';
 import {
   duckGroup, gameActive, setGameActive, setDuckTarget, setDuckFacing,
   camDist, camHeight, camAngle, setCamDist, setCamHeight, setCamAngle,
-  CAM_ZOOM_MIN, CAM_ZOOM_MAX, setCurrentGameHour,
+  CAM_ZOOM_MIN, CAM_ZOOM_MAX, setCurrentGameHour, setCurrentWantedLevel,
   updateLighting, updatePlayerVehicle, renderMinimap,
   spawnParticlesAtDuck, spawnParticles, startSiren, stopSiren,
   buildCity3D, spawnNPCs,
@@ -18,7 +18,7 @@ import {
   updateRemoteDuck, despawnRemoteDuck, getNearestRemoteDuck,
   getRemoteDucks, setNPCSeed, killNPCById,
   setPoliceAttackCallback, spawnPoliceNPCAt, killPoliceById,
-  screenShake, spawnFloatingText
+  screenShake, spawnFloatingText, spawnExplosion
 } from './renderer.js';
 import {
   conn, exec, q, q1, qv, saveGame, logAction,
@@ -553,6 +553,7 @@ export async function updateHUD() {
 
   const stars = $('hud-wanted').querySelectorAll('.star');
   stars.forEach((s, i) => s.classList.toggle('active', i < p.wanted_level));
+  setCurrentWantedLevel(p.wanted_level);
 
   $('hud-gang').textContent = p.gang || 'None';
   $('hud-rank').textContent = p.gang_rank || '-';
@@ -1149,9 +1150,10 @@ async function playerShoot() {
     const dmg = 20 + gunBonus;
     const killPos = damagePoliceNPC(cop, dmg);
     if (killPos) {
-      spawnParticles(killPos.x, killPos.z, 0xff2222, 15, 2, 1.2);
-      screenShake(0.2, 200);
-      const loot = rand(50, 150);
+      if (cop.inVehicle) spawnExplosion(killPos.x, killPos.z);
+      else spawnParticles(killPos.x, killPos.z, 0xff2222, 15, 2, 1.2);
+      screenShake(cop.inVehicle ? 0.4 : 0.2, cop.inVehicle ? 400 : 200);
+      const loot = cop.inVehicle ? rand(200, 500) : rand(50, 150);
       await exec(`UPDATE player SET cash=cash+${loot}`);
       spawnFloatingText(`+$${loot}`, '#44ff44');
       registerKill();
@@ -1993,11 +1995,18 @@ async function menuDrugs() {
   if (districtHeat >= 5) html = `<div class="c-red" style="margin-bottom:4px;font-size:10px">High heat district! Drug prices ${districtHeat >= 10 ? 'much ' : ''}higher but riskier.</div>` + html;
   for (let di = 0; di < DRUGS.length; di++) {
     const drug = DRUGS[di];
-    const buyPrice = Math.floor((drug.basePrice + seededRand(priceSeed + di, -20, 30)) * heatMul);
-    const sellMul = 1.2 + (dealSkill * 0.1) + (seededRand(priceSeed + di + 100, 0, 50) / 100);
-    const sellPrice = Math.floor(drug.basePrice * sellMul * heatMul);
+    // Dynamic pricing — wider swings based on time, with supply/demand waves
+    const wave = Math.sin(priceSeed * 0.1 + di * 2.3) * 0.3; // -30% to +30%
+    const spike = Math.sin(priceSeed * 0.03 + di * 7.1) > 0.7 ? 0.5 : 0; // occasional 50% spike
+    const crash = Math.sin(priceSeed * 0.07 + di * 3.7) < -0.8 ? -0.4 : 0; // occasional 40% crash
+    const volatility = 1 + wave + spike + crash;
+    const buyPrice = Math.max(5, Math.floor(drug.basePrice * volatility * heatMul));
+    const sellMul = (1.2 + (dealSkill * 0.1)) * volatility;
+    const sellPrice = Math.max(5, Math.floor(drug.basePrice * sellMul * heatMul));
+    const prevPrice = Math.floor((drug.basePrice + seededRand(priceSeed - 1 + di, -20, 30)) * heatMul);
+    const trend = buyPrice > prevPrice ? '<span style="color:#ff4444">▲</span>' : buyPrice < prevPrice ? '<span style="color:#44ff44">▼</span>' : '<span style="color:#888">─</span>';
     const owned = (await qv(`SELECT qty FROM drugs WHERE name='${drug.name}'`)) || 0;
-    html += `<tr><td>${drug.name}</td><td>$${buyPrice}</td><td>$${sellPrice}</td><td>${owned}</td>`;
+    html += `<tr><td>${drug.name}</td><td>$${buyPrice} ${trend}</td><td>$${sellPrice}</td><td>${owned}</td>`;
     html += `<td><button class="btn buy-drug" data-name="${drug.name}" data-price="${buyPrice}">Buy</button> `;
     html += `<button class="btn sell-drug" data-name="${drug.name}" data-price="${sellPrice}">Sell</button></td></tr>`;
   }
