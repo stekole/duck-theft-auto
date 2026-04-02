@@ -2415,14 +2415,14 @@ export function updateLighting(hour) {
     scene.fog.density = 0.018;
   } else {
     sunLight.position.set(-20, 12, 15);
-    sunLight.intensity = 0.5;
-    sunLight.color.setHex(0x6688cc);
-    ambientLight.intensity = 0.4;
-    hemiLight.intensity = 0.35;
-    scene.background.setHex(0x141828);
+    sunLight.intensity = 0.7;
+    sunLight.color.setHex(0x7799dd);
+    ambientLight.intensity = 0.5;
+    hemiLight.intensity = 0.4;
+    scene.background.setHex(0x1a2035);
     scene.fog.color.copy(scene.background);
-    scene.fog.density = 0.018;
-    renderer.toneMappingExposure = 0.9;
+    scene.fog.density = 0.015;
+    renderer.toneMappingExposure = 1.0;
   }
 
   // Update sky dome gradient

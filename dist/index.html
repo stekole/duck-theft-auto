@@ -974,6 +974,50 @@ function generateCityMap(cityName) {
     for (let y = H-4; y <= H+4; y++) { grid[y][0] = T.ROAD_MAIN; grid[y][1] = T.ROAD_MAIN; grid[y][2] = T.ROAD_MAIN; grid[y][S-1] = T.ROAD_MAIN; grid[y][S-2] = T.ROAD_MAIN; grid[y][S-3] = T.ROAD_MAIN; }
   }
 
+  // Boardwalk zone along beaches — road parallel to water with sand, trees, benches
+  if (city.waterSide === 'south') {
+    // Boardwalk road along beach
+    for (let x = 8; x < S - 8; x++) { grid[S-7][x] = T.ROAD_SIDE; grid[S-8][x] = T.PLAZA; }
+    // Palm trees along boardwalk
+    for (let x = 10; x < S - 10; x += 4) { if (rng() < 0.6) grid[S-9][x] = T.TREE; }
+    // Wider beach with sand variation
+    for (let x = 4; x < S - 4; x++) { if (rng() < 0.3) grid[S-7][x] = T.SAND; }
+  } else if (city.waterSide === 'west') {
+    for (let y = 8; y < S - 8; y++) { grid[y][4] = T.ROAD_SIDE; grid[y][5] = T.PLAZA; }
+    for (let y = 10; y < S - 10; y += 4) { if (rng() < 0.6) grid[y][6] = T.TREE; }
+  } else if (city.waterSide === 'east') {
+    for (let y = 8; y < S - 8; y++) { grid[y][S-5] = T.ROAD_SIDE; grid[y][S-6] = T.PLAZA; }
+    for (let y = 10; y < S - 10; y += 4) { if (rng() < 0.6) grid[y][S-7] = T.TREE; }
+  } else if (city.waterSide === 'surround') {
+    // Boardwalk all around the island
+    for (let x = 5; x < S - 5; x++) { grid[4][x] = T.ROAD_SIDE; grid[S-5][x] = T.ROAD_SIDE; }
+    for (let y = 5; y < S - 5; y++) { grid[y][4] = T.ROAD_SIDE; grid[y][S-5] = T.ROAD_SIDE; }
+    for (let x = 8; x < S - 8; x += 5) { if (rng() < 0.5) grid[5][x] = T.TREE; if (rng() < 0.5) grid[S-6][x] = T.TREE; }
+  }
+
+  // Residential neighborhoods — less dense building areas with more trees/parks
+  const neighborhoodCount = 2 + Math.floor(rng() * 3);
+  for (let n = 0; n < neighborhoodCount; n++) {
+    const nx = 15 + Math.floor(rng() * (S - 35));
+    const ny = 15 + Math.floor(rng() * (S - 35));
+    const nw = 8 + Math.floor(rng() * 10);
+    const nh = 8 + Math.floor(rng() * 10);
+    for (let y = ny; y < ny + nh && y < S - 2; y++) {
+      for (let x = nx; x < nx + nw && x < S - 2; x++) {
+        if (grid[y][x] === T.GROUND) {
+          if (rng() < 0.15) grid[y][x] = T.TREE;
+          else if (rng() < 0.1) grid[y][x] = T.PARK;
+        }
+      }
+    }
+    // Add a road through the neighborhood
+    for (let x = nx; x < nx + nw && x < S - 2; x++) {
+      if (grid[ny + Math.floor(nh/2)][x] === T.GROUND || grid[ny + Math.floor(nh/2)][x] === T.TREE || grid[ny + Math.floor(nh/2)][x] === T.PARK) {
+        grid[ny + Math.floor(nh/2)][x] = T.ROAD_SIDE;
+      }
+    }
+  }
+
   // Main roads: cross pattern + grid
   if (cityName === 'Los Santos') {
     for (let i = 1; i < S-1; i++) { grid[H][i] = T.ROAD_MAIN; grid[i][H] = T.ROAD_MAIN; }
@@ -3583,14 +3627,14 @@ function updateLighting(hour) {
     scene.fog.density = 0.018;
   } else {
     sunLight.position.set(-20, 12, 15);
-    sunLight.intensity = 0.5;
-    sunLight.color.setHex(0x6688cc);
-    ambientLight.intensity = 0.4;
-    hemiLight.intensity = 0.35;
-    scene.background.setHex(0x141828);
+    sunLight.intensity = 0.7;
+    sunLight.color.setHex(0x7799dd);
+    ambientLight.intensity = 0.5;
+    hemiLight.intensity = 0.4;
+    scene.background.setHex(0x1a2035);
     scene.fog.color.copy(scene.background);
-    scene.fog.density = 0.018;
-    renderer.toneMappingExposure = 0.9;
+    scene.fog.density = 0.015;
+    renderer.toneMappingExposure = 1.0;
   }
 
   // Update sky dome gradient
