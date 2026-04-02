@@ -22,12 +22,13 @@ import {
 } from './renderer.js';
 import {
   conn, exec, q, q1, qv, saveGame, logAction,
-  initSchema, initPlayer, initWorld, loadCityMap, loadGameData, getSaveIndex, setLogFn
+  initSchema, initPlayer, initWorld, loadCityMap, loadGameData, getSaveIndex, setLogFn,
+  saveToFile, loadFromFile, restoreSaveData
 } from './db.js';
 import {
   isMultiplayer, getIsHost, broadcastMove, broadcastShoot, broadcastChat,
   broadcastAction, broadcastWorldSync, setCallbacks, getPeers,
-  getLocalPeerId, setCurrentCity
+  getLocalPeerId, setCurrentCity, hostGame, generateRoomCode
 } from './multiplayer.js';
 
 const $ = id => document.getElementById(id);
@@ -1557,6 +1558,50 @@ function hideInterior() {
   if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
+// Load save file and optionally host multiplayer
+async function menuLoadFile() {
+  const saveData = await loadFromFile();
+  if (!saveData) return;
+  try {
+    await restoreSaveData(saveData);
+    const p = await q1('SELECT city, x, y, name, char_type FROM player');
+    if (!p) { log('Invalid save file — no player data.', 'c-red'); return; }
+    await loadCityMap(p.city);
+    setDuckTarget(p.x + 0.5, p.y + 0.5);
+    if (duckGroup) { duckGroup.position.x = p.x + 0.5; duckGroup.position.z = p.y + 0.5; }
+    if (p.char_type) applyCharacterSkin(p.char_type);
+    setGameActive(true);
+    $('title-screen').style.display = 'none';
+    $('game-ui').style.display = 'block';
+    await updateHUD();
+    await checkPOI();
+    showMainActions();
+    log(`Loaded save: ${p.name} in ${p.city}!`, 'c-green');
+    spawnFloatingText('GAME LOADED', '#44ff44');
+
+    // Offer to host multiplayer
+    showSubMenu('Save Loaded!', [
+      { label: 'Host Multiplayer Game', action: () => {
+        hideSubMenu();
+        const code = generateRoomCode();
+        hostGame(code, p.name, p.char_type || 'CJ', '');
+        log(`Hosting multiplayer: ${code}`, 'c-cyan');
+        const _city = p.city;
+        let _bc = 0;
+        const _iv = setInterval(() => {
+          if (_bc++ >= 10) { clearInterval(_iv); return; }
+          broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue, city: _city });
+        }, 3000);
+        showMainActions();
+      }},
+      { label: 'Play Solo', action: () => { hideSubMenu(); showMainActions(); }}
+    ]);
+  } catch (e) {
+    log('Load failed: ' + e.message, 'c-red');
+    console.error('Load file error:', e);
+  }
+}
+
 // Quick vehicle enter/exit toggle
 async function toggleVehicle() {
   const active = await q1('SELECT name FROM vehicles WHERE stored=0 LIMIT 1');
@@ -1624,6 +1669,8 @@ function showMainActions() {
     { key: 'V', label: 'Enter/Exit Car', action: toggleVehicle },
     { key: 'G', label: 'Garage',         action: menuGarage },
     ...(isMultiplayer() ? [{ key: 'B', label: 'Bounties',       action: menuBounties }] : []),
+    { key: 'F5', label: 'Save to File',  action: saveToFile },
+    { key: 'F9', label: 'Load File',     action: menuLoadFile },
     { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
   const el = $('actions');
@@ -3408,7 +3455,7 @@ function rebuildActionKeys() {
     { key: 'n', action: menuNews }, { key: 'l', action: menuStats },
     { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists },
     { key: 'v', action: toggleVehicle }, { key: 'g', action: menuGarage }, { key: 'b', action: menuBounties },
-    { key: 'm', action: menuStoryMissions }, { key: '/', action: menuHelp }
+    { key: 'm', action: menuStoryMissions }, { key: 'f5', action: saveToFile }, { key: 'f9', action: menuLoadFile }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
@@ -3472,7 +3519,12 @@ document.addEventListener('keydown', async (e) => {
 
   if (e.key === 'F5') {
     e.preventDefault();
-    saveGame();
+    saveToFile();
+    return;
+  }
+  if (e.key === 'F9') {
+    e.preventDefault();
+    menuLoadFile();
     return;
   }
 

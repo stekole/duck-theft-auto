@@ -320,6 +320,79 @@ export async function loadGameData(callbacks, slotName) {
   } catch (e) { _dbLog('Load failed: ' + e.message, 'c-red'); return false; }
 }
 
+// Save to file download
+export async function saveToFile() {
+  try {
+    const tables = [...VALID_TABLES, 'heist_progress', 'story_progress', 'vehicle_mods'];
+    const saveData = {};
+    for (const t of tables) {
+      try { saveData[t] = await q(`SELECT * FROM ${t}`); } catch(e) { /* table may not exist */ }
+    }
+    const player = saveData.player?.[0];
+    const meta = {
+      version: 2,
+      name: player?.name || 'Unknown',
+      city: player?.city || '?',
+      cash: player?.cash || 0,
+      day: saveData.game_clock?.[0]?.day || 1,
+      timestamp: Date.now()
+    };
+    const blob = new Blob([JSON.stringify({ meta, data: saveData })], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DTA_${meta.name}_Day${meta.day}.dta`;
+    a.click();
+    URL.revokeObjectURL(url);
+    _dbLog(`Saved to file: ${a.download}`, 'c-green');
+  } catch (e) { _dbLog('File save failed: ' + e.message, 'c-red'); }
+}
+
+// Load from file — returns the parsed save data (caller handles game start)
+export async function loadFromFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.dta,.json';
+    input.addEventListener('change', async () => {
+      const file = input.files[0];
+      if (!file) { resolve(null); return; }
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const saveData = parsed.data || parsed; // support both wrapped and raw format
+        resolve(saveData);
+      } catch (e) {
+        _dbLog('Failed to read save file: ' + e.message, 'c-red');
+        resolve(null);
+      }
+    });
+    input.click();
+  });
+}
+
+// Restore save data into DB tables
+export async function restoreSaveData(saveData) {
+  await initSchema();
+  const allTables = [...VALID_TABLES, 'heist_progress', 'story_progress', 'vehicle_mods'];
+  for (const [table, rows] of Object.entries(saveData)) {
+    if (!allTables.includes(table) || !rows?.length) continue;
+    await conn.query(`DELETE FROM ${table}`);
+    for (const row of rows) {
+      const cols = Object.keys(row);
+      if (cols.length === 0) continue;
+      const vals = cols.map(c => {
+        const v = row[c];
+        if (v === null || v === undefined) return 'NULL';
+        if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+        if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`;
+        return v;
+      });
+      try { await conn.query(`INSERT INTO ${table}(${cols.join(',')}) VALUES (${vals.join(',')})`); } catch(e) { /* skip bad rows */ }
+    }
+  }
+}
+
 // Multiplayer: log connection events
 export async function logConnection(peerId, remoteIp, event) {
   const safePeer = peerId.replace(/'/g, "''");

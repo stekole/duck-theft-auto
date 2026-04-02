@@ -507,6 +507,7 @@ body {
   <div style="margin-top:10px">
     <button onclick="startNewGame()">Solo Game</button>
     <button onclick="hostMultiplayer()">Host Game</button>
+    <button onclick="loadSaveFile()" style="background:#223;color:#4488ff;border-color:#4488ff">Load Save</button>
   </div>
   <div id="mp-game-list" style="margin-top:8px"></div>
   <div style="margin-top:6px;display:flex;align-items:center;justify-content:center;gap:4px"><input type="text" id="mp-room-input" maxlength="6" placeholder="Room code" style="width:100px;text-transform:uppercase;text-align:center;font-size:11px"><button onclick="joinMultiplayer()" title="Join by code" style="font-size:11px;padding:2px 6px;background:#222;color:#ff6600;border:1px solid #444;cursor:pointer;border-radius:3px">&#9654;</button></div>
@@ -4694,6 +4695,79 @@ async function loadGameData(callbacks, slotName) {
   } catch (e) { _dbLog('Load failed: ' + e.message, 'c-red'); return false; }
 }
 
+// Save to file download
+async function saveToFile() {
+  try {
+    const tables = [...VALID_TABLES, 'heist_progress', 'story_progress', 'vehicle_mods'];
+    const saveData = {};
+    for (const t of tables) {
+      try { saveData[t] = await q(`SELECT * FROM ${t}`); } catch(e) { /* table may not exist */ }
+    }
+    const player = saveData.player?.[0];
+    const meta = {
+      version: 2,
+      name: player?.name || 'Unknown',
+      city: player?.city || '?',
+      cash: player?.cash || 0,
+      day: saveData.game_clock?.[0]?.day || 1,
+      timestamp: Date.now()
+    };
+    const blob = new Blob([JSON.stringify({ meta, data: saveData })], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DTA_${meta.name}_Day${meta.day}.dta`;
+    a.click();
+    URL.revokeObjectURL(url);
+    _dbLog(`Saved to file: ${a.download}`, 'c-green');
+  } catch (e) { _dbLog('File save failed: ' + e.message, 'c-red'); }
+}
+
+// Load from file — returns the parsed save data (caller handles game start)
+async function loadFromFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.dta,.json';
+    input.addEventListener('change', async () => {
+      const file = input.files[0];
+      if (!file) { resolve(null); return; }
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const saveData = parsed.data || parsed; // support both wrapped and raw format
+        resolve(saveData);
+      } catch (e) {
+        _dbLog('Failed to read save file: ' + e.message, 'c-red');
+        resolve(null);
+      }
+    });
+    input.click();
+  });
+}
+
+// Restore save data into DB tables
+async function restoreSaveData(saveData) {
+  await initSchema();
+  const allTables = [...VALID_TABLES, 'heist_progress', 'story_progress', 'vehicle_mods'];
+  for (const [table, rows] of Object.entries(saveData)) {
+    if (!allTables.includes(table) || !rows?.length) continue;
+    await conn.query(`DELETE FROM ${table}`);
+    for (const row of rows) {
+      const cols = Object.keys(row);
+      if (cols.length === 0) continue;
+      const vals = cols.map(c => {
+        const v = row[c];
+        if (v === null || v === undefined) return 'NULL';
+        if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+        if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`;
+        return v;
+      });
+      try { await conn.query(`INSERT INTO ${table}(${cols.join(',')}) VALUES (${vals.join(',')})`); } catch(e) { /* skip bad rows */ }
+    }
+  }
+}
+
 // Multiplayer: log connection events
 async function logConnection(peerId, remoteIp, event) {
   const safePeer = peerId.replace(/'/g, "''");
@@ -6946,6 +7020,50 @@ function hideInterior() {
   if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
+// Load save file and optionally host multiplayer
+async function menuLoadFile() {
+  const saveData = await loadFromFile();
+  if (!saveData) return;
+  try {
+    await restoreSaveData(saveData);
+    const p = await q1('SELECT city, x, y, name, char_type FROM player');
+    if (!p) { log('Invalid save file — no player data.', 'c-red'); return; }
+    await loadCityMap(p.city);
+    setDuckTarget(p.x + 0.5, p.y + 0.5);
+    if (duckGroup) { duckGroup.position.x = p.x + 0.5; duckGroup.position.z = p.y + 0.5; }
+    if (p.char_type) applyCharacterSkin(p.char_type);
+    setGameActive(true);
+    $('title-screen').style.display = 'none';
+    $('game-ui').style.display = 'block';
+    await updateHUD();
+    await checkPOI();
+    showMainActions();
+    log(`Loaded save: ${p.name} in ${p.city}!`, 'c-green');
+    spawnFloatingText('GAME LOADED', '#44ff44');
+
+    // Offer to host multiplayer
+    showSubMenu('Save Loaded!', [
+      { label: 'Host Multiplayer Game', action: () => {
+        hideSubMenu();
+        const code = generateRoomCode();
+        hostGame(code, p.name, p.char_type || 'CJ', '');
+        log(`Hosting multiplayer: ${code}`, 'c-cyan');
+        const _city = p.city;
+        let _bc = 0;
+        const _iv = setInterval(() => {
+          if (_bc++ >= 10) { clearInterval(_iv); return; }
+          broadcastAction({ action: 'game_start', npcSeed: window._npcSeedValue, city: _city });
+        }, 3000);
+        showMainActions();
+      }},
+      { label: 'Play Solo', action: () => { hideSubMenu(); showMainActions(); }}
+    ]);
+  } catch (e) {
+    log('Load failed: ' + e.message, 'c-red');
+    console.error('Load file error:', e);
+  }
+}
+
 // Quick vehicle enter/exit toggle
 async function toggleVehicle() {
   const active = await q1('SELECT name FROM vehicles WHERE stored=0 LIMIT 1');
@@ -7013,6 +7131,8 @@ function showMainActions() {
     { key: 'V', label: 'Enter/Exit Car', action: toggleVehicle },
     { key: 'G', label: 'Garage',         action: menuGarage },
     ...(isMultiplayer() ? [{ key: 'B', label: 'Bounties',       action: menuBounties }] : []),
+    { key: 'F5', label: 'Save to File',  action: saveToFile },
+    { key: 'F9', label: 'Load File',     action: menuLoadFile },
     { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
   const el = $('actions');
@@ -8797,7 +8917,7 @@ function rebuildActionKeys() {
     { key: 'n', action: menuNews }, { key: 'l', action: menuStats },
     { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists },
     { key: 'v', action: toggleVehicle }, { key: 'g', action: menuGarage }, { key: 'b', action: menuBounties },
-    { key: 'm', action: menuStoryMissions }, { key: '/', action: menuHelp }
+    { key: 'm', action: menuStoryMissions }, { key: 'f5', action: saveToFile }, { key: 'f9', action: menuLoadFile }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
@@ -8861,7 +8981,12 @@ document.addEventListener('keydown', async (e) => {
 
   if (e.key === 'F5') {
     e.preventDefault();
-    saveGame();
+    saveToFile();
+    return;
+  }
+  if (e.key === 'F9') {
+    e.preventDefault();
+    menuLoadFile();
     return;
   }
 

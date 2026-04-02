@@ -508,6 +508,7 @@ body {
   <div style="margin-top:10px">
     <button onclick="startNewGame()">Solo Game</button>
     <button onclick="hostMultiplayer()">Host Game</button>
+    <button onclick="loadSaveFile()" style="background:#223;color:#4488ff;border-color:#4488ff">Load Save</button>
   </div>
   <div id="mp-game-list" style="margin-top:8px"></div>
   <div style="margin-top:6px;display:flex;align-items:center;justify-content:center;gap:4px"><input type="text" id="mp-room-input" maxlength="6" placeholder="Room code" style="width:100px;text-transform:uppercase;text-align:center;font-size:11px"><button onclick="joinMultiplayer()" title="Join by code" style="font-size:11px;padding:2px 6px;background:#222;color:#ff6600;border:1px solid #444;cursor:pointer;border-radius:3px">&#9654;</button></div>
@@ -690,6 +691,26 @@ const $ = id => document.getElementById(id);
         setTimeout(() => { el.textContent = orig; el.style.color = '#ff6600'; }, 1200);
       });
     });
+
+    // Load save file from title screen
+    window.loadSaveFile = async () => {
+      const { loadFromFile, restoreSaveData, loadCityMap } = await import('./js/db.js');
+      const { applyCharacterSkin, setDuckTarget, duckGroup, setGameActive } = await import('./js/renderer.js');
+      const saveData = await loadFromFile();
+      if (!saveData) return;
+      const { initSchema } = await import('./js/db.js');
+      await restoreSaveData(saveData);
+      const { q1 } = await import('./js/db.js');
+      const p = await q1('SELECT city, x, y, name, char_type FROM player');
+      if (!p) { alert('Invalid save file'); return; }
+      await loadCityMap(p.city);
+      setDuckTarget(p.x + 0.5, p.y + 0.5);
+      if (duckGroup) { duckGroup.position.x = p.x + 0.5; duckGroup.position.z = p.y + 0.5; }
+      if (p.char_type) applyCharacterSkin(p.char_type);
+      setGameActive(true);
+      $('title-screen').style.display = 'none';
+      $('game-ui').style.display = 'block';
+    };
 
     // Multiplayer handlers
     window.hostMultiplayer = async () => {
