@@ -2941,47 +2941,6 @@ function menuHelp() {
 // --------------------------------------------------------
 //  GARAGE
 // --------------------------------------------------------
-async function menuGarage() {
-  const safeHouseLevel = await qv(`SELECT level FROM gang_upgrades WHERE name='safe_house'`);
-  if (!safeHouseLevel || safeHouseLevel < 1) {
-    log('You need a Safe House upgrade to store vehicles! Join a gang and upgrade.', 'c-red');
-    return;
-  }
-  const maxSlots = safeHouseLevel * 3;
-  const allVehicles = await q('SELECT * FROM vehicles');
-  const stored = allVehicles.filter(v => v.stored);
-  const active = allVehicles.filter(v => !v.stored);
-  const options = [];
-  // Store active vehicles
-  for (const v of active) {
-    options.push({
-      label: `Store: ${v.name} (driving)`,
-      action: async () => {
-        if (stored.length >= maxSlots) { log(`Garage full! Max ${maxSlots} slots (upgrade safe house for more).`, 'c-red'); return; }
-        await exec(`UPDATE vehicles SET stored=1 WHERE name='${v.name.replace(/'/g,"''")}'`);
-        log(`Stored ${v.name} in your garage.`, 'c-green');
-        await updateHUD(); await menuGarage();
-      }
-    });
-  }
-  // Retrieve stored vehicles
-  for (const v of stored) {
-    options.push({
-      label: `Take out: ${v.name} (garaged)`,
-      action: async () => {
-        await exec(`UPDATE vehicles SET stored=0 WHERE name='${v.name.replace(/'/g,"''")}'`);
-        log(`Took ${v.name} out of the garage.`, 'c-green');
-        await updateHUD(); await menuGarage();
-      }
-    });
-  }
-  if (options.length === 0) {
-    log('No vehicles to manage. Buy or steal some cars first!', 'c-yellow');
-    return;
-  }
-  showSubMenu(`Garage (${stored.length}/${maxSlots} stored)`, options);
-}
-
 // --------------------------------------------------------
 //  MENU FUNCTION MAP
 // --------------------------------------------------------
