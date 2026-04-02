@@ -64,13 +64,16 @@ export function joinLobby() {
     if (sendLobbyQuery) sendLobbyQuery({});
   });
 
-  // Query immediately for any existing hosts
-  setTimeout(() => { if (sendLobbyQuery) sendLobbyQuery({}); }, 500);
+  // Query multiple times as relays connect
+  for (const delay of [500, 2000, 5000, 10000]) {
+    setTimeout(() => { if (sendLobbyQuery) sendLobbyQuery({}); }, delay);
+  }
 }
 
 export function queryLobby() {
   _pruneStaleGames();
   if (_onGamesUpdated) _onGamesUpdated(discoveredGames);
+  if (!lobbyRoom) joinLobby(); // retry if lobby never connected
   if (sendLobbyQuery) sendLobbyQuery({});
 }
 
