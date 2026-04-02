@@ -17,7 +17,8 @@ import {
   getNearestNPCCar, removeNPCCar, getNearestPoliceCar,
   updateRemoteDuck, despawnRemoteDuck, getNearestRemoteDuck,
   getRemoteDucks, setNPCSeed, killNPCById,
-  setPoliceAttackCallback, spawnPoliceNPCAt, killPoliceById
+  setPoliceAttackCallback, spawnPoliceNPCAt, killPoliceById,
+  screenShake
 } from './renderer.js';
 import {
   conn, exec, q, q1, qv, saveGame, logAction,
@@ -359,6 +360,7 @@ setCallbacks({
       spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
       const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
       log(`${shooterName} shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed by armor)` : ''}`, 'c-red');
+      screenShake(0.3, 250);
       _lastAttackerPeerId = peerId;
       await checkDeath();
       await updateHUD();
@@ -837,6 +839,7 @@ function handlePoliceAttack(type, cop, dist) {
         const healthDmg = dmg - armorAbsorb;
         await exec(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
         spawnParticlesAtDuck(0xff2222, 6, 1.2, 0.8);
+        screenShake(0.25, 200);
         log(`Police shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed)` : ''}`, 'c-red');
         await checkDeath();
         await updateHUD();
@@ -882,6 +885,7 @@ async function checkDeath() {
     stopSiren(); clearPoliceNPCs(); _policeActive = false; clearStatus();
 
     // Dramatic WASTED screen flash
+    screenShake(0.6, 800);
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(255,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:opacity 2.5s;';
     overlay.innerHTML = '<div style="color:#fff;font-size:64px;font-weight:bold;text-shadow:0 0 30px #ff0000,0 0 60px #ff0000;font-family:Impact,sans-serif;letter-spacing:12px">WASTED</div>';
@@ -1144,6 +1148,7 @@ async function playerShoot() {
     const killPos = damagePoliceNPC(cop, dmg);
     if (killPos) {
       spawnParticles(killPos.x, killPos.z, 0xff2222, 15, 2, 1.2);
+      screenShake(0.2, 200);
       const loot = rand(50, 150);
       await exec(`UPDATE player SET cash=cash+${loot}`);
       log(`Killed a cop! Looted $${loot}. Heat is rising!`, 'c-red');
@@ -1213,6 +1218,92 @@ let _cachedPos = null; // { x, y }
 export function invalidatePlayerCache() { _cachedPos = null; }
 
 let moveDebounce = false;
+// Random events while walking
+let _lastRandomEvent = 0;
+async function checkRandomEvent() {
+  const now = Date.now();
+  if (now - _lastRandomEvent < 15000) return; // max one event per 15 seconds
+  if (Math.random() > 0.04) return; // ~4% chance per step
+  _lastRandomEvent = now;
+
+  const p = await q1('SELECT cash, health, wanted_level, gang FROM player');
+  const clk = await q1('SELECT hour FROM game_clock');
+  const isNight = clk.hour < 5 || clk.hour > 21;
+  const roll = Math.random();
+
+  if (roll < 0.15) {
+    // Found cash on the ground
+    const amount = rand(10, 200);
+    await exec(`UPDATE player SET cash=cash+${amount}`);
+    log(`Found $${amount} on the ground! Lucky day.`, 'c-green');
+    spawnParticlesAtDuck(0x44ff44, 8, 1, 1);
+  } else if (roll < 0.25) {
+    // Mugger attack
+    const dmg = rand(5, 20);
+    const stolen = Math.min(p.cash, rand(50, 300));
+    await exec(`UPDATE player SET health=GREATEST(0,health-${dmg}), cash=GREATEST(0,cash-${stolen})`);
+    log(`A mugger attacked you! -${dmg} HP, -$${stolen} stolen!`, 'c-red');
+    screenShake(0.2, 200);
+    spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);
+    await checkDeath();
+  } else if (roll < 0.35) {
+    // Witness a car crash
+    log('A car just crashed nearby! People are running.', 'c-yellow');
+    spawnParticles(duckGroup.position.x + rand(-3, 3), duckGroup.position.z + rand(-3, 3), 0xff8800, 20, 2, 1.5);
+    screenShake(0.15, 150);
+  } else if (roll < 0.45 && isNight) {
+    // Drug deal gone wrong
+    const cash = rand(100, 500);
+    await exec(`UPDATE player SET cash=cash+${cash}`);
+    log(`Stumbled on a botched drug deal. Grabbed $${cash} from the chaos!`, 'c-orange');
+    spawnParticlesAtDuck(0xffaa00, 12, 1.5, 1.5);
+    await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
+  } else if (roll < 0.55) {
+    // Street performer — respect boost
+    log('A street performer tips their hat at you. +5 Respect.', 'c-cyan');
+    await exec(`UPDATE player SET respect=respect+5`);
+  } else if (roll < 0.65) {
+    // Dropped weapon
+    const gunCount = await qv('SELECT COUNT(*) FROM guns');
+    if (!gunCount || gunCount < 3) {
+      const dropGuns = [['Rusty Pipe','Melee',3],['Pocket Knife','Melee',5],['Saturday Special','Pistol',4]];
+      const [gn, gc, gb] = dropGuns[rand(0, dropGuns.length - 1)];
+      const exists = await qv(`SELECT COUNT(*) FROM guns WHERE name='${gn}'`);
+      if (!exists) {
+        await exec(`INSERT INTO guns VALUES ('${gn}','${gc}',${gb},FALSE)`);
+        log(`Found a ${gn} in an alley! Added to inventory.`, 'c-green');
+        spawnParticlesAtDuck(0xaaaaaa, 8, 1, 1);
+      }
+    }
+  } else if (roll < 0.72) {
+    // Cop shakedown
+    if (p.wanted_level > 0 && p.cash > 100) {
+      const bribe = rand(100, 500);
+      await exec(`UPDATE player SET cash=GREATEST(0,cash-${bribe}), wanted_level=GREATEST(0,wanted_level-1)`);
+      log(`A dirty cop shook you down for $${bribe}. -1 Wanted.`, 'c-yellow');
+    }
+  } else if (roll < 0.80) {
+    // Random NPC compliment/insult
+    const lines = p.wanted_level > 2
+      ? ['An NPC screams: "It\'s that psycho! Run!"', 'Someone yells: "Cops! Over here!"', '"You won\'t get away with this!"']
+      : ['"Nice ride!" shouts a pedestrian.', '"Looking sharp, quack quack!"', '"Hey, you that famous duck?"', '"Watch where you\'re going, pal!"'];
+    log(lines[rand(0, lines.length - 1)], p.wanted_level > 2 ? 'c-red' : 'c-gray');
+  } else if (roll < 0.88) {
+    // Health pickup
+    if (p.health < 80) {
+      const heal = rand(5, 15);
+      await exec(`UPDATE player SET health=LEAST(100,health+${heal})`);
+      log(`Found a snack. +${heal} HP.`, 'c-green');
+    }
+  } else {
+    // Nothing interesting
+    const ambience = isNight
+      ? ['Sirens wail in the distance.', 'A dog barks somewhere in the dark.', 'Neon signs flicker overhead.', 'Bass thumps from a nearby club.']
+      : ['Traffic rumbles by.', 'A bird lands on a building ledge.', 'The smell of street food fills the air.', 'Horns honk in the distance.'];
+    log(ambience[rand(0, ambience.length - 1)], 'c-gray');
+  }
+}
+
 async function movePlayer(dx, dy) {
   if (moveDebounce) return;
   moveDebounce = true;
@@ -1263,6 +1354,7 @@ async function movePlayer(dx, dy) {
   await checkPOI();
   await checkPoliceOnMove();
   await checkNightAttack();
+  await checkRandomEvent();
   await updateHUD();
 }
 
@@ -3098,6 +3190,35 @@ document.addEventListener('keydown', async (e) => {
   // Don't capture keys when not in game (e.g. title screen, typing in input)
   if (!gameActive) return;
   if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+
+  // Emotes — Tab key opens emote wheel
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const emotes = [
+      { label: '👋 Hey!', msg: '👋 Hey!' },
+      { label: '🤣 LOL', msg: '🤣 LOL' },
+      { label: '🔫 Watch out!', msg: '🔫 Watch your back!' },
+      { label: '💰 Cash me', msg: '💰 Show me the money!' },
+      { label: '🏎️ Race?', msg: '🏎️ Wanna race?' },
+      { label: '🤝 Truce', msg: '🤝 Truce?' },
+      { label: '💀 RIP', msg: '💀 Get rekt!' },
+      { label: '🦆 Quack!', msg: '🦆 QUAAACK!' },
+    ];
+    showSubMenu('Emotes', emotes.map(em => ({
+      label: em.label,
+      action: () => {
+        if (isMultiplayer()) {
+          const name = $('hud-name')?.textContent || 'You';
+          broadcastChat(em.msg, name);
+          const logEl = $('event-log');
+          if (logEl) { const div = document.createElement('div'); div.className = 'log-entry c-yellow'; div.textContent = `[${name}] ${em.msg}`; logEl.appendChild(div); logEl.scrollTop = logEl.scrollHeight; }
+        }
+        log(em.msg, 'c-yellow');
+        hideSubMenu(); showMainActions();
+      }
+    })));
+    return;
+  }
 
   if (e.key === 'Escape' || e.key === 'Backspace') {
     e.preventDefault();

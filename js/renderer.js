@@ -1830,6 +1830,14 @@ function _getParticleMat(color) {
 // Projectile system
 let projectiles = [];
 
+// Screen shake
+let _shakeIntensity = 0;
+let _shakeDecay = 0;
+export function screenShake(intensity = 0.3, duration = 300) {
+  _shakeIntensity = intensity;
+  _shakeDecay = performance.now() + duration;
+}
+
 export function spawnMuzzleFlash() {
   if (!duckGroup) return;
   // Big muzzle flash
@@ -2795,6 +2803,14 @@ export function gameLoop() {
     camera.position.y += (camHeight - camera.position.y) * 0.08;
     camera.position.z += (targetCamZ - camera.position.z) * 0.08;
     camera.lookAt(duckGroup.position.x, 1, duckGroup.position.z);
+
+    // Screen shake
+    if (_shakeIntensity > 0 && performance.now() < _shakeDecay) {
+      const t = (performance.now() / 50);
+      camera.position.x += Math.sin(t * 7.3) * _shakeIntensity;
+      camera.position.y += Math.cos(t * 5.7) * _shakeIntensity * 0.5;
+      camera.position.z += Math.sin(t * 6.1) * _shakeIntensity;
+    } else { _shakeIntensity = 0; }
 
     sunLight.target.position.copy(duckGroup.position);
     sunLight.target.updateMatrixWorld();
