@@ -18,7 +18,7 @@ import {
   updateRemoteDuck, despawnRemoteDuck, getNearestRemoteDuck,
   getRemoteDucks, setNPCSeed, killNPCById,
   setPoliceAttackCallback, spawnPoliceNPCAt, killPoliceById,
-  screenShake
+  screenShake, spawnFloatingText
 } from './renderer.js';
 import {
   conn, exec, q, q1, qv, saveGame, logAction,
@@ -361,6 +361,7 @@ setCallbacks({
       const shooterName = getPeers().get(peerId)?.name || peerId.slice(0, 8);
       log(`${shooterName} shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed by armor)` : ''}`, 'c-red');
       screenShake(0.3, 250);
+      spawnFloatingText(`-${dmg} HP`, '#ff4444');
       _lastAttackerPeerId = peerId;
       await checkDeath();
       await updateHUD();
@@ -840,6 +841,7 @@ function handlePoliceAttack(type, cop, dist) {
         await exec(`UPDATE player SET health=GREATEST(0,health-${healthDmg}), armor=GREATEST(0,armor-${armorAbsorb})`);
         spawnParticlesAtDuck(0xff2222, 6, 1.2, 0.8);
         screenShake(0.25, 200);
+        spawnFloatingText(`-${dmg} HP`, '#ff4444');
         log(`Police shot you! -${dmg} DMG${armorAbsorb > 0 ? ` (${armorAbsorb} absorbed)` : ''}`, 'c-red');
         await checkDeath();
         await updateHUD();
@@ -1151,6 +1153,8 @@ async function playerShoot() {
       screenShake(0.2, 200);
       const loot = rand(50, 150);
       await exec(`UPDATE player SET cash=cash+${loot}`);
+      spawnFloatingText(`+$${loot}`, '#44ff44');
+      registerKill();
       log(`Killed a cop! Looted $${loot}. Heat is rising!`, 'c-red');
       logAction('kill_cop', `+$${loot}`);
       await exec(`UPDATE player SET wanted_level=LEAST(5,wanted_level+1)`);
@@ -1172,6 +1176,8 @@ async function playerShoot() {
     spawnParticles(pos.x, pos.z, 0xff2222, 15, 2, 1.2);
     const loot = rand(5, 50);
     await exec(`UPDATE player SET cash=cash+${loot}, wanted_level=LEAST(5,wanted_level+1), respect=respect+1`);
+    spawnFloatingText(`+$${loot}`, '#44ff44', pos.x, pos.z);
+    registerKill();
     log(`Shot a civilian! Looted $${loot}. +1 Wanted.`, 'c-red');
     logAction('kill_npc', `+$${loot}`);
     if (isMultiplayer()) broadcastAction({ action: 'npc_kill', npcId: pos.id, name: (await q1('SELECT name FROM player')).name });
@@ -1219,6 +1225,32 @@ export function invalidatePlayerCache() { _cachedPos = null; }
 
 let moveDebounce = false;
 // Random events while walking
+// Kill streak combo system
+let _killStreak = 0;
+let _lastKillTime = 0;
+function registerKill() {
+  const now = Date.now();
+  if (now - _lastKillTime < 8000) {
+    _killStreak++;
+  } else {
+    _killStreak = 1;
+  }
+  _lastKillTime = now;
+  if (_killStreak >= 2) {
+    const multiplier = Math.min(_killStreak, 5);
+    const bonus = multiplier * 50;
+    exec(`UPDATE player SET cash=cash+${bonus}`);
+    const labels = ['', '', 'DOUBLE KILL!', 'TRIPLE KILL!', 'RAMPAGE!', 'UNSTOPPABLE!'];
+    const colors = ['', '', '#ffaa00', '#ff6600', '#ff0000', '#ff00ff'];
+    const label = labels[Math.min(multiplier, 5)] || `${multiplier}x STREAK!`;
+    const color = colors[Math.min(multiplier, 5)] || '#ff00ff';
+    spawnFloatingText(`${label} +$${bonus}`, color);
+    log(`${label} ${multiplier}x combo! +$${bonus} bonus!`, 'c-gold');
+    if (multiplier >= 3) screenShake(0.15, 150);
+  }
+  return _killStreak;
+}
+
 let _lastRandomEvent = 0;
 async function checkRandomEvent() {
   const now = Date.now();
@@ -1235,6 +1267,7 @@ async function checkRandomEvent() {
     // Found cash on the ground
     const amount = rand(10, 200);
     await exec(`UPDATE player SET cash=cash+${amount}`);
+    spawnFloatingText(`+$${amount}`, '#44ff44');
     log(`Found $${amount} on the ground! Lucky day.`, 'c-green');
     spawnParticlesAtDuck(0x44ff44, 8, 1, 1);
   } else if (roll < 0.25) {
@@ -1242,6 +1275,8 @@ async function checkRandomEvent() {
     const dmg = rand(5, 20);
     const stolen = Math.min(p.cash, rand(50, 300));
     await exec(`UPDATE player SET health=GREATEST(0,health-${dmg}), cash=GREATEST(0,cash-${stolen})`);
+    spawnFloatingText(`-${dmg} HP`, '#ff4444');
+    spawnFloatingText(`-$${stolen}`, '#ff8800');
     log(`A mugger attacked you! -${dmg} HP, -$${stolen} stolen!`, 'c-red');
     screenShake(0.2, 200);
     spawnParticlesAtDuck(0xff2222, 10, 1.5, 1);

@@ -53,6 +53,7 @@ export function setCurrentGameHour(v) { currentGameHour = v; }
 // --------------------------------------------------------
 //  THREE.JS INIT
 // --------------------------------------------------------
+let _skyDome = null;
 export function initThree() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
@@ -92,6 +93,23 @@ export function initThree() {
 
   hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x2a4a2a, 0.6);
   scene.add(hemiLight);
+
+  // Sky dome — gradient sphere that wraps the scene
+  const skyGeo = new THREE.SphereGeometry(250, 32, 16);
+  const skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 1; skyCanvas.height = 256;
+  const skyCtx = skyCanvas.getContext('2d');
+  const grad = skyCtx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#1a2a4a');
+  grad.addColorStop(0.4, '#4477aa');
+  grad.addColorStop(0.7, '#88aacc');
+  grad.addColorStop(1, '#aaccdd');
+  skyCtx.fillStyle = grad;
+  skyCtx.fillRect(0, 0, 1, 256);
+  const skyTex = new THREE.CanvasTexture(skyCanvas);
+  const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false });
+  _skyDome = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(_skyDome);
 
   clock = new THREE.Clock();
 
@@ -1971,6 +1989,42 @@ export function spawnParticlesAtDuck(color, count, speed, life) {
   spawnParticles(duckGroup.position.x, duckGroup.position.z, color, count, speed || 1.5, life || 1.5);
 }
 
+// Floating text numbers (damage, cash, etc.)
+const _floatingTexts = [];
+export function spawnFloatingText(text, color = '#ffffff', worldX, worldZ) {
+  const el = document.createElement('div');
+  el.textContent = text;
+  el.style.cssText = `position:fixed;z-index:70;font-family:'Courier New',monospace;font-size:16px;font-weight:bold;color:${color};text-shadow:0 0 6px ${color},0 1px 3px #000;pointer-events:none;transition:none;white-space:nowrap`;
+  document.body.appendChild(el);
+  _floatingTexts.push({
+    el, worldX: worldX ?? (duckGroup ? duckGroup.position.x : 0),
+    worldZ: worldZ ?? (duckGroup ? duckGroup.position.z : 0),
+    offsetY: 1.5, life: 1.5, maxLife: 1.5
+  });
+}
+
+function _updateFloatingTexts(dt) {
+  const vec = new THREE.Vector3();
+  for (let i = _floatingTexts.length - 1; i >= 0; i--) {
+    const ft = _floatingTexts[i];
+    ft.life -= dt;
+    ft.offsetY += dt * 1.5;
+    if (ft.life <= 0) {
+      ft.el.remove();
+      _floatingTexts.splice(i, 1);
+      continue;
+    }
+    const alpha = Math.min(1, ft.life / (ft.maxLife * 0.3));
+    ft.el.style.opacity = alpha;
+    vec.set(ft.worldX, ft.offsetY, ft.worldZ);
+    vec.project(camera);
+    const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
+    ft.el.style.left = x + 'px';
+    ft.el.style.top = y + 'px';
+  }
+}
+
 function updateParticles(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
@@ -2354,6 +2408,29 @@ export function updateLighting(hour) {
     scene.fog.density = 0.018;
     renderer.toneMappingExposure = 0.9;
   }
+
+  // Update sky dome gradient
+  if (_skyDome) {
+    const c = _skyDome.material.map.image.getContext('2d');
+    const g = c.createLinearGradient(0, 0, 0, 256);
+    if (hour >= 5 && hour <= 7) {
+      // Dawn — orange to blue
+      g.addColorStop(0, '#1a1a3a'); g.addColorStop(0.3, '#443366'); g.addColorStop(0.6, '#ff7744'); g.addColorStop(1, '#ffaa66');
+    } else if (hour > 7 && hour < 19) {
+      // Day — blue sky
+      g.addColorStop(0, '#1a3a6a'); g.addColorStop(0.4, '#4488cc'); g.addColorStop(0.7, '#88bbdd'); g.addColorStop(1, '#aaddee');
+    } else if (hour >= 19 && hour <= 21) {
+      // Sunset — purple to orange
+      g.addColorStop(0, '#1a1a3a'); g.addColorStop(0.3, '#553366'); g.addColorStop(0.6, '#cc5533'); g.addColorStop(1, '#ff8844');
+    } else {
+      // Night — dark with stars hint
+      g.addColorStop(0, '#050510'); g.addColorStop(0.3, '#0a0a20'); g.addColorStop(0.7, '#101030'); g.addColorStop(1, '#151535');
+    }
+    c.fillStyle = g;
+    c.fillRect(0, 0, 1, 256);
+    _skyDome.material.map.needsUpdate = true;
+    _skyDome.position.copy(camera.position); // follow camera
+  }
 }
 
 // --------------------------------------------------------
@@ -2417,14 +2494,45 @@ export function renderMinimap(px, py) {
     mctx.stroke();
   }
 
-  // Player (yellow dot with black border)
+  // NPC cars (small white dots)
+  for (const car of npcCars) {
+    const cx = car.group.position.x * MCELL;
+    const cz = car.group.position.z * MCELL;
+    mctx.fillStyle = '#666666';
+    mctx.fillRect(cx - 1, cz - 1, 2, 2);
+  }
+
+  // POIs (colored tiny squares)
+  for (const pm of poiMeshes) {
+    if (!pm.userData?.poiType) continue;
+    const poi = POI_DEFS[pm.userData.poiType];
+    if (!poi) continue;
+    const mx = pm.position.x * MCELL;
+    const mz = pm.position.z * MCELL;
+    mctx.fillStyle = poi.color || '#ffffff';
+    mctx.fillRect(mx - 1.5, mz - 1.5, 3, 3);
+  }
+
+  // Player direction indicator (triangle)
+  const ppx = px * MCELL + MCELL / 2;
+  const ppy = py * MCELL + MCELL / 2;
   mctx.fillStyle = '#ffdd00';
   mctx.beginPath();
-  mctx.arc(px * MCELL + MCELL / 2, py * MCELL + MCELL / 2, 3, 0, Math.PI * 2);
+  mctx.arc(ppx, ppy, 3, 0, Math.PI * 2);
   mctx.fill();
   mctx.strokeStyle = '#000';
   mctx.lineWidth = 1;
   mctx.stroke();
+  // Facing direction line
+  if (duckGroup) {
+    const angle = duckGroup.rotation.y;
+    mctx.strokeStyle = '#ffdd00';
+    mctx.lineWidth = 1.5;
+    mctx.beginPath();
+    mctx.moveTo(ppx, ppy);
+    mctx.lineTo(ppx + Math.sin(angle) * 5, ppy + Math.cos(angle) * 5);
+    mctx.stroke();
+  }
 }
 
 // --------------------------------------------------------
@@ -2689,7 +2797,7 @@ export function getNearestRemoteDuck(maxDist = 6) {
 // --------------------------------------------------------
 //  WEATHER SYSTEM — rain via Points (1 draw call)
 // --------------------------------------------------------
-const RAIN_COUNT = 600;
+const RAIN_COUNT = 1500;
 let _rainPoints = null;
 let _rainPositions = null;
 let _rainVelocities = null;
@@ -2719,7 +2827,8 @@ function _initRain() {
 function _updateWeather(dt, elapsed, isNight) {
   if (!duckGroup) return;
   if (!_rainPoints) _initRain();
-  const shouldRain = isNight && Math.sin(elapsed * 0.05) > 0.3;
+  // Rain during night, and occasionally during day storms
+  const shouldRain = isNight ? Math.sin(elapsed * 0.05) > 0.1 : Math.sin(elapsed * 0.03) > 0.85;
 
   if (shouldRain !== _rainActive) {
     _rainActive = shouldRain;
@@ -2743,6 +2852,28 @@ function _updateWeather(dt, elapsed, isNight) {
 
   // Thicken fog during rain
   scene.fog.density = 0.025;
+
+  // Lightning flash — random bright flash during rain
+  if (Math.random() < 0.003) {
+    const origExposure = renderer.toneMappingExposure;
+    renderer.toneMappingExposure = 3.0;
+    ambientLight.intensity = 2.0;
+    setTimeout(() => {
+      renderer.toneMappingExposure = origExposure;
+      ambientLight.intensity = isNight ? 0.4 : 0.35;
+    }, 80 + Math.random() * 120);
+    // Double flash
+    if (Math.random() < 0.4) {
+      setTimeout(() => {
+        renderer.toneMappingExposure = 2.5;
+        ambientLight.intensity = 1.5;
+        setTimeout(() => {
+          renderer.toneMappingExposure = origExposure;
+          ambientLight.intensity = isNight ? 0.4 : 0.35;
+        }, 50);
+      }, 200);
+    }
+  }
 }
 
 export function gameLoop() {
@@ -3011,10 +3142,12 @@ export function gameLoop() {
     if (rotor) rotor.rotation.y += 0.3;
   }
 
-  // Water animation — gentle wave
+  // Water animation — rolling waves with color shift
   const waterMesh = scene.getObjectByName('waterMesh');
   if (waterMesh) {
-    waterMesh.position.y = -0.05 + Math.sin(elapsed * 0.8) * 0.02;
+    waterMesh.position.y = -0.05 + Math.sin(elapsed * 0.6) * 0.03 + Math.sin(elapsed * 1.3) * 0.015;
+    waterMesh.material.color.setHSL(0.58 + Math.sin(elapsed * 0.3) * 0.02, 0.6, 0.25 + Math.sin(elapsed * 0.5) * 0.05);
+    waterMesh.material.opacity = 0.55 + Math.sin(elapsed * 0.7) * 0.1;
   }
 
   // Weather — rain at night, light particles during storms
@@ -3023,6 +3156,7 @@ export function gameLoop() {
   // Particles
   updateParticles(dt);
   updateProjectiles(dt);
+  _updateFloatingTexts(dt);
 
   if (_composer) _composer.render(); else renderer.render(scene, camera);
 }
