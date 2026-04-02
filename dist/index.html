@@ -8290,6 +8290,21 @@ window.startNewGame = async function() {
       await updateHUD();
     }
   }, 120000);
+  // Passive clock: advance 1 game hour every 60 seconds of real time
+  if (!window._passiveClockInterval) window._passiveClockInterval = setInterval(async () => {
+    if (!gameActive) return;
+    const clk = await q1('SELECT day, hour FROM game_clock');
+    if (!clk) return;
+    let h = clk.hour + 1, d = clk.day;
+    if (h >= 24) { h = 0; d++; }
+    await exec(`UPDATE game_clock SET day=${d}, hour=${h}`);
+    setCurrentGameHour(h);
+    updateLighting(h);
+    $('hud-day').textContent = d;
+    $('hud-hour').textContent = String(h).padStart(2, '0');
+    if (h === 0) log(`════════════ DAY ${d} ════════════`, 'c-gold');
+    if (isMultiplayer()) broadcastAction({ action: 'time_sync', day: d, hour: h });
+  }, 60000);
   startPolicePresenceLoop();
 };
 
