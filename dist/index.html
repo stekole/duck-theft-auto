@@ -6479,22 +6479,60 @@ const INTERIOR_SCENES = {
       // Neon lights
       '<div style="position:absolute;top:10%;left:10%;width:80%;height:2px;background:linear-gradient(90deg,transparent,#ff1493,#ff69b4,#ff1493,transparent);box-shadow:0 0 20px #ff1493;animation:pulse-pink 2s infinite"></div>',
       '<div style="position:absolute;top:20%;left:5%;width:90%;height:1px;background:linear-gradient(90deg,transparent,#9400d3,transparent);box-shadow:0 0 15px #9400d3;animation:pulse-purple 3s infinite"></div>',
-      // Pole
-      '<div style="position:absolute;top:5%;left:50%;width:3px;height:70%;background:linear-gradient(180deg,#ddd,#888,#ddd);box-shadow:0 0 10px rgba(255,255,255,0.3)"></div>',
-      // Stage
-      '<div style="position:absolute;bottom:15%;left:20%;width:60%;height:8px;background:#333;border-radius:4px;box-shadow:0 -2px 20px rgba(255,20,147,0.4)"></div>',
+      // Pole (chrome)
+      '<div style="position:absolute;top:5%;left:50%;width:4px;height:72%;background:linear-gradient(180deg,#eee,#999,#eee,#999,#eee);box-shadow:0 0 12px rgba(255,255,255,0.4);transform:translateX(-50%)"></div>',
+      // Dancer — blocky pixel art figure on pole
+      // Body container — sways side to side
+      '<div id="dancer" style="position:absolute;top:28%;left:50%;transform:translateX(-50%);animation:dancer-sway 2s ease-in-out infinite">' +
+        // Head
+        '<div style="width:16px;height:16px;background:#e0ac69;border-radius:50%;margin:0 auto"></div>' +
+        // Hair
+        '<div style="width:20px;height:8px;background:#331100;border-radius:10px 10px 0 0;margin:-12px auto 0;position:relative;top:-4px"></div>' +
+        // Neck
+        '<div style="width:6px;height:4px;background:#e0ac69;margin:0 auto"></div>' +
+        // Torso
+        '<div style="width:18px;height:20px;background:#ff1493;border-radius:2px;margin:0 auto;position:relative">' +
+          '<div style="position:absolute;top:0;left:50%;width:12px;height:3px;background:#cc1177;transform:translateX(-50%);border-radius:0 0 4px 4px"></div>' +
+        '</div>' +
+        // Left arm — reaches for pole
+        '<div style="position:absolute;top:24px;left:-8px;width:6px;height:18px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:arm-L 2s ease-in-out infinite"></div>' +
+        // Right arm — on pole
+        '<div style="position:absolute;top:20px;right:-6px;width:6px;height:22px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:arm-R 2s ease-in-out infinite"></div>' +
+        // Skirt / shorts
+        '<div style="width:20px;height:8px;background:#cc1177;margin:0 auto;border-radius:0 0 3px 3px"></div>' +
+        // Left leg
+        '<div style="position:absolute;bottom:-30px;left:4px;width:7px;height:28px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:leg-L 2s ease-in-out infinite"></div>' +
+        // Right leg
+        '<div style="position:absolute;bottom:-30px;right:4px;width:7px;height:28px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:leg-R 2s ease-in-out infinite"></div>' +
+        // Heels
+        '<div style="position:absolute;bottom:-36px;left:3px;width:9px;height:6px;background:#ff1493;border-radius:1px"></div>' +
+        '<div style="position:absolute;bottom:-36px;right:3px;width:9px;height:6px;background:#ff1493;border-radius:1px"></div>' +
+      '</div>',
+      // Stage with edge glow
+      '<div style="position:absolute;bottom:15%;left:20%;width:60%;height:10px;background:linear-gradient(0deg,#222,#444);border-radius:5px;box-shadow:0 -4px 25px rgba(255,20,147,0.5),0 -1px 8px rgba(255,20,147,0.3)"></div>',
+      // Stage lights (moving spots)
+      '<div style="position:absolute;top:3%;left:30%;width:0;height:0;border-left:30px solid transparent;border-right:30px solid transparent;border-top:200px solid rgba(255,20,147,0.06);animation:spot-L 3s ease-in-out infinite;transform-origin:top center"></div>',
+      '<div style="position:absolute;top:3%;right:30%;width:0;height:0;border-left:30px solid transparent;border-right:30px solid transparent;border-top:200px solid rgba(0,255,255,0.05);animation:spot-R 3s ease-in-out infinite;transform-origin:top center"></div>',
       // Disco lights
-      '<div style="position:absolute;top:8%;left:20%;width:15px;height:15px;border-radius:50%;background:#ff1493;box-shadow:0 0 40px 15px rgba(255,20,147,0.3);animation:disco1 1.5s infinite alternate"></div>',
-      '<div style="position:absolute;top:12%;right:25%;width:12px;height:12px;border-radius:50%;background:#00ffff;box-shadow:0 0 40px 15px rgba(0,255,255,0.3);animation:disco2 2s infinite alternate"></div>',
-      '<div style="position:absolute;top:6%;left:45%;width:10px;height:10px;border-radius:50%;background:#ff69b4;box-shadow:0 0 30px 10px rgba(255,105,180,0.4);animation:disco1 1.8s infinite alternate"></div>',
-      // Bar
-      '<div style="position:absolute;bottom:20%;left:5%;width:25%;height:40px;background:linear-gradient(0deg,#2a1a00,#4a3000);border-top:2px solid #664400;border-radius:2px"></div>',
-      // Bottles
-      '<div style="position:absolute;bottom:28%;left:8%;width:6px;height:18px;background:#44aa44;border-radius:2px 2px 0 0"></div>',
-      '<div style="position:absolute;bottom:28%;left:12%;width:6px;height:14px;background:#aa4444;border-radius:2px 2px 0 0"></div>',
-      '<div style="position:absolute;bottom:28%;left:16%;width:6px;height:16px;background:#4444aa;border-radius:2px 2px 0 0"></div>',
+      '<div style="position:absolute;top:5%;left:20%;width:12px;height:12px;border-radius:50%;background:#ff1493;box-shadow:0 0 30px 10px rgba(255,20,147,0.4);animation:disco1 1.5s infinite alternate"></div>',
+      '<div style="position:absolute;top:8%;right:22%;width:10px;height:10px;border-radius:50%;background:#00ffff;box-shadow:0 0 30px 10px rgba(0,255,255,0.4);animation:disco2 2s infinite alternate"></div>',
+      '<div style="position:absolute;top:4%;left:48%;width:8px;height:8px;border-radius:50%;background:#ff69b4;box-shadow:0 0 25px 8px rgba(255,105,180,0.4);animation:disco1 1.8s infinite alternate"></div>',
+      '<div style="position:absolute;top:12%;left:60%;width:6px;height:6px;border-radius:50%;background:#9400d3;box-shadow:0 0 20px 6px rgba(148,0,211,0.4);animation:disco2 2.5s infinite alternate"></div>',
+      // Bar area
+      '<div style="position:absolute;bottom:20%;left:3%;width:22%;height:45px;background:linear-gradient(0deg,#1a0a00,#3a2000);border-top:2px solid #664400;border-radius:2px"></div>',
+      // Bottles with glow
+      '<div style="position:absolute;bottom:30%;left:5%;width:5px;height:16px;background:#44aa44;border-radius:2px 2px 0 0;box-shadow:0 0 4px #44aa44"></div>',
+      '<div style="position:absolute;bottom:30%;left:9%;width:5px;height:12px;background:#aa4444;border-radius:2px 2px 0 0;box-shadow:0 0 4px #aa4444"></div>',
+      '<div style="position:absolute;bottom:30%;left:13%;width:5px;height:14px;background:#4444aa;border-radius:2px 2px 0 0;box-shadow:0 0 4px #4444aa"></div>',
+      '<div style="position:absolute;bottom:30%;left:17%;width:5px;height:13px;background:#aaaa44;border-radius:2px 2px 0 0;box-shadow:0 0 4px #aaaa44"></div>',
+      // VIP sign
+      '<div style="position:absolute;top:3%;right:8%;color:#ffd700;font-size:10px;font-weight:bold;text-shadow:0 0 8px #ffd700;font-family:serif;animation:pulse-pink 3s infinite">VIP</div>',
+      // Money on stage
+      '<div style="position:absolute;bottom:16%;left:35%;width:8px;height:4px;background:#44aa44;transform:rotate(15deg)"></div>',
+      '<div style="position:absolute;bottom:17%;left:55%;width:8px;height:4px;background:#44aa44;transform:rotate(-10deg)"></div>',
+      '<div style="position:absolute;bottom:16%;right:32%;width:8px;height:4px;background:#44aa44;transform:rotate(25deg)"></div>',
     ],
-    css: '@keyframes pulse-pink{0%,100%{opacity:0.6}50%{opacity:1}}@keyframes pulse-purple{0%,100%{opacity:0.4}50%{opacity:0.8}}@keyframes disco1{0%{transform:scale(1)}100%{transform:scale(1.5);opacity:0.5}}@keyframes disco2{0%{transform:scale(1.2)}100%{transform:scale(0.8);opacity:0.6}}'
+    css: '@keyframes pulse-pink{0%,100%{opacity:0.6}50%{opacity:1}}@keyframes pulse-purple{0%,100%{opacity:0.4}50%{opacity:0.8}}@keyframes disco1{0%{transform:scale(1)}100%{transform:scale(1.5);opacity:0.5}}@keyframes disco2{0%{transform:scale(1.2)}100%{transform:scale(0.8);opacity:0.6}}@keyframes dancer-sway{0%,100%{transform:translateX(-50%) rotate(-3deg)}25%{transform:translateX(-40%) rotate(2deg)}50%{transform:translateX(-50%) rotate(3deg)}75%{transform:translateX(-60%) rotate(-2deg)}}@keyframes arm-L{0%,100%{transform:rotate(-15deg)}50%{transform:rotate(-40deg)}}@keyframes arm-R{0%,100%{transform:rotate(10deg)}50%{transform:rotate(30deg)}}@keyframes leg-L{0%,100%{transform:rotate(5deg)}50%{transform:rotate(-10deg)}}@keyframes leg-R{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(10deg)}}@keyframes spot-L{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}@keyframes spot-R{0%,100%{transform:rotate(8deg)}50%{transform:rotate(-8deg)}}'
   },
   ammo: {
     bg: 'linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 50%, #111 100%)',
