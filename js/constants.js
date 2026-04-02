@@ -6,7 +6,7 @@ export const T = {
   BRIDGE: 'b', DOCK: 'k', INDUSTRIAL: 'I', HIGHWAY: 'H',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
   POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
-  POI_STRIP: 'X',
+  POI_STRIP: 'X', POI_MODSHOP: 'M',
   PLAZA: 'Z', PARKING: 'L'
 };
 
@@ -20,7 +20,8 @@ export const POI_DEFS = {
   [T.POI_VEHICLE]:  { name: 'Vehicle Dealer',  color: '#ff8800', colorHex: 0xff8800, icon: 'V', menu: 'menuVehicles' },
   [T.POI_WORK]:     { name: 'Job Center',      color: '#44ff44', colorHex: 0x44ff44, icon: 'W', menu: 'menuJobs' },
   [T.POI_GANG]:     { name: 'Gang HQ',         color: '#aa44ff', colorHex: 0xaa44ff, icon: 'G', menu: 'menuGang' },
-  [T.POI_STRIP]:    { name: 'Strip Club',      color: '#ff66aa', colorHex: 0xff66aa, icon: 'X', menu: 'menuStripClub' }
+  [T.POI_STRIP]:    { name: 'Strip Club',      color: '#ff66aa', colorHex: 0xff66aa, icon: 'X', menu: 'menuStripClub' },
+  [T.POI_MODSHOP]:  { name: 'Mod Shop',        color: '#00aaff', colorHex: 0x00aaff, icon: 'M', menu: 'menuModShop' }
 };
 
 export const TILE_COLORS = {
@@ -188,6 +189,47 @@ export const ITEMS = {
 // --------------------------------------------------------
 //  HEISTS — 52 multi-step missions across 5 tiers
 // --------------------------------------------------------
+// --------------------------------------------------------
+//  STORY MISSIONS — 5 per city, unlock sequentially
+// --------------------------------------------------------
+export const STORY_MISSIONS = {
+  'Los Santos': [
+    { id: 'ls1', name: 'Welcome to the Grove', desc: 'Meet the local crew and prove yourself.', reward: { cash: 2000, respect: 50 }, requirement: null, task: 'Kill 3 hostile NPCs' },
+    { id: 'ls2', name: 'Turf War Begins', desc: 'The Ballas are pushing into Grove Street territory.', reward: { cash: 5000, respect: 100, item: 'Brass Knuckles' }, requirement: 'ls1', task: 'Claim 2 territories' },
+    { id: 'ls3', name: 'The Crack House', desc: 'Take down the crack house flooding the neighborhood.', reward: { cash: 10000, respect: 200 }, requirement: 'ls2', task: 'Complete a Tier 2 heist' },
+    { id: 'ls4', name: 'Big Smoke\'s Betrayal', desc: 'Your old friend turned snitch. Find him.', reward: { cash: 25000, respect: 500, vehicle: 'Lowrider' }, requirement: 'ls3', task: 'Reach wanted level 4 and survive' },
+    { id: 'ls5', name: 'End of the Line', desc: 'Take down the kingpin and save Los Santos.', reward: { cash: 100000, respect: 1000 }, requirement: 'ls4', task: 'Complete a Tier 4 heist' },
+  ],
+  'San Fierro': [
+    { id: 'sf1', name: 'Tech Hustle', desc: 'The tech bros are ripe for scamming.', reward: { cash: 3000, respect: 50 }, requirement: null, task: 'Earn $5,000 from crime' },
+    { id: 'sf2', name: 'Bridge Job', desc: 'A contact needs a package moved across the bridge.', reward: { cash: 8000, respect: 100 }, requirement: 'sf1', task: 'Own a vehicle' },
+    { id: 'sf3', name: 'The Triad Connection', desc: 'Chinatown has a job for someone discreet.', reward: { cash: 15000, respect: 200, item: 'Night Vision Goggles' }, requirement: 'sf2', task: 'Stealth skill level 4+' },
+    { id: 'sf4', name: 'Hack the Planet', desc: 'A rogue AI is controlling the city\'s traffic. Shut it down.', reward: { cash: 40000, respect: 500 }, requirement: 'sf3', task: 'Complete a Tier 3 heist' },
+    { id: 'sf5', name: 'Silicon Showdown', desc: 'The final confrontation with the tech cartel.', reward: { cash: 150000, respect: 1000, vehicle: 'Race Car' }, requirement: 'sf4', task: 'Complete The Cyber Heist' },
+  ],
+  'Las Venturas': [
+    { id: 'lv1', name: 'Desert Arrival', desc: 'New in town. The casinos need fresh meat.', reward: { cash: 2000, respect: 50 }, requirement: null, task: 'Win $1,000 gambling' },
+    { id: 'lv2', name: 'Rigged Game', desc: 'Someone\'s cheating the house. Find out who.', reward: { cash: 8000, respect: 100 }, requirement: 'lv1', task: 'Charisma skill level 3+' },
+    { id: 'lv3', name: 'Desert Run', desc: 'A drug shipment needs escorting through the desert.', reward: { cash: 20000, respect: 200, item: 'Duffle Bag' }, requirement: 'lv2', task: 'Own 3 vehicles' },
+    { id: 'lv4', name: 'Casino Royale', desc: 'The biggest poker game in the state. You need an invite.', reward: { cash: 50000, respect: 500 }, requirement: 'lv3', task: 'Respect 500+' },
+    { id: 'lv5', name: 'House Always Wins', desc: 'Rob every casino on the Strip in one night.', reward: { cash: 200000, respect: 1000, vehicle: 'Lamborduckni' }, requirement: 'lv4', task: 'Complete The Big Score' },
+  ],
+  'Vice City': [
+    { id: 'vc1', name: 'Tropical Welcome', desc: 'The sun is hot and so is the competition.', reward: { cash: 2500, respect: 50 }, requirement: null, task: 'Buy any gun' },
+    { id: 'vc2', name: 'Beach Party Gone Wrong', desc: 'A deal on the beach turns into a shootout.', reward: { cash: 7000, respect: 100 }, requirement: 'vc1', task: 'Kill 5 hostile NPCs' },
+    { id: 'vc3', name: 'Scarface Dreams', desc: 'Build your drug empire from the ground up.', reward: { cash: 15000, respect: 200, item: 'Gold Watch' }, requirement: 'vc2', task: 'Sell $10,000 worth of drugs' },
+    { id: 'vc4', name: 'Mansion Takeover', desc: 'The old boss is done. Time to take his mansion.', reward: { cash: 50000, respect: 500 }, requirement: 'vc3', task: 'Own 2 businesses' },
+    { id: 'vc5', name: 'King of Vice', desc: 'Rule Vice City with an iron fist.', reward: { cash: 200000, respect: 1000, vehicle: 'Yacht Cruiser' }, requirement: 'vc4', task: 'Complete The Island Job' },
+  ],
+  'Liberty City': [
+    { id: 'lc1', name: 'Fresh Off the Boat', desc: 'New immigrant, no friends. Time to hustle.', reward: { cash: 2000, respect: 50 }, requirement: null, task: 'Complete 3 legal jobs' },
+    { id: 'lc2', name: 'Cab Driver', desc: 'Drive for the mob. Don\'t ask questions.', reward: { cash: 6000, respect: 100 }, requirement: 'lc1', task: 'Driving skill level 3+' },
+    { id: 'lc3', name: 'The Russian Connection', desc: 'The mob wants you to handle something delicate.', reward: { cash: 15000, respect: 200, item: 'Bulletproof Vest' }, requirement: 'lc2', task: 'Join a gang' },
+    { id: 'lc4', name: 'Roman\'s Troubles', desc: 'Your cousin is in deep. Bail him out.', reward: { cash: 40000, respect: 500 }, requirement: 'lc3', task: 'Pay off $20,000' },
+    { id: 'lc5', name: 'American Dream', desc: 'The final score. Everything you\'ve worked for.', reward: { cash: 250000, respect: 1000, vehicle: 'Tank' }, requirement: 'lc4', task: 'Complete The Grand Finale' },
+  ]
+};
+
 export const HEISTS = [
   // TIER 1: Petty (no crew needed, low risk) — $500-$3K
   { id: 1, name: 'Corner Store Stickup', city: 'Los Santos', tier: 1, crew: 0, setupCost: 0, payout: [800, 1500], wanted: 1, steps: ['Scout the store', 'Wait for closing time', 'Rob the register'], skill: 'stealth', skillReq: 1 },

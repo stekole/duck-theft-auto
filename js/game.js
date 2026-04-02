@@ -1,6 +1,6 @@
 import {
   T, POI_DEFS, CITIES, GANGS, JOBS, CRIMES, GUNS, VEHICLES,
-  DRUGS, RANK_THRESHOLDS, PERKS, ITEMS, MAP_SIZE, HEISTS
+  DRUGS, RANK_THRESHOLDS, PERKS, ITEMS, MAP_SIZE, HEISTS, STORY_MISSIONS
 } from './constants.js';
 import { currentMapGrid, setMapSeed } from './city.js';
 import {
@@ -1618,6 +1618,7 @@ function showMainActions() {
     { key: 'X', label: 'Strip Club',     action: menuStripClub },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
     { key: 'J', label: 'Heists',         action: menuHeists },
+    { key: 'M', label: 'Missions',       action: menuStoryMissions },
     { key: 'V', label: 'Enter/Exit Car', action: toggleVehicle },
     { key: 'G', label: 'Garage',         action: menuGarage },
     ...(isMultiplayer() ? [{ key: 'B', label: 'Bounties',       action: menuBounties }] : []),
@@ -2478,6 +2479,54 @@ async function menuStripClub() {
 // --------------------------------------------------------
 //  GAMBLING
 // --------------------------------------------------------
+// --------------------------------------------------------
+//  MOD SHOP — car customization
+// --------------------------------------------------------
+async function menuModShop() {
+  showInterior('shop');
+  const vehicles = await q('SELECT * FROM vehicles WHERE stored=0');
+  if (vehicles.length === 0) { log('Drive a vehicle here to customize it!', 'c-yellow'); showMainActions(); return; }
+  const v = vehicles[0];
+  const p = await q1('SELECT cash FROM player');
+  const existingMods = await q('SELECT mod FROM vehicle_mods WHERE vehicle=\'' + v.name.replace(/'/g,"''") + '\'');
+  const hasMod = new Set(existingMods.map(m => m.mod));
+
+  const mods = [
+    { name: 'Paint Job', cost: 500, desc: 'Fresh paint (+style)', stat: 'Cosmetic' },
+    { name: 'Nitro Boost', cost: 3000, desc: '+2 speed for 10s bursts', stat: '+2 speed' },
+    { name: 'Armor Plating', cost: 5000, desc: 'Vehicle takes 50% less damage', stat: 'Defense' },
+    { name: 'Tinted Windows', cost: 1500, desc: '-1 wanted when in vehicle', stat: 'Stealth' },
+    { name: 'Engine Upgrade', cost: 4000, desc: '+1 permanent speed', stat: '+1 speed' },
+    { name: 'Hydraulics', cost: 2000, desc: 'Bounce on demand (+style)', stat: 'Cosmetic' },
+    { name: 'Sound System', cost: 1000, desc: 'Blast music (+respect nearby)', stat: '+5 respect' },
+    { name: 'Underglow', cost: 1500, desc: 'Neon lights under car', stat: 'Cosmetic' },
+  ];
+
+  const options = [];
+  for (const mod of mods) {
+    if (hasMod.has(mod.name)) {
+      options.push({ label: `${mod.name} — INSTALLED ✓`, action: () => { log(`${mod.name} already installed on ${v.name}.`, 'c-gray'); } });
+    } else {
+      options.push({ label: `${mod.name} — $${mod.cost.toLocaleString()} (${mod.desc})`, action: async () => {
+        if (p.cash < mod.cost) { log('Not enough cash!', 'c-red'); return; }
+        await exec(`UPDATE player SET cash=cash-${mod.cost}`);
+        await exec(`INSERT INTO vehicle_mods VALUES ('${v.name.replace(/'/g,"''")}','${mod.name}')`);
+        // Apply stat bonuses
+        if (mod.name === 'Sound System') await exec('UPDATE player SET respect=respect+5');
+        if (mod.name === 'Engine Upgrade') {
+          const vDef = VEHICLES.find(vd => vd.name === v.name);
+          if (vDef) vDef.speed = (vDef.speed || 2) + 1;
+        }
+        spawnFloatingText(`${mod.name}!`, '#00aaff');
+        log(`Installed ${mod.name} on ${v.name} for $${mod.cost.toLocaleString()}!`, 'c-green');
+        spawnParticlesAtDuck(0x00aaff, 15, 2, 1.5);
+        hideSubMenu(); await updateHUD(); showMainActions();
+      }});
+    }
+  }
+  showSubMenu(`Mod Shop — ${v.name} (${hasMod.size}/${mods.length} mods)`, options);
+}
+
 async function menuGambling() {
   showInterior('casino');
   // Check if at gambling POI or nighttime
@@ -2710,6 +2759,153 @@ async function menuBounties() {
       hideSubMenu(); await updateHUD(); showMainActions();
     });
   });
+}
+
+// --------------------------------------------------------
+//  STORY MISSIONS
+// --------------------------------------------------------
+async function menuStoryMissions() {
+  const p = await q1('SELECT city, cash, respect FROM player');
+  const missions = STORY_MISSIONS[p.city];
+  if (!missions) { log('No story missions in this city.', 'c-gray'); showMainActions(); return; }
+
+  const completed = await q('SELECT mission_id FROM story_progress WHERE completed=TRUE');
+  const doneSet = new Set(completed.map(r => r.mission_id));
+  const totalDone = completed.length;
+  const totalAll = Object.values(STORY_MISSIONS).flat().length;
+
+  let html = `<div class="c-gray" style="font-size:10px;margin-bottom:6px">${totalDone}/${totalAll} missions completed across all cities</div>`;
+
+  for (const m of missions) {
+    const isDone = doneSet.has(m.id);
+    const isLocked = m.requirement && !doneSet.has(m.requirement);
+    const rewardTxt = `$${m.reward.cash.toLocaleString()} + ${m.reward.respect} respect${m.reward.vehicle ? ' + ' + m.reward.vehicle : ''}${m.reward.item ? ' + ' + m.reward.item : ''}`;
+
+    if (isDone) {
+      html += `<div style="margin:4px 0;opacity:0.5"><span class="c-green">✓</span> <span class="c-white">${m.name}</span> <span class="c-gray">— completed</span></div>`;
+    } else if (isLocked) {
+      html += `<div style="margin:4px 0;opacity:0.4"><span class="c-gray">🔒 ${m.name} — complete previous mission first</span></div>`;
+    } else {
+      html += `<div style="margin:4px 0"><button class="btn story-mission" data-id="${m.id}" style="text-align:left;width:100%">`;
+      html += `<span class="c-yellow">${m.name}</span><br>`;
+      html += `<span class="c-gray" style="font-size:9px">${m.desc}</span><br>`;
+      html += `<span class="c-cyan" style="font-size:9px">Task: ${m.task}</span><br>`;
+      html += `<span class="c-green" style="font-size:9px">Reward: ${rewardTxt}</span>`;
+      html += `</button></div>`;
+    }
+  }
+
+  showSubMenuHTML(`Story — ${p.city}`, html);
+
+  $('sub-menu').querySelectorAll('.story-mission').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const m = missions.find(x => x.id === btn.dataset.id);
+      if (!m) return;
+      hideSubMenu();
+      // Check if task is already met
+      const met = await _checkStoryTask(m);
+      if (met) {
+        // Complete the mission!
+        await exec(`INSERT INTO story_progress VALUES ('${m.id}', TRUE) ON CONFLICT(mission_id) DO UPDATE SET completed=TRUE`);
+        await exec(`UPDATE player SET cash=cash+${m.reward.cash}, respect=respect+${m.reward.respect}`);
+        if (m.reward.vehicle) {
+          const exists = await qv(`SELECT COUNT(*) FROM vehicles WHERE name='${m.reward.vehicle.replace(/'/g,"''")}'`);
+          if (!exists) await exec(`INSERT INTO vehicles VALUES ('${m.reward.vehicle.replace(/'/g,"''")}', 0)`);
+        }
+        if (m.reward.item) {
+          await exec(`INSERT INTO inventory VALUES ('${m.reward.item}', 1) ON CONFLICT(item) DO UPDATE SET qty=qty+1`);
+        }
+        spawnFloatingText('MISSION COMPLETE!', '#ffd700');
+        spawnParticlesAtDuck(0xffd700, 30, 3, 2);
+        screenShake(0.2, 300);
+        log(`MISSION COMPLETE: ${m.name}!`, 'c-gold');
+        log(`Reward: $${m.reward.cash.toLocaleString()}, +${m.reward.respect} respect${m.reward.vehicle ? ', ' + m.reward.vehicle : ''}${m.reward.item ? ', ' + m.reward.item : ''}`, 'c-green');
+        logAction('mission_complete', m.name);
+      } else {
+        log(`Mission: ${m.name}`, 'c-yellow');
+        log(`Task: ${m.task}`, 'c-cyan');
+        log('Complete the task, then come back to claim the reward.', 'c-gray');
+      }
+      await updateHUD();
+      showMainActions();
+    });
+  });
+}
+
+async function _checkStoryTask(mission) {
+  const task = mission.task;
+  if (task.startsWith('Kill')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 5);
+    const kills = (await qv("SELECT COUNT(*) FROM action_log WHERE action IN ('kill_npc','kill_cop')")) || 0;
+    return kills >= count;
+  }
+  if (task.startsWith('Claim')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 1);
+    const p = await q1('SELECT gang FROM player');
+    if (!p.gang) return false;
+    const territories = (await qv(`SELECT COUNT(*) FROM territories WHERE owner='${p.gang.replace(/'/g,"''")}'`)) || 0;
+    return territories >= count;
+  }
+  if (task.includes('heist') || task.includes('Heist')) {
+    const tier = task.match(/Tier (\d)/)?.[1];
+    if (tier) {
+      const tierHeists = HEISTS.filter(h => h.tier >= parseInt(tier));
+      const done = await q('SELECT heist_id FROM heist_progress WHERE completed=TRUE');
+      return tierHeists.some(h => done.find(d => d.heist_id === h.id));
+    }
+    // Named heist
+    const heistName = task.replace('Complete ', '');
+    const h = HEISTS.find(x => x.name === heistName);
+    if (h) return !!(await qv(`SELECT completed FROM heist_progress WHERE heist_id=${h.id} AND completed=TRUE`));
+    return false;
+  }
+  if (task.includes('wanted level')) {
+    const level = parseInt(task.match(/\d+/)?.[0] || 3);
+    const w = (await qv('SELECT wanted_level FROM player')) || 0;
+    return w >= level;
+  }
+  if (task.includes('Earn') || task.includes('crime')) {
+    const amount = parseInt(task.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || 5000);
+    const earned = (await qv("SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(detail,'+$',''),',','') AS INT)),0) FROM action_log WHERE action IN ('crime_success','rob_success')")) || 0;
+    return earned >= amount;
+  }
+  if (task.includes('Own') && task.includes('vehicle')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 1);
+    return ((await qv('SELECT COUNT(*) FROM vehicles')) || 0) >= count;
+  }
+  if (task.includes('Buy any gun')) return ((await qv('SELECT COUNT(*) FROM guns')) || 0) > 0;
+  if (task.includes('legal job')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 3);
+    return ((await qv("SELECT COUNT(*) FROM action_log WHERE action='job'")) || 0) >= count;
+  }
+  if (task.includes('skill level')) {
+    const match = task.match(/(\w+) skill level (\d+)/);
+    if (match) return (await getSkill(match[1].toLowerCase())) >= parseInt(match[2]);
+  }
+  if (task.includes('Respect')) {
+    const amount = parseInt(task.match(/\d+/)?.[0] || 500);
+    return ((await qv('SELECT respect FROM player')) || 0) >= amount;
+  }
+  if (task.includes('Join a gang')) return !!(await qv("SELECT gang FROM player WHERE gang != ''"));
+  if (task.includes('business')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 1);
+    return ((await qv('SELECT COUNT(*) FROM businesses')) || 0) >= count;
+  }
+  if (task.includes('Sell') && task.includes('drug')) {
+    const amount = parseInt(task.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || 10000);
+    const sold = (await qv("SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(detail,'+$',''),',','') AS INT)),0) FROM action_log WHERE action='drug_sell'")) || 0;
+    return sold >= amount;
+  }
+  if (task.includes('Pay off')) {
+    const amount = parseInt(task.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || 20000);
+    const cash = (await qv('SELECT cash FROM player')) || 0;
+    return cash >= amount;
+  }
+  if (task.includes('gambling') || task.includes('Win')) {
+    // Simplified — check if they have enough cash
+    return ((await qv('SELECT cash FROM player')) || 0) > 5000;
+  }
+  return false;
 }
 
 // --------------------------------------------------------
@@ -3186,7 +3382,7 @@ function menuHelp() {
 //  MENU FUNCTION MAP
 // --------------------------------------------------------
 const menuFunctions = {
-  menuGuns, menuHospital, menuHookers, menuGambling, menuSwitchGun, menuDrugs,
+  menuGuns, menuHospital, menuHookers, menuGambling, menuSwitchGun, menuModShop, menuDrugs,
   menuShops, menuVehicles, menuJobs, menuGang, menuStripClub
 };
 
@@ -3202,7 +3398,8 @@ function rebuildActionKeys() {
     { key: '0', action: menuInventory }, { key: 'h', action: menuHookers },
     { key: 'n', action: menuNews }, { key: 'l', action: menuStats },
     { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists },
-    { key: 'v', action: toggleVehicle }, { key: 'g', action: menuGarage }, { key: 'b', action: menuBounties }, { key: '/', action: menuHelp }
+    { key: 'v', action: toggleVehicle }, { key: 'g', action: menuGarage }, { key: 'b', action: menuBounties },
+    { key: 'm', action: menuStoryMissions }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }

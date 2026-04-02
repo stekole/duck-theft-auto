@@ -200,7 +200,7 @@ export function generateCityMap(cityName) {
     }
   }
 
-  const poiTypes = [T.POI_AMMO, T.POI_HOSPITAL, T.POI_HOOKER, T.POI_GAMBLING, T.POI_DRUG, T.POI_SHOP, T.POI_VEHICLE, T.POI_WORK, T.POI_GANG, T.POI_STRIP];
+  const poiTypes = [T.POI_AMMO, T.POI_HOSPITAL, T.POI_HOOKER, T.POI_GAMBLING, T.POI_DRUG, T.POI_SHOP, T.POI_VEHICLE, T.POI_WORK, T.POI_GANG, T.POI_STRIP, T.POI_MODSHOP];
   const roadAdjacentSpots = [];
   for (let y = 2; y < S-2; y++) {
     for (let x = 2; x < S-2; x++) {

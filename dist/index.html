@@ -625,7 +625,7 @@ const T = {
   BRIDGE: 'b', DOCK: 'k', INDUSTRIAL: 'I', HIGHWAY: 'H',
   POI_AMMO: 'A', POI_HOSPITAL: '+', POI_HOOKER: 'K', POI_GAMBLING: 'B',
   POI_DRUG: 'D', POI_SHOP: '$', POI_VEHICLE: 'V', POI_WORK: 'W', POI_GANG: 'G',
-  POI_STRIP: 'X',
+  POI_STRIP: 'X', POI_MODSHOP: 'M',
   PLAZA: 'Z', PARKING: 'L'
 };
 
@@ -639,7 +639,8 @@ const POI_DEFS = {
   [T.POI_VEHICLE]:  { name: 'Vehicle Dealer',  color: '#ff8800', colorHex: 0xff8800, icon: 'V', menu: 'menuVehicles' },
   [T.POI_WORK]:     { name: 'Job Center',      color: '#44ff44', colorHex: 0x44ff44, icon: 'W', menu: 'menuJobs' },
   [T.POI_GANG]:     { name: 'Gang HQ',         color: '#aa44ff', colorHex: 0xaa44ff, icon: 'G', menu: 'menuGang' },
-  [T.POI_STRIP]:    { name: 'Strip Club',      color: '#ff66aa', colorHex: 0xff66aa, icon: 'X', menu: 'menuStripClub' }
+  [T.POI_STRIP]:    { name: 'Strip Club',      color: '#ff66aa', colorHex: 0xff66aa, icon: 'X', menu: 'menuStripClub' },
+  [T.POI_MODSHOP]:  { name: 'Mod Shop',        color: '#00aaff', colorHex: 0x00aaff, icon: 'M', menu: 'menuModShop' }
 };
 
 const TILE_COLORS = {
@@ -807,6 +808,47 @@ const ITEMS = {
 // --------------------------------------------------------
 //  HEISTS — 52 multi-step missions across 5 tiers
 // --------------------------------------------------------
+// --------------------------------------------------------
+//  STORY MISSIONS — 5 per city, unlock sequentially
+// --------------------------------------------------------
+const STORY_MISSIONS = {
+  'Los Santos': [
+    { id: 'ls1', name: 'Welcome to the Grove', desc: 'Meet the local crew and prove yourself.', reward: { cash: 2000, respect: 50 }, requirement: null, task: 'Kill 3 hostile NPCs' },
+    { id: 'ls2', name: 'Turf War Begins', desc: 'The Ballas are pushing into Grove Street territory.', reward: { cash: 5000, respect: 100, item: 'Brass Knuckles' }, requirement: 'ls1', task: 'Claim 2 territories' },
+    { id: 'ls3', name: 'The Crack House', desc: 'Take down the crack house flooding the neighborhood.', reward: { cash: 10000, respect: 200 }, requirement: 'ls2', task: 'Complete a Tier 2 heist' },
+    { id: 'ls4', name: 'Big Smoke\'s Betrayal', desc: 'Your old friend turned snitch. Find him.', reward: { cash: 25000, respect: 500, vehicle: 'Lowrider' }, requirement: 'ls3', task: 'Reach wanted level 4 and survive' },
+    { id: 'ls5', name: 'End of the Line', desc: 'Take down the kingpin and save Los Santos.', reward: { cash: 100000, respect: 1000 }, requirement: 'ls4', task: 'Complete a Tier 4 heist' },
+  ],
+  'San Fierro': [
+    { id: 'sf1', name: 'Tech Hustle', desc: 'The tech bros are ripe for scamming.', reward: { cash: 3000, respect: 50 }, requirement: null, task: 'Earn $5,000 from crime' },
+    { id: 'sf2', name: 'Bridge Job', desc: 'A contact needs a package moved across the bridge.', reward: { cash: 8000, respect: 100 }, requirement: 'sf1', task: 'Own a vehicle' },
+    { id: 'sf3', name: 'The Triad Connection', desc: 'Chinatown has a job for someone discreet.', reward: { cash: 15000, respect: 200, item: 'Night Vision Goggles' }, requirement: 'sf2', task: 'Stealth skill level 4+' },
+    { id: 'sf4', name: 'Hack the Planet', desc: 'A rogue AI is controlling the city\'s traffic. Shut it down.', reward: { cash: 40000, respect: 500 }, requirement: 'sf3', task: 'Complete a Tier 3 heist' },
+    { id: 'sf5', name: 'Silicon Showdown', desc: 'The final confrontation with the tech cartel.', reward: { cash: 150000, respect: 1000, vehicle: 'Race Car' }, requirement: 'sf4', task: 'Complete The Cyber Heist' },
+  ],
+  'Las Venturas': [
+    { id: 'lv1', name: 'Desert Arrival', desc: 'New in town. The casinos need fresh meat.', reward: { cash: 2000, respect: 50 }, requirement: null, task: 'Win $1,000 gambling' },
+    { id: 'lv2', name: 'Rigged Game', desc: 'Someone\'s cheating the house. Find out who.', reward: { cash: 8000, respect: 100 }, requirement: 'lv1', task: 'Charisma skill level 3+' },
+    { id: 'lv3', name: 'Desert Run', desc: 'A drug shipment needs escorting through the desert.', reward: { cash: 20000, respect: 200, item: 'Duffle Bag' }, requirement: 'lv2', task: 'Own 3 vehicles' },
+    { id: 'lv4', name: 'Casino Royale', desc: 'The biggest poker game in the state. You need an invite.', reward: { cash: 50000, respect: 500 }, requirement: 'lv3', task: 'Respect 500+' },
+    { id: 'lv5', name: 'House Always Wins', desc: 'Rob every casino on the Strip in one night.', reward: { cash: 200000, respect: 1000, vehicle: 'Lamborduckni' }, requirement: 'lv4', task: 'Complete The Big Score' },
+  ],
+  'Vice City': [
+    { id: 'vc1', name: 'Tropical Welcome', desc: 'The sun is hot and so is the competition.', reward: { cash: 2500, respect: 50 }, requirement: null, task: 'Buy any gun' },
+    { id: 'vc2', name: 'Beach Party Gone Wrong', desc: 'A deal on the beach turns into a shootout.', reward: { cash: 7000, respect: 100 }, requirement: 'vc1', task: 'Kill 5 hostile NPCs' },
+    { id: 'vc3', name: 'Scarface Dreams', desc: 'Build your drug empire from the ground up.', reward: { cash: 15000, respect: 200, item: 'Gold Watch' }, requirement: 'vc2', task: 'Sell $10,000 worth of drugs' },
+    { id: 'vc4', name: 'Mansion Takeover', desc: 'The old boss is done. Time to take his mansion.', reward: { cash: 50000, respect: 500 }, requirement: 'vc3', task: 'Own 2 businesses' },
+    { id: 'vc5', name: 'King of Vice', desc: 'Rule Vice City with an iron fist.', reward: { cash: 200000, respect: 1000, vehicle: 'Yacht Cruiser' }, requirement: 'vc4', task: 'Complete The Island Job' },
+  ],
+  'Liberty City': [
+    { id: 'lc1', name: 'Fresh Off the Boat', desc: 'New immigrant, no friends. Time to hustle.', reward: { cash: 2000, respect: 50 }, requirement: null, task: 'Complete 3 legal jobs' },
+    { id: 'lc2', name: 'Cab Driver', desc: 'Drive for the mob. Don\'t ask questions.', reward: { cash: 6000, respect: 100 }, requirement: 'lc1', task: 'Driving skill level 3+' },
+    { id: 'lc3', name: 'The Russian Connection', desc: 'The mob wants you to handle something delicate.', reward: { cash: 15000, respect: 200, item: 'Bulletproof Vest' }, requirement: 'lc2', task: 'Join a gang' },
+    { id: 'lc4', name: 'Roman\'s Troubles', desc: 'Your cousin is in deep. Bail him out.', reward: { cash: 40000, respect: 500 }, requirement: 'lc3', task: 'Pay off $20,000' },
+    { id: 'lc5', name: 'American Dream', desc: 'The final score. Everything you\'ve worked for.', reward: { cash: 250000, respect: 1000, vehicle: 'Tank' }, requirement: 'lc4', task: 'Complete The Grand Finale' },
+  ]
+};
+
 const HEISTS = [
   // TIER 1: Petty (no crew needed, low risk) — $500-$3K
   { id: 1, name: 'Corner Store Stickup', city: 'Los Santos', tier: 1, crew: 0, setupCost: 0, payout: [800, 1500], wanted: 1, steps: ['Scout the store', 'Wait for closing time', 'Rob the register'], skill: 'stealth', skillReq: 1 },
@@ -1074,7 +1116,7 @@ function generateCityMap(cityName) {
     }
   }
 
-  const poiTypes = [T.POI_AMMO, T.POI_HOSPITAL, T.POI_HOOKER, T.POI_GAMBLING, T.POI_DRUG, T.POI_SHOP, T.POI_VEHICLE, T.POI_WORK, T.POI_GANG, T.POI_STRIP];
+  const poiTypes = [T.POI_AMMO, T.POI_HOSPITAL, T.POI_HOOKER, T.POI_GAMBLING, T.POI_DRUG, T.POI_SHOP, T.POI_VEHICLE, T.POI_WORK, T.POI_GANG, T.POI_STRIP, T.POI_MODSHOP];
   const roadAdjacentSpots = [];
   for (let y = 2; y < S-2; y++) {
     for (let x = 2; x < S-2; x++) {
@@ -4352,6 +4394,8 @@ async function initSchema() {
     INSERT INTO gang_upgrades VALUES ('safe_house',0),('weapon_locker',0),('smuggling_routes',0) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS gang_relations(gang VARCHAR PRIMARY KEY, relation VARCHAR DEFAULT 'Hostile');
     CREATE TABLE IF NOT EXISTS heist_progress(heist_id INT PRIMARY KEY, step INT DEFAULT 0, completed BOOLEAN DEFAULT FALSE);
+    CREATE TABLE IF NOT EXISTS vehicle_mods(vehicle VARCHAR, mod VARCHAR, PRIMARY KEY(vehicle, mod));
+    CREATE TABLE IF NOT EXISTS story_progress(mission_id VARCHAR PRIMARY KEY, completed BOOLEAN DEFAULT FALSE);
     CREATE TABLE IF NOT EXISTS district_heat(district VARCHAR, city VARCHAR, heat INT DEFAULT 0, PRIMARY KEY(district, city));
     CREATE TABLE IF NOT EXISTS perks(name VARCHAR PRIMARY KEY, unlocked INT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS world_events(id INT DEFAULT nextval('event_id_seq'), day INT, hour INT, description VARCHAR);
@@ -6919,6 +6963,7 @@ function showMainActions() {
     { key: 'X', label: 'Strip Club',     action: menuStripClub },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
     { key: 'J', label: 'Heists',         action: menuHeists },
+    { key: 'M', label: 'Missions',       action: menuStoryMissions },
     { key: 'V', label: 'Enter/Exit Car', action: toggleVehicle },
     { key: 'G', label: 'Garage',         action: menuGarage },
     ...(isMultiplayer() ? [{ key: 'B', label: 'Bounties',       action: menuBounties }] : []),
@@ -7779,6 +7824,54 @@ async function menuStripClub() {
 // --------------------------------------------------------
 //  GAMBLING
 // --------------------------------------------------------
+// --------------------------------------------------------
+//  MOD SHOP — car customization
+// --------------------------------------------------------
+async function menuModShop() {
+  showInterior('shop');
+  const vehicles = await q('SELECT * FROM vehicles WHERE stored=0');
+  if (vehicles.length === 0) { log('Drive a vehicle here to customize it!', 'c-yellow'); showMainActions(); return; }
+  const v = vehicles[0];
+  const p = await q1('SELECT cash FROM player');
+  const existingMods = await q('SELECT mod FROM vehicle_mods WHERE vehicle=\'' + v.name.replace(/'/g,"''") + '\'');
+  const hasMod = new Set(existingMods.map(m => m.mod));
+
+  const mods = [
+    { name: 'Paint Job', cost: 500, desc: 'Fresh paint (+style)', stat: 'Cosmetic' },
+    { name: 'Nitro Boost', cost: 3000, desc: '+2 speed for 10s bursts', stat: '+2 speed' },
+    { name: 'Armor Plating', cost: 5000, desc: 'Vehicle takes 50% less damage', stat: 'Defense' },
+    { name: 'Tinted Windows', cost: 1500, desc: '-1 wanted when in vehicle', stat: 'Stealth' },
+    { name: 'Engine Upgrade', cost: 4000, desc: '+1 permanent speed', stat: '+1 speed' },
+    { name: 'Hydraulics', cost: 2000, desc: 'Bounce on demand (+style)', stat: 'Cosmetic' },
+    { name: 'Sound System', cost: 1000, desc: 'Blast music (+respect nearby)', stat: '+5 respect' },
+    { name: 'Underglow', cost: 1500, desc: 'Neon lights under car', stat: 'Cosmetic' },
+  ];
+
+  const options = [];
+  for (const mod of mods) {
+    if (hasMod.has(mod.name)) {
+      options.push({ label: `${mod.name} — INSTALLED ✓`, action: () => { log(`${mod.name} already installed on ${v.name}.`, 'c-gray'); } });
+    } else {
+      options.push({ label: `${mod.name} — $${mod.cost.toLocaleString()} (${mod.desc})`, action: async () => {
+        if (p.cash < mod.cost) { log('Not enough cash!', 'c-red'); return; }
+        await exec(`UPDATE player SET cash=cash-${mod.cost}`);
+        await exec(`INSERT INTO vehicle_mods VALUES ('${v.name.replace(/'/g,"''")}','${mod.name}')`);
+        // Apply stat bonuses
+        if (mod.name === 'Sound System') await exec('UPDATE player SET respect=respect+5');
+        if (mod.name === 'Engine Upgrade') {
+          const vDef = VEHICLES.find(vd => vd.name === v.name);
+          if (vDef) vDef.speed = (vDef.speed || 2) + 1;
+        }
+        spawnFloatingText(`${mod.name}!`, '#00aaff');
+        log(`Installed ${mod.name} on ${v.name} for $${mod.cost.toLocaleString()}!`, 'c-green');
+        spawnParticlesAtDuck(0x00aaff, 15, 2, 1.5);
+        hideSubMenu(); await updateHUD(); showMainActions();
+      }});
+    }
+  }
+  showSubMenu(`Mod Shop — ${v.name} (${hasMod.size}/${mods.length} mods)`, options);
+}
+
 async function menuGambling() {
   showInterior('casino');
   // Check if at gambling POI or nighttime
@@ -8011,6 +8104,153 @@ async function menuBounties() {
       hideSubMenu(); await updateHUD(); showMainActions();
     });
   });
+}
+
+// --------------------------------------------------------
+//  STORY MISSIONS
+// --------------------------------------------------------
+async function menuStoryMissions() {
+  const p = await q1('SELECT city, cash, respect FROM player');
+  const missions = STORY_MISSIONS[p.city];
+  if (!missions) { log('No story missions in this city.', 'c-gray'); showMainActions(); return; }
+
+  const completed = await q('SELECT mission_id FROM story_progress WHERE completed=TRUE');
+  const doneSet = new Set(completed.map(r => r.mission_id));
+  const totalDone = completed.length;
+  const totalAll = Object.values(STORY_MISSIONS).flat().length;
+
+  let html = `<div class="c-gray" style="font-size:10px;margin-bottom:6px">${totalDone}/${totalAll} missions completed across all cities</div>`;
+
+  for (const m of missions) {
+    const isDone = doneSet.has(m.id);
+    const isLocked = m.requirement && !doneSet.has(m.requirement);
+    const rewardTxt = `$${m.reward.cash.toLocaleString()} + ${m.reward.respect} respect${m.reward.vehicle ? ' + ' + m.reward.vehicle : ''}${m.reward.item ? ' + ' + m.reward.item : ''}`;
+
+    if (isDone) {
+      html += `<div style="margin:4px 0;opacity:0.5"><span class="c-green">✓</span> <span class="c-white">${m.name}</span> <span class="c-gray">— completed</span></div>`;
+    } else if (isLocked) {
+      html += `<div style="margin:4px 0;opacity:0.4"><span class="c-gray">🔒 ${m.name} — complete previous mission first</span></div>`;
+    } else {
+      html += `<div style="margin:4px 0"><button class="btn story-mission" data-id="${m.id}" style="text-align:left;width:100%">`;
+      html += `<span class="c-yellow">${m.name}</span><br>`;
+      html += `<span class="c-gray" style="font-size:9px">${m.desc}</span><br>`;
+      html += `<span class="c-cyan" style="font-size:9px">Task: ${m.task}</span><br>`;
+      html += `<span class="c-green" style="font-size:9px">Reward: ${rewardTxt}</span>`;
+      html += `</button></div>`;
+    }
+  }
+
+  showSubMenuHTML(`Story — ${p.city}`, html);
+
+  $('sub-menu').querySelectorAll('.story-mission').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const m = missions.find(x => x.id === btn.dataset.id);
+      if (!m) return;
+      hideSubMenu();
+      // Check if task is already met
+      const met = await _checkStoryTask(m);
+      if (met) {
+        // Complete the mission!
+        await exec(`INSERT INTO story_progress VALUES ('${m.id}', TRUE) ON CONFLICT(mission_id) DO UPDATE SET completed=TRUE`);
+        await exec(`UPDATE player SET cash=cash+${m.reward.cash}, respect=respect+${m.reward.respect}`);
+        if (m.reward.vehicle) {
+          const exists = await qv(`SELECT COUNT(*) FROM vehicles WHERE name='${m.reward.vehicle.replace(/'/g,"''")}'`);
+          if (!exists) await exec(`INSERT INTO vehicles VALUES ('${m.reward.vehicle.replace(/'/g,"''")}', 0)`);
+        }
+        if (m.reward.item) {
+          await exec(`INSERT INTO inventory VALUES ('${m.reward.item}', 1) ON CONFLICT(item) DO UPDATE SET qty=qty+1`);
+        }
+        spawnFloatingText('MISSION COMPLETE!', '#ffd700');
+        spawnParticlesAtDuck(0xffd700, 30, 3, 2);
+        screenShake(0.2, 300);
+        log(`MISSION COMPLETE: ${m.name}!`, 'c-gold');
+        log(`Reward: $${m.reward.cash.toLocaleString()}, +${m.reward.respect} respect${m.reward.vehicle ? ', ' + m.reward.vehicle : ''}${m.reward.item ? ', ' + m.reward.item : ''}`, 'c-green');
+        logAction('mission_complete', m.name);
+      } else {
+        log(`Mission: ${m.name}`, 'c-yellow');
+        log(`Task: ${m.task}`, 'c-cyan');
+        log('Complete the task, then come back to claim the reward.', 'c-gray');
+      }
+      await updateHUD();
+      showMainActions();
+    });
+  });
+}
+
+async function _checkStoryTask(mission) {
+  const task = mission.task;
+  if (task.startsWith('Kill')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 5);
+    const kills = (await qv("SELECT COUNT(*) FROM action_log WHERE action IN ('kill_npc','kill_cop')")) || 0;
+    return kills >= count;
+  }
+  if (task.startsWith('Claim')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 1);
+    const p = await q1('SELECT gang FROM player');
+    if (!p.gang) return false;
+    const territories = (await qv(`SELECT COUNT(*) FROM territories WHERE owner='${p.gang.replace(/'/g,"''")}'`)) || 0;
+    return territories >= count;
+  }
+  if (task.includes('heist') || task.includes('Heist')) {
+    const tier = task.match(/Tier (\d)/)?.[1];
+    if (tier) {
+      const tierHeists = HEISTS.filter(h => h.tier >= parseInt(tier));
+      const done = await q('SELECT heist_id FROM heist_progress WHERE completed=TRUE');
+      return tierHeists.some(h => done.find(d => d.heist_id === h.id));
+    }
+    // Named heist
+    const heistName = task.replace('Complete ', '');
+    const h = HEISTS.find(x => x.name === heistName);
+    if (h) return !!(await qv(`SELECT completed FROM heist_progress WHERE heist_id=${h.id} AND completed=TRUE`));
+    return false;
+  }
+  if (task.includes('wanted level')) {
+    const level = parseInt(task.match(/\d+/)?.[0] || 3);
+    const w = (await qv('SELECT wanted_level FROM player')) || 0;
+    return w >= level;
+  }
+  if (task.includes('Earn') || task.includes('crime')) {
+    const amount = parseInt(task.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || 5000);
+    const earned = (await qv("SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(detail,'+$',''),',','') AS INT)),0) FROM action_log WHERE action IN ('crime_success','rob_success')")) || 0;
+    return earned >= amount;
+  }
+  if (task.includes('Own') && task.includes('vehicle')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 1);
+    return ((await qv('SELECT COUNT(*) FROM vehicles')) || 0) >= count;
+  }
+  if (task.includes('Buy any gun')) return ((await qv('SELECT COUNT(*) FROM guns')) || 0) > 0;
+  if (task.includes('legal job')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 3);
+    return ((await qv("SELECT COUNT(*) FROM action_log WHERE action='job'")) || 0) >= count;
+  }
+  if (task.includes('skill level')) {
+    const match = task.match(/(\w+) skill level (\d+)/);
+    if (match) return (await getSkill(match[1].toLowerCase())) >= parseInt(match[2]);
+  }
+  if (task.includes('Respect')) {
+    const amount = parseInt(task.match(/\d+/)?.[0] || 500);
+    return ((await qv('SELECT respect FROM player')) || 0) >= amount;
+  }
+  if (task.includes('Join a gang')) return !!(await qv("SELECT gang FROM player WHERE gang != ''"));
+  if (task.includes('business')) {
+    const count = parseInt(task.match(/\d+/)?.[0] || 1);
+    return ((await qv('SELECT COUNT(*) FROM businesses')) || 0) >= count;
+  }
+  if (task.includes('Sell') && task.includes('drug')) {
+    const amount = parseInt(task.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || 10000);
+    const sold = (await qv("SELECT COALESCE(SUM(CAST(REPLACE(REPLACE(detail,'+$',''),',','') AS INT)),0) FROM action_log WHERE action='drug_sell'")) || 0;
+    return sold >= amount;
+  }
+  if (task.includes('Pay off')) {
+    const amount = parseInt(task.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || 20000);
+    const cash = (await qv('SELECT cash FROM player')) || 0;
+    return cash >= amount;
+  }
+  if (task.includes('gambling') || task.includes('Win')) {
+    // Simplified — check if they have enough cash
+    return ((await qv('SELECT cash FROM player')) || 0) > 5000;
+  }
+  return false;
 }
 
 // --------------------------------------------------------
@@ -8487,7 +8727,7 @@ function menuHelp() {
 //  MENU FUNCTION MAP
 // --------------------------------------------------------
 const menuFunctions = {
-  menuGuns, menuHospital, menuHookers, menuGambling, menuSwitchGun, menuDrugs,
+  menuGuns, menuHospital, menuHookers, menuGambling, menuSwitchGun, menuModShop, menuDrugs,
   menuShops, menuVehicles, menuJobs, menuGang, menuStripClub
 };
 
@@ -8503,7 +8743,8 @@ function rebuildActionKeys() {
     { key: '0', action: menuInventory }, { key: 'h', action: menuHookers },
     { key: 'n', action: menuNews }, { key: 'l', action: menuStats },
     { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists },
-    { key: 'v', action: toggleVehicle }, { key: 'g', action: menuGarage }, { key: 'b', action: menuBounties }, { key: '/', action: menuHelp }
+    { key: 'v', action: toggleVehicle }, { key: 'g', action: menuGarage }, { key: 'b', action: menuBounties },
+    { key: 'm', action: menuStoryMissions }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
