@@ -1312,12 +1312,52 @@ function showSubMenuHTML(title, html) {
   const backdrop = $('sub-menu-backdrop');
   el.style.display = 'block';
   backdrop.style.display = 'block';
-  el.innerHTML = `<h4>${title}</h4>${html}<div style="margin-top:8px"><button class="btn" id="btn-back">Back</button></div>`;
+  el.innerHTML = `<h4 style="position:sticky;top:0;background:rgba(10,10,10,0.98);padding-bottom:4px;z-index:1">${title}</h4><div style="overflow-y:auto;max-height:calc(80vh - 80px);padding-right:4px">${html}</div><div style="margin-top:8px;position:sticky;bottom:0;background:rgba(10,10,10,0.98);padding-top:4px"><button class="btn" id="btn-back">Back</button></div>`;
   el.querySelector('#btn-back').addEventListener('click', () => { hideSubMenu(); showMainActions(); });
   backdrop.addEventListener('click', () => { hideSubMenu(); showMainActions(); }, { once: true });
 }
 
 function hideSubMenu() { $('sub-menu').style.display = 'none'; $('sub-menu').innerHTML = ''; $('sub-menu-backdrop').style.display = 'none'; currentSubOptions = []; subMenuSelection = -1; }
+
+// Quick vehicle enter/exit toggle
+async function toggleVehicle() {
+  const active = await q1('SELECT name FROM vehicles WHERE stored=0 LIMIT 1');
+  if (active) {
+    await exec(`UPDATE vehicles SET stored=1 WHERE stored=0`);
+    log(`Exited ${active.name}.`, 'c-cyan');
+  } else {
+    const best = await q1('SELECT name FROM vehicles ORDER BY name LIMIT 1');
+    if (!best) { log('No vehicles owned.', 'c-gray'); return; }
+    await exec(`UPDATE vehicles SET stored=0 WHERE name='${best.name.replace(/'/g,"''")}'`);
+    log(`Got in ${best.name}.`, 'c-green');
+  }
+  await updateHUD();
+}
+
+// Quick garage — just vehicles
+async function menuGarage() {
+  const vehicles = await q('SELECT * FROM vehicles');
+  const active = vehicles.find(v => !v.stored);
+  const options = [];
+  options.push({ label: active ? `Exit ${active.name}` : 'On Foot', action: async () => {
+    await exec(`UPDATE vehicles SET stored=1 WHERE stored=0`);
+    log('Going on foot.', 'c-cyan');
+    hideSubMenu(); await updateHUD(); showMainActions();
+  }});
+  for (const v of vehicles) {
+    options.push({ label: `${v.name} ${v.stored ? '' : '[driving]'}`, action: async () => {
+      await exec(`UPDATE vehicles SET stored=1 WHERE stored=0`);
+      await exec(`UPDATE vehicles SET stored=0 WHERE name='${v.name.replace(/'/g,"''")}'`);
+      log(`Switched to ${v.name}.`, 'c-green');
+      hideSubMenu(); await updateHUD(); showMainActions();
+    }});
+  }
+  if (vehicles.length === 0) {
+    log('No vehicles. Steal or buy one.', 'c-gray');
+    return;
+  }
+  showSubMenu(`Garage${active ? ' — ' + active.name : ''}`, options);
+}
 
 // --------------------------------------------------------
 //  MAIN ACTIONS
@@ -1334,15 +1374,16 @@ function showMainActions() {
     { key: '6', label: 'Shops',          action: menuShops },
     { key: '7', label: 'Drug Market',    action: menuDrugs },
     { key: '8', label: 'Gang & Empire',  action: menuGang },
-    { key: '9', label: 'Perks',          action: menuPerks },
+    { key: '9', label: 'Perks (beta)',    action: menuPerks },
     { key: '0', label: 'Inventory',      action: menuInventory },
     { key: 'H', label: 'Hookers',        action: menuHookers },
     { key: 'N', label: 'News',           action: menuNews },
     { key: 'L', label: 'Stats',          action: menuStats },
-    { key: 'F5', label: 'Save Game',     action: saveGame },
     { key: 'X', label: 'Strip Club',     action: menuStripClub },
     { key: 'R', label: 'Street Race',    action: menuStreetRace },
     { key: 'J', label: 'Heists',         action: menuHeists },
+    { key: 'V', label: 'Enter/Exit Car', action: toggleVehicle },
+    { key: 'G', label: 'Garage',         action: menuGarage },
     ...(isMultiplayer() ? [{ key: 'B', label: 'Bounties',       action: menuBounties }] : []),
     { key: '?', label: 'Help/Settings',  action: menuHelp }
   ];
@@ -2568,42 +2609,61 @@ async function menuInventory() {
   const drugs = await q('SELECT * FROM drugs WHERE qty > 0');
   const vehicles = await q('SELECT * FROM vehicles');
   const skills = await q('SELECT * FROM skills');
-  let html = '<div class="c-yellow">--- Skills ---</div><table>';
-  for (const s of skills) html += `<tr><td>${s.name}</td><td>Lv.${s.level}</td></tr>`;
-  html += '</table>';
-  html += '<div class="c-yellow" style="margin-top:6px">--- Guns ---</div>';
-  if (guns.length === 0) html += '<div class="c-gray">None</div>';
+  const active = vehicles.find(v => !v.stored);
+
+  let html = '';
+
+  // Quick vehicle status bar at top
+  html += `<div style="background:#111;padding:6px 8px;border-radius:4px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">`;
+  html += `<span style="color:#888;font-size:10px">${active ? `Driving: <span class="c-green">${active.name}</span>` : '<span class="c-gray">On foot</span>'}</span>`;
+  html += `<button class="btn switch-vehicle" data-name="" style="font-size:9px;padding:2px 8px">${active ? 'Exit Vehicle' : 'On Foot'}</button>`;
+  html += `</div>`;
+
+  // Guns
+  html += '<div class="c-yellow">Weapons</div>';
+  if (guns.length === 0) html += '<div class="c-gray" style="font-size:10px">None — visit Ammu-Nation [4]</div>';
   else {
     for (const g of guns) {
-      const eq = g.equipped ? ' <span class="c-green">[EQUIPPED]</span>' : '';
-      html += `<div style="margin:2px 0"><button class="btn equip-gun" data-name="${g.name}">${g.name} (${g.category}, +${g.bonus})${eq}</button></div>`;
+      const eq = g.equipped ? ' <span class="c-green">equipped</span>' : '';
+      html += `<div style="margin:2px 0"><button class="btn equip-gun" data-name="${g.name}" style="text-align:left;width:100%">${g.name} <span class="c-gray">(${g.category} +${g.bonus})</span>${eq}</button></div>`;
     }
   }
-  html += '<div class="c-yellow" style="margin-top:6px">--- Items ---</div>';
-  if (items.length === 0) html += '<div class="c-gray">None</div>';
-  else {
-    html += '<table>';
+
+  // Items
+  if (items.length > 0) {
+    html += '<div class="c-yellow" style="margin-top:8px">Items</div>';
     for (const i of items) {
-      html += `<tr><td>${i.item} x${i.qty}</td><td>`;
-      if (i.item === 'Health Pack' || i.item === 'Fake ID') html += `<button class="btn use-item" data-item="${i.item}">Use</button>`;
-      html += '</td></tr>';
+      html += `<div style="margin:2px 0;display:flex;align-items:center;justify-content:space-between"><span class="c-white">${i.item} <span class="c-gray">x${i.qty}</span></span>`;
+      if (i.item === 'Health Pack' || i.item === 'Fake ID') html += `<button class="btn use-item" data-item="${i.item}" style="font-size:9px;padding:2px 8px">Use</button>`;
+      html += '</div>';
     }
+  }
+
+  // Drugs
+  if (drugs.length > 0) {
+    html += '<div class="c-yellow" style="margin-top:8px">Drugs</div><table>';
+    for (const d of drugs) html += `<tr><td>${d.name}</td><td class="c-gray">x${d.qty}</td></tr>`;
     html += '</table>';
   }
-  html += '<div class="c-yellow" style="margin-top:6px">--- Drugs ---</div>';
-  if (drugs.length === 0) html += '<div class="c-gray">None</div>';
-  else { html += '<table>'; for (const d of drugs) html += `<tr><td>${d.name}</td><td>x${d.qty}</td></tr>`; html += '</table>'; }
-  html += '<div class="c-yellow" style="margin-top:6px">--- Vehicles ---</div>';
-  if (vehicles.length === 0) html += '<div class="c-gray">None — steal one or find a dealership</div>';
+
+  // Garage
+  html += '<div class="c-yellow" style="margin-top:8px">Garage</div>';
+  if (vehicles.length === 0) html += '<div class="c-gray" style="font-size:10px">No vehicles — steal or buy one</div>';
   else {
-    const active = vehicles.find(v => !v.stored);
-    if (active) html += `<div class="c-green" style="margin-bottom:4px;font-size:10px">Driving: ${active.name}</div>`;
-    html += '<div style="margin:4px 0"><button class="btn switch-vehicle" data-name="">Go on Foot</button></div>';
     for (const v of vehicles) {
-      const label = v.stored ? `${v.name} (garaged)` : `${v.name} <span class="c-green">[ACTIVE]</span>`;
-      html += `<div style="margin:2px 0;display:flex;gap:4px;align-items:center"><button class="btn switch-vehicle" data-name="${v.name}" data-stored="${v.stored}">${label}</button><button class="btn sell-vehicle" data-name="${v.name}" style="font-size:9px;color:#ff4444">Sell</button></div>`;
+      const isActive = !v.stored;
+      html += `<div style="margin:2px 0;display:flex;gap:4px;align-items:center">`;
+      html += `<button class="btn switch-vehicle" data-name="${v.name}" data-stored="${v.stored}" style="flex:1;text-align:left">${v.name} ${isActive ? '<span class="c-green">[driving]</span>' : '<span class="c-gray">(garaged)</span>'}</button>`;
+      html += `<button class="btn sell-vehicle" data-name="${v.name}" style="font-size:9px;padding:2px 6px;color:#ff4444">Sell</button>`;
+      html += `</div>`;
     }
   }
+
+  // Skills (collapsed)
+  html += '<div class="c-yellow" style="margin-top:8px">Skills</div><div style="display:flex;flex-wrap:wrap;gap:6px">';
+  for (const s of skills) html += `<span class="c-white" style="font-size:10px">${s.name} <span class="c-cyan">Lv.${s.level}</span></span>`;
+  html += '</div>';
+
   showSubMenuHTML('Inventory', html);
   $('sub-menu').querySelectorAll('.use-item').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -2940,8 +3000,9 @@ function rebuildActionKeys() {
     { key: '4', action: menuGuns }, { key: '5', action: menuHospital }, { key: '6', action: menuShops },
     { key: '7', action: menuDrugs }, { key: '8', action: menuGang }, { key: '9', action: menuPerks },
     { key: '0', action: menuInventory }, { key: 'h', action: menuHookers },
-    { key: 'n', action: menuNews }, { key: 'l', action: menuStats }, { key: 'f5', action: saveGame },
-    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists }, { key: 'b', action: menuBounties }, { key: '/', action: menuHelp }
+    { key: 'n', action: menuNews }, { key: 'l', action: menuStats },
+    { key: 'x', action: menuStripClub }, { key: 'r', action: menuStreetRace }, { key: 'j', action: menuHeists },
+    { key: 'v', action: toggleVehicle }, { key: 'g', action: menuGarage }, { key: 'b', action: menuBounties }, { key: '/', action: menuHelp }
   ];
   for (const a of actions) mainActionKeys[a.key] = a.action;
 }
