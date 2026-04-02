@@ -1320,151 +1320,96 @@ function showSubMenuHTML(title, html) {
 function hideSubMenu() { $('sub-menu').style.display = 'none'; $('sub-menu').innerHTML = ''; $('sub-menu-backdrop').style.display = 'none'; hideInterior(); currentSubOptions = []; subMenuSelection = -1; }
 
 // Interior scene system
+function _asciiScene(art, color, bgColor) {
+  return {
+    bg: bgColor,
+    elements: [`<pre style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:${color};font-size:8px;line-height:1.1;font-family:'Courier New',monospace;text-align:center;text-shadow:0 0 8px ${color};white-space:pre;pointer-events:none">${art}</pre>`],
+    css: ''
+  };
+}
 const INTERIOR_SCENES = {
-  strip_club: {
-    bg: 'linear-gradient(180deg, #1a0020 0%, #2d0040 40%, #0a0010 100%)',
-    elements: [
-      // Neon lights
-      '<div style="position:absolute;top:10%;left:10%;width:80%;height:2px;background:linear-gradient(90deg,transparent,#ff1493,#ff69b4,#ff1493,transparent);box-shadow:0 0 20px #ff1493;animation:pulse-pink 2s infinite"></div>',
-      '<div style="position:absolute;top:20%;left:5%;width:90%;height:1px;background:linear-gradient(90deg,transparent,#9400d3,transparent);box-shadow:0 0 15px #9400d3;animation:pulse-purple 3s infinite"></div>',
-      // Pole (chrome)
-      '<div style="position:absolute;top:5%;left:50%;width:4px;height:72%;background:linear-gradient(180deg,#eee,#999,#eee,#999,#eee);box-shadow:0 0 12px rgba(255,255,255,0.4);transform:translateX(-50%)"></div>',
-      // Dancer — blocky pixel art figure on pole
-      // Body container — sways side to side
-      '<div id="dancer" style="position:absolute;top:28%;left:50%;transform:translateX(-50%);animation:dancer-sway 2s ease-in-out infinite">' +
-        // Head
-        '<div style="width:16px;height:16px;background:#e0ac69;border-radius:50%;margin:0 auto"></div>' +
-        // Hair
-        '<div style="width:20px;height:8px;background:#331100;border-radius:10px 10px 0 0;margin:-12px auto 0;position:relative;top:-4px"></div>' +
-        // Neck
-        '<div style="width:6px;height:4px;background:#e0ac69;margin:0 auto"></div>' +
-        // Torso
-        '<div style="width:18px;height:20px;background:#ff1493;border-radius:2px;margin:0 auto;position:relative">' +
-          '<div style="position:absolute;top:0;left:50%;width:12px;height:3px;background:#cc1177;transform:translateX(-50%);border-radius:0 0 4px 4px"></div>' +
-        '</div>' +
-        // Left arm — reaches for pole
-        '<div style="position:absolute;top:24px;left:-8px;width:6px;height:18px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:arm-L 2s ease-in-out infinite"></div>' +
-        // Right arm — on pole
-        '<div style="position:absolute;top:20px;right:-6px;width:6px;height:22px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:arm-R 2s ease-in-out infinite"></div>' +
-        // Skirt / shorts
-        '<div style="width:20px;height:8px;background:#cc1177;margin:0 auto;border-radius:0 0 3px 3px"></div>' +
-        // Left leg
-        '<div style="position:absolute;bottom:-30px;left:4px;width:7px;height:28px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:leg-L 2s ease-in-out infinite"></div>' +
-        // Right leg
-        '<div style="position:absolute;bottom:-30px;right:4px;width:7px;height:28px;background:#e0ac69;border-radius:3px;transform-origin:top center;animation:leg-R 2s ease-in-out infinite"></div>' +
-        // Heels
-        '<div style="position:absolute;bottom:-36px;left:3px;width:9px;height:6px;background:#ff1493;border-radius:1px"></div>' +
-        '<div style="position:absolute;bottom:-36px;right:3px;width:9px;height:6px;background:#ff1493;border-radius:1px"></div>' +
-      '</div>',
-      // Stage with edge glow
-      '<div style="position:absolute;bottom:15%;left:20%;width:60%;height:10px;background:linear-gradient(0deg,#222,#444);border-radius:5px;box-shadow:0 -4px 25px rgba(255,20,147,0.5),0 -1px 8px rgba(255,20,147,0.3)"></div>',
-      // Stage lights (moving spots)
-      '<div style="position:absolute;top:3%;left:30%;width:0;height:0;border-left:30px solid transparent;border-right:30px solid transparent;border-top:200px solid rgba(255,20,147,0.06);animation:spot-L 3s ease-in-out infinite;transform-origin:top center"></div>',
-      '<div style="position:absolute;top:3%;right:30%;width:0;height:0;border-left:30px solid transparent;border-right:30px solid transparent;border-top:200px solid rgba(0,255,255,0.05);animation:spot-R 3s ease-in-out infinite;transform-origin:top center"></div>',
-      // Disco lights
-      '<div style="position:absolute;top:5%;left:20%;width:12px;height:12px;border-radius:50%;background:#ff1493;box-shadow:0 0 30px 10px rgba(255,20,147,0.4);animation:disco1 1.5s infinite alternate"></div>',
-      '<div style="position:absolute;top:8%;right:22%;width:10px;height:10px;border-radius:50%;background:#00ffff;box-shadow:0 0 30px 10px rgba(0,255,255,0.4);animation:disco2 2s infinite alternate"></div>',
-      '<div style="position:absolute;top:4%;left:48%;width:8px;height:8px;border-radius:50%;background:#ff69b4;box-shadow:0 0 25px 8px rgba(255,105,180,0.4);animation:disco1 1.8s infinite alternate"></div>',
-      '<div style="position:absolute;top:12%;left:60%;width:6px;height:6px;border-radius:50%;background:#9400d3;box-shadow:0 0 20px 6px rgba(148,0,211,0.4);animation:disco2 2.5s infinite alternate"></div>',
-      // Bar area
-      '<div style="position:absolute;bottom:20%;left:3%;width:22%;height:45px;background:linear-gradient(0deg,#1a0a00,#3a2000);border-top:2px solid #664400;border-radius:2px"></div>',
-      // Bottles with glow
-      '<div style="position:absolute;bottom:30%;left:5%;width:5px;height:16px;background:#44aa44;border-radius:2px 2px 0 0;box-shadow:0 0 4px #44aa44"></div>',
-      '<div style="position:absolute;bottom:30%;left:9%;width:5px;height:12px;background:#aa4444;border-radius:2px 2px 0 0;box-shadow:0 0 4px #aa4444"></div>',
-      '<div style="position:absolute;bottom:30%;left:13%;width:5px;height:14px;background:#4444aa;border-radius:2px 2px 0 0;box-shadow:0 0 4px #4444aa"></div>',
-      '<div style="position:absolute;bottom:30%;left:17%;width:5px;height:13px;background:#aaaa44;border-radius:2px 2px 0 0;box-shadow:0 0 4px #aaaa44"></div>',
-      // VIP sign
-      '<div style="position:absolute;top:3%;right:8%;color:#ffd700;font-size:10px;font-weight:bold;text-shadow:0 0 8px #ffd700;font-family:serif;animation:pulse-pink 3s infinite">VIP</div>',
-      // Money on stage
-      '<div style="position:absolute;bottom:16%;left:35%;width:8px;height:4px;background:#44aa44;transform:rotate(15deg)"></div>',
-      '<div style="position:absolute;bottom:17%;left:55%;width:8px;height:4px;background:#44aa44;transform:rotate(-10deg)"></div>',
-      '<div style="position:absolute;bottom:16%;right:32%;width:8px;height:4px;background:#44aa44;transform:rotate(25deg)"></div>',
-    ],
-    css: '@keyframes pulse-pink{0%,100%{opacity:0.6}50%{opacity:1}}@keyframes pulse-purple{0%,100%{opacity:0.4}50%{opacity:0.8}}@keyframes disco1{0%{transform:scale(1)}100%{transform:scale(1.5);opacity:0.5}}@keyframes disco2{0%{transform:scale(1.2)}100%{transform:scale(0.8);opacity:0.6}}@keyframes dancer-sway{0%,100%{transform:translateX(-50%) rotate(-3deg)}25%{transform:translateX(-40%) rotate(2deg)}50%{transform:translateX(-50%) rotate(3deg)}75%{transform:translateX(-60%) rotate(-2deg)}}@keyframes arm-L{0%,100%{transform:rotate(-15deg)}50%{transform:rotate(-40deg)}}@keyframes arm-R{0%,100%{transform:rotate(10deg)}50%{transform:rotate(30deg)}}@keyframes leg-L{0%,100%{transform:rotate(5deg)}50%{transform:rotate(-10deg)}}@keyframes leg-R{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(10deg)}}@keyframes spot-L{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}@keyframes spot-R{0%,100%{transform:rotate(8deg)}50%{transform:rotate(-8deg)}}'
-  },
-  ammo: {
-    bg: 'linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 50%, #111 100%)',
-    elements: [
-      // Brick wall
-      '<div style="position:absolute;top:0;left:0;right:0;bottom:30%;background:repeating-linear-gradient(0deg,#3a2a1a 0px,#3a2a1a 18px,#2a1a0a 18px,#2a1a0a 20px),repeating-linear-gradient(90deg,#3a2a1a 0px,#3a2a1a 38px,#2a1a0a 38px,#2a1a0a 40px)"></div>',
-      // Gun rack
-      '<div style="position:absolute;top:25%;left:15%;width:70%;height:3px;background:#555;box-shadow:0 2px 5px rgba(0,0,0,0.5)"></div>',
-      '<div style="position:absolute;top:40%;left:15%;width:70%;height:3px;background:#555;box-shadow:0 2px 5px rgba(0,0,0,0.5)"></div>',
-      // Guns on rack
-      '<div style="position:absolute;top:20%;left:20%;width:50px;height:8px;background:#444;border-radius:2px;transform:rotate(-5deg)"></div>',
-      '<div style="position:absolute;top:20%;left:40%;width:60px;height:8px;background:#333;border-radius:2px;transform:rotate(3deg)"></div>',
-      '<div style="position:absolute;top:20%;right:25%;width:45px;height:10px;background:#444;border-radius:2px"></div>',
-      '<div style="position:absolute;top:35%;left:25%;width:55px;height:8px;background:#3a3a3a;border-radius:2px;transform:rotate(-2deg)"></div>',
-      '<div style="position:absolute;top:35%;right:30%;width:40px;height:8px;background:#444;border-radius:2px;transform:rotate(4deg)"></div>',
-      // Counter
-      '<div style="position:absolute;bottom:15%;left:10%;width:80%;height:50px;background:linear-gradient(0deg,#2a2a2a,#3a3a3a);border-top:3px solid #555"></div>',
-      // Neon sign
-      '<div style="position:absolute;top:8%;left:50%;transform:translateX(-50%);color:#ff3333;font-size:14px;font-weight:bold;text-shadow:0 0 10px #ff0000,0 0 20px #ff0000;font-family:Impact">AMMU-NATION</div>',
-    ],
-    css: ''
-  },
-  hospital: {
-    bg: 'linear-gradient(180deg, #e8e8e8 0%, #d0d0d0 50%, #b8b8b8 100%)',
-    elements: [
-      // Red cross
-      '<div style="position:absolute;top:8%;left:50%;transform:translateX(-50%)"><div style="width:30px;height:10px;background:#cc0000;position:absolute;top:10px;left:0"></div><div style="width:10px;height:30px;background:#cc0000;position:absolute;top:0;left:10px"></div></div>',
-      // Clean walls
-      '<div style="position:absolute;top:30%;left:0;right:0;height:2px;background:#ccc"></div>',
-      // Medical equipment
-      '<div style="position:absolute;top:35%;right:15%;width:20px;height:40px;background:#ddd;border:1px solid #bbb;border-radius:3px"></div>',
-      '<div style="position:absolute;top:33%;right:16%;width:8px;height:8px;border-radius:50%;background:#44ff44;box-shadow:0 0 8px #44ff44"></div>',
-      // Bed
-      '<div style="position:absolute;bottom:20%;left:15%;width:100px;height:25px;background:#f0f0f0;border:1px solid #ddd;border-radius:3px"></div>',
-      '<div style="position:absolute;bottom:22%;left:15%;width:25px;height:30px;background:#e0e0e0;border-radius:3px"></div>',
-      // Floor
-      '<div style="position:absolute;bottom:0;left:0;right:0;height:15%;background:repeating-linear-gradient(90deg,#e0e0e0 0px,#e0e0e0 40px,#d0d0d0 40px,#d0d0d0 41px)"></div>',
-    ],
-    css: ''
-  },
-  shop: {
-    bg: 'linear-gradient(180deg, #1a2a1a 0%, #2a3a2a 50%, #0a1a0a 100%)',
-    elements: [
-      // Shelves
-      '<div style="position:absolute;top:20%;left:10%;width:80%;height:3px;background:#664422"></div>',
-      '<div style="position:absolute;top:40%;left:10%;width:80%;height:3px;background:#664422"></div>',
-      '<div style="position:absolute;top:60%;left:10%;width:80%;height:3px;background:#664422"></div>',
-      // Products on shelves
-      '<div style="position:absolute;top:15%;left:15%;width:12px;height:16px;background:#cc4444;border-radius:2px"></div>',
-      '<div style="position:absolute;top:14%;left:30%;width:10px;height:18px;background:#44cc44;border-radius:2px"></div>',
-      '<div style="position:absolute;top:16%;left:45%;width:14px;height:14px;background:#4444cc;border-radius:2px"></div>',
-      '<div style="position:absolute;top:15%;right:25%;width:11px;height:16px;background:#cccc44;border-radius:2px"></div>',
-      '<div style="position:absolute;top:35%;left:20%;width:12px;height:16px;background:#cc8844;border-radius:2px"></div>',
-      '<div style="position:absolute;top:36%;left:40%;width:10px;height:14px;background:#44cccc;border-radius:2px"></div>',
-      '<div style="position:absolute;top:34%;right:20%;width:13px;height:17px;background:#cc44cc;border-radius:2px"></div>',
-      // Register
-      '<div style="position:absolute;bottom:15%;right:15%;width:35px;height:25px;background:#333;border-radius:3px"></div>',
-      '<div style="position:absolute;bottom:22%;right:18%;width:15px;height:10px;background:#44ff44;box-shadow:0 0 5px #44ff44"></div>',
-      // Open sign
-      '<div style="position:absolute;top:5%;left:50%;transform:translateX(-50%);color:#44ff44;font-size:12px;text-shadow:0 0 10px #44ff44;font-family:monospace">OPEN 24/7</div>',
-    ],
-    css: ''
-  },
-  casino: {
-    bg: 'linear-gradient(180deg, #1a0a2a 0%, #2a1a3a 40%, #0a0a1a 100%)',
-    elements: [
-      // Chandelier
-      '<div style="position:absolute;top:2%;left:50%;transform:translateX(-50%);width:60px;height:30px;border-radius:0 0 30px 30px;background:linear-gradient(0deg,rgba(255,215,0,0.3),transparent);box-shadow:0 0 30px rgba(255,215,0,0.2)"></div>',
-      // Card table
-      '<div style="position:absolute;bottom:25%;left:30%;width:40%;height:50px;background:#1a5a1a;border-radius:50%;border:3px solid #664400"></div>',
-      // Chips on table
-      '<div style="position:absolute;bottom:35%;left:40%;width:10px;height:10px;border-radius:50%;background:#cc2222;border:1px solid #ff4444"></div>',
-      '<div style="position:absolute;bottom:33%;left:48%;width:10px;height:10px;border-radius:50%;background:#2222cc;border:1px solid #4444ff"></div>',
-      '<div style="position:absolute;bottom:36%;right:38%;width:10px;height:10px;border-radius:50%;background:#22cc22;border:1px solid #44ff44"></div>',
-      // Slot machines
-      '<div style="position:absolute;bottom:20%;left:5%;width:25px;height:45px;background:#888;border-radius:3px;border:2px solid #aaa"></div>',
-      '<div style="position:absolute;bottom:30%;left:8%;width:15px;height:10px;background:#ff0;box-shadow:0 0 5px #ff0"></div>',
-      '<div style="position:absolute;bottom:20%;right:8%;width:25px;height:45px;background:#888;border-radius:3px;border:2px solid #aaa"></div>',
-      '<div style="position:absolute;bottom:30%;right:11%;width:15px;height:10px;background:#f0f;box-shadow:0 0 5px #f0f"></div>',
-      // Neon
-      '<div style="position:absolute;top:8%;left:50%;transform:translateX(-50%);color:#ffd700;font-size:14px;font-weight:bold;text-shadow:0 0 15px #ffd700,0 0 30px #ffd700;font-family:serif">GAMBLING DEN</div>',
-    ],
-    css: ''
-  }
+  strip_club: _asciiScene(`
+       ___________________
+      |  ♫  GIRLS GIRLS  ♫ |
+      |_____________________|
+      |     |  |     🪩      |
+      |     |  |    \\|/     |
+      |     |💃|     |      |
+      |     |  |    / \\     |
+      |  🍸 |__|          🍷|
+      |_____________________|
+      |  💵  STAGE  💵  💵  |
+      |_____________________|
+      |  🪑    🪑    🪑     |
+      |  🧑   👤   🧑   👤 |
+      |_____________________|
+  `, '#ff69b4', 'linear-gradient(180deg, #1a0020 0%, #2d0040 40%, #0a0010 100%)'),
+
+  ammo: _asciiScene(`
+       ___________________
+      |  AMMU-NATION  🔫   |
+      |_____________________|
+      |  ═══════════════    |
+      |  ▄▄ ▄▄▄ ▄▄ ▄▄▄▄   |
+      |  ═══════════════    |
+      |  ▄▄▄ ▄▄ ▄▄▄ ▄▄    |
+      |  ═══════════════    |
+      |                     |
+      | [💰$$$] ┌────────┐ |
+      |         │ REGISTER│ |
+      |  🧑     └────────┘ |
+      |_____________________|
+  `, '#ff4444', 'linear-gradient(180deg, #1a1a1a 0%, #2a2020 50%, #111 100%)'),
+
+  hospital: _asciiScene(`
+       ___________________
+      |    ➕ HOSPITAL ➕   |
+      |_____________________|
+      |                     |
+      |   ┌───┐   📊      |
+      |   │ 🛏️ │   💊💉    |
+      |   └───┘            |
+      |                     |
+      |  👩‍⚕️  "You'll be   |
+      |      fine..."       |
+      |                     |
+      |   ♡ ♡ ♡ ♡ ♡ ♡     |
+      |_____________________|
+  `, '#44ff44', 'linear-gradient(180deg, #e8e8e8 0%, #c0c0c0 50%, #aaa 100%)'),
+
+  shop: _asciiScene(`
+       ___________________
+      |  🏪  OPEN 24/7     |
+      |_____________________|
+      |  ┌──┐┌──┐┌──┐┌──┐ |
+      |  │🥫││🍺││🔋││📦│ |
+      |  └──┘└──┘└──┘└──┘ |
+      |  ┌──┐┌──┐┌──┐┌──┐ |
+      |  │🧃││💊││🔧││📱│ |
+      |  └──┘└──┘└──┘└──┘ |
+      |                     |
+      |  🧑  ┌──────────┐  |
+      |      │ $$$  [==] │  |
+      |      └──────────┘  |
+      |_____________________|
+  `, '#44ff44', 'linear-gradient(180deg, #1a2a1a 0%, #2a3a2a 50%, #0a1a0a 100%)'),
+
+  casino: _asciiScene(`
+       ___________________
+      |  🎰 GAMBLING DEN 🎲|
+      |_____________________|
+      |         🪩          |
+      |  🎰  ┌─────────┐ 🎰|
+      |      │ ♠ ♥ ♣ ♦ │   |
+      |      │  TABLE   │   |
+      |      │ 🟡🔴🔵  │   |
+      |      └─────────┘   |
+      |                     |
+      |  👤 💰  👤 💰  👤  |
+      |                     |
+      |  "Place your bets!" |
+      |_____________________|
+  `, '#ffd700', 'linear-gradient(180deg, #1a0a2a 0%, #2a1a3a 40%, #0a0a1a 100%)'),
 };
 
 function showInterior(type) {
