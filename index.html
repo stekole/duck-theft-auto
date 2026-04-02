@@ -201,6 +201,22 @@ body {
 #sub-menu table th { color: #ffcc00; text-align: left; border-bottom: 1px solid #333; padding: 2px 4px; }
 #sub-menu table td { padding: 2px 4px; color: #aaa; }
 
+/* Interior scene backdrop */
+#interior-scene {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 49;
+  overflow: hidden;
+}
+#interior-scene .scene-bg {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+}
+#interior-scene .scene-element {
+  position: absolute;
+}
+
 /* POI indicator */
 #poi-indicator {
   position: absolute;
@@ -532,6 +548,7 @@ body {
     </div>
   </div>
 
+  <div id="interior-scene"></div>
   <div id="sub-menu-backdrop"></div>
   <div id="sub-menu"></div>
 

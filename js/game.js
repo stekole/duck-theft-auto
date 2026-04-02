@@ -1317,7 +1317,133 @@ function showSubMenuHTML(title, html) {
   backdrop.addEventListener('click', () => { hideSubMenu(); showMainActions(); }, { once: true });
 }
 
-function hideSubMenu() { $('sub-menu').style.display = 'none'; $('sub-menu').innerHTML = ''; $('sub-menu-backdrop').style.display = 'none'; currentSubOptions = []; subMenuSelection = -1; }
+function hideSubMenu() { $('sub-menu').style.display = 'none'; $('sub-menu').innerHTML = ''; $('sub-menu-backdrop').style.display = 'none'; hideInterior(); currentSubOptions = []; subMenuSelection = -1; }
+
+// Interior scene system
+const INTERIOR_SCENES = {
+  strip_club: {
+    bg: 'linear-gradient(180deg, #1a0020 0%, #2d0040 40%, #0a0010 100%)',
+    elements: [
+      // Neon lights
+      '<div style="position:absolute;top:10%;left:10%;width:80%;height:2px;background:linear-gradient(90deg,transparent,#ff1493,#ff69b4,#ff1493,transparent);box-shadow:0 0 20px #ff1493;animation:pulse-pink 2s infinite"></div>',
+      '<div style="position:absolute;top:20%;left:5%;width:90%;height:1px;background:linear-gradient(90deg,transparent,#9400d3,transparent);box-shadow:0 0 15px #9400d3;animation:pulse-purple 3s infinite"></div>',
+      // Pole
+      '<div style="position:absolute;top:5%;left:50%;width:3px;height:70%;background:linear-gradient(180deg,#ddd,#888,#ddd);box-shadow:0 0 10px rgba(255,255,255,0.3)"></div>',
+      // Stage
+      '<div style="position:absolute;bottom:15%;left:20%;width:60%;height:8px;background:#333;border-radius:4px;box-shadow:0 -2px 20px rgba(255,20,147,0.4)"></div>',
+      // Disco lights
+      '<div style="position:absolute;top:8%;left:20%;width:15px;height:15px;border-radius:50%;background:#ff1493;box-shadow:0 0 40px 15px rgba(255,20,147,0.3);animation:disco1 1.5s infinite alternate"></div>',
+      '<div style="position:absolute;top:12%;right:25%;width:12px;height:12px;border-radius:50%;background:#00ffff;box-shadow:0 0 40px 15px rgba(0,255,255,0.3);animation:disco2 2s infinite alternate"></div>',
+      '<div style="position:absolute;top:6%;left:45%;width:10px;height:10px;border-radius:50%;background:#ff69b4;box-shadow:0 0 30px 10px rgba(255,105,180,0.4);animation:disco1 1.8s infinite alternate"></div>',
+      // Bar
+      '<div style="position:absolute;bottom:20%;left:5%;width:25%;height:40px;background:linear-gradient(0deg,#2a1a00,#4a3000);border-top:2px solid #664400;border-radius:2px"></div>',
+      // Bottles
+      '<div style="position:absolute;bottom:28%;left:8%;width:6px;height:18px;background:#44aa44;border-radius:2px 2px 0 0"></div>',
+      '<div style="position:absolute;bottom:28%;left:12%;width:6px;height:14px;background:#aa4444;border-radius:2px 2px 0 0"></div>',
+      '<div style="position:absolute;bottom:28%;left:16%;width:6px;height:16px;background:#4444aa;border-radius:2px 2px 0 0"></div>',
+    ],
+    css: '@keyframes pulse-pink{0%,100%{opacity:0.6}50%{opacity:1}}@keyframes pulse-purple{0%,100%{opacity:0.4}50%{opacity:0.8}}@keyframes disco1{0%{transform:scale(1)}100%{transform:scale(1.5);opacity:0.5}}@keyframes disco2{0%{transform:scale(1.2)}100%{transform:scale(0.8);opacity:0.6}}'
+  },
+  ammo: {
+    bg: 'linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 50%, #111 100%)',
+    elements: [
+      // Brick wall
+      '<div style="position:absolute;top:0;left:0;right:0;bottom:30%;background:repeating-linear-gradient(0deg,#3a2a1a 0px,#3a2a1a 18px,#2a1a0a 18px,#2a1a0a 20px),repeating-linear-gradient(90deg,#3a2a1a 0px,#3a2a1a 38px,#2a1a0a 38px,#2a1a0a 40px)"></div>',
+      // Gun rack
+      '<div style="position:absolute;top:25%;left:15%;width:70%;height:3px;background:#555;box-shadow:0 2px 5px rgba(0,0,0,0.5)"></div>',
+      '<div style="position:absolute;top:40%;left:15%;width:70%;height:3px;background:#555;box-shadow:0 2px 5px rgba(0,0,0,0.5)"></div>',
+      // Guns on rack
+      '<div style="position:absolute;top:20%;left:20%;width:50px;height:8px;background:#444;border-radius:2px;transform:rotate(-5deg)"></div>',
+      '<div style="position:absolute;top:20%;left:40%;width:60px;height:8px;background:#333;border-radius:2px;transform:rotate(3deg)"></div>',
+      '<div style="position:absolute;top:20%;right:25%;width:45px;height:10px;background:#444;border-radius:2px"></div>',
+      '<div style="position:absolute;top:35%;left:25%;width:55px;height:8px;background:#3a3a3a;border-radius:2px;transform:rotate(-2deg)"></div>',
+      '<div style="position:absolute;top:35%;right:30%;width:40px;height:8px;background:#444;border-radius:2px;transform:rotate(4deg)"></div>',
+      // Counter
+      '<div style="position:absolute;bottom:15%;left:10%;width:80%;height:50px;background:linear-gradient(0deg,#2a2a2a,#3a3a3a);border-top:3px solid #555"></div>',
+      // Neon sign
+      '<div style="position:absolute;top:8%;left:50%;transform:translateX(-50%);color:#ff3333;font-size:14px;font-weight:bold;text-shadow:0 0 10px #ff0000,0 0 20px #ff0000;font-family:Impact">AMMU-NATION</div>',
+    ],
+    css: ''
+  },
+  hospital: {
+    bg: 'linear-gradient(180deg, #e8e8e8 0%, #d0d0d0 50%, #b8b8b8 100%)',
+    elements: [
+      // Red cross
+      '<div style="position:absolute;top:8%;left:50%;transform:translateX(-50%)"><div style="width:30px;height:10px;background:#cc0000;position:absolute;top:10px;left:0"></div><div style="width:10px;height:30px;background:#cc0000;position:absolute;top:0;left:10px"></div></div>',
+      // Clean walls
+      '<div style="position:absolute;top:30%;left:0;right:0;height:2px;background:#ccc"></div>',
+      // Medical equipment
+      '<div style="position:absolute;top:35%;right:15%;width:20px;height:40px;background:#ddd;border:1px solid #bbb;border-radius:3px"></div>',
+      '<div style="position:absolute;top:33%;right:16%;width:8px;height:8px;border-radius:50%;background:#44ff44;box-shadow:0 0 8px #44ff44"></div>',
+      // Bed
+      '<div style="position:absolute;bottom:20%;left:15%;width:100px;height:25px;background:#f0f0f0;border:1px solid #ddd;border-radius:3px"></div>',
+      '<div style="position:absolute;bottom:22%;left:15%;width:25px;height:30px;background:#e0e0e0;border-radius:3px"></div>',
+      // Floor
+      '<div style="position:absolute;bottom:0;left:0;right:0;height:15%;background:repeating-linear-gradient(90deg,#e0e0e0 0px,#e0e0e0 40px,#d0d0d0 40px,#d0d0d0 41px)"></div>',
+    ],
+    css: ''
+  },
+  shop: {
+    bg: 'linear-gradient(180deg, #1a2a1a 0%, #2a3a2a 50%, #0a1a0a 100%)',
+    elements: [
+      // Shelves
+      '<div style="position:absolute;top:20%;left:10%;width:80%;height:3px;background:#664422"></div>',
+      '<div style="position:absolute;top:40%;left:10%;width:80%;height:3px;background:#664422"></div>',
+      '<div style="position:absolute;top:60%;left:10%;width:80%;height:3px;background:#664422"></div>',
+      // Products on shelves
+      '<div style="position:absolute;top:15%;left:15%;width:12px;height:16px;background:#cc4444;border-radius:2px"></div>',
+      '<div style="position:absolute;top:14%;left:30%;width:10px;height:18px;background:#44cc44;border-radius:2px"></div>',
+      '<div style="position:absolute;top:16%;left:45%;width:14px;height:14px;background:#4444cc;border-radius:2px"></div>',
+      '<div style="position:absolute;top:15%;right:25%;width:11px;height:16px;background:#cccc44;border-radius:2px"></div>',
+      '<div style="position:absolute;top:35%;left:20%;width:12px;height:16px;background:#cc8844;border-radius:2px"></div>',
+      '<div style="position:absolute;top:36%;left:40%;width:10px;height:14px;background:#44cccc;border-radius:2px"></div>',
+      '<div style="position:absolute;top:34%;right:20%;width:13px;height:17px;background:#cc44cc;border-radius:2px"></div>',
+      // Register
+      '<div style="position:absolute;bottom:15%;right:15%;width:35px;height:25px;background:#333;border-radius:3px"></div>',
+      '<div style="position:absolute;bottom:22%;right:18%;width:15px;height:10px;background:#44ff44;box-shadow:0 0 5px #44ff44"></div>',
+      // Open sign
+      '<div style="position:absolute;top:5%;left:50%;transform:translateX(-50%);color:#44ff44;font-size:12px;text-shadow:0 0 10px #44ff44;font-family:monospace">OPEN 24/7</div>',
+    ],
+    css: ''
+  },
+  casino: {
+    bg: 'linear-gradient(180deg, #1a0a2a 0%, #2a1a3a 40%, #0a0a1a 100%)',
+    elements: [
+      // Chandelier
+      '<div style="position:absolute;top:2%;left:50%;transform:translateX(-50%);width:60px;height:30px;border-radius:0 0 30px 30px;background:linear-gradient(0deg,rgba(255,215,0,0.3),transparent);box-shadow:0 0 30px rgba(255,215,0,0.2)"></div>',
+      // Card table
+      '<div style="position:absolute;bottom:25%;left:30%;width:40%;height:50px;background:#1a5a1a;border-radius:50%;border:3px solid #664400"></div>',
+      // Chips on table
+      '<div style="position:absolute;bottom:35%;left:40%;width:10px;height:10px;border-radius:50%;background:#cc2222;border:1px solid #ff4444"></div>',
+      '<div style="position:absolute;bottom:33%;left:48%;width:10px;height:10px;border-radius:50%;background:#2222cc;border:1px solid #4444ff"></div>',
+      '<div style="position:absolute;bottom:36%;right:38%;width:10px;height:10px;border-radius:50%;background:#22cc22;border:1px solid #44ff44"></div>',
+      // Slot machines
+      '<div style="position:absolute;bottom:20%;left:5%;width:25px;height:45px;background:#888;border-radius:3px;border:2px solid #aaa"></div>',
+      '<div style="position:absolute;bottom:30%;left:8%;width:15px;height:10px;background:#ff0;box-shadow:0 0 5px #ff0"></div>',
+      '<div style="position:absolute;bottom:20%;right:8%;width:25px;height:45px;background:#888;border-radius:3px;border:2px solid #aaa"></div>',
+      '<div style="position:absolute;bottom:30%;right:11%;width:15px;height:10px;background:#f0f;box-shadow:0 0 5px #f0f"></div>',
+      // Neon
+      '<div style="position:absolute;top:8%;left:50%;transform:translateX(-50%);color:#ffd700;font-size:14px;font-weight:bold;text-shadow:0 0 15px #ffd700,0 0 30px #ffd700;font-family:serif">GAMBLING DEN</div>',
+    ],
+    css: ''
+  }
+};
+
+function showInterior(type) {
+  const scene = INTERIOR_SCENES[type];
+  if (!scene) return;
+  const el = $('interior-scene');
+  let html = `<div class="scene-bg" style="background:${scene.bg}"></div>`;
+  for (const e of scene.elements) html += e;
+  if (scene.css) html += `<style>${scene.css}</style>`;
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function hideInterior() {
+  const el = $('interior-scene');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
 
 // Quick vehicle enter/exit toggle
 async function toggleVehicle() {
@@ -1608,6 +1734,7 @@ async function commitCrime(crime) {
 //  AMMU-NATION
 // --------------------------------------------------------
 async function menuGuns() {
+  showInterior('ammo');
   // Weapon locker discount: -10% per level
   const wlLevel = (await qv(`SELECT level FROM gang_upgrades WHERE name='weapon_locker'`)) || 0;
   const discount = wlLevel * 0.1;
@@ -1646,6 +1773,7 @@ async function menuGuns() {
 //  HOSPITAL
 // --------------------------------------------------------
 async function menuHospital() {
+  showInterior('hospital');
   showSubMenu('Hospital', [
     { label: 'Full Treatment ($200)', action: async () => {
       const cash = await qv('SELECT cash FROM player');
@@ -1677,6 +1805,7 @@ async function menuHospital() {
 //  SHOPS
 // --------------------------------------------------------
 async function menuShops() {
+  showInterior('shop');
   const items = Object.entries(ITEMS);
   const options = items.map(([name, info]) => ({
     label: `${name} - $${info.price} (${info.desc})`,
@@ -2173,6 +2302,7 @@ async function menuViewRecruits() {
 //  STRIP CLUB
 // --------------------------------------------------------
 async function menuStripClub() {
+  showInterior('strip_club');
   const p = await q1('SELECT cash, health, wanted_level, city FROM player');
   const ownsClub = await qv(`SELECT COUNT(*) FROM businesses WHERE type='strip_club' AND city='${p.city.replace(/'/g,"''")}'`);
   const stripOptions = [];
@@ -2239,6 +2369,7 @@ async function menuStripClub() {
 //  GAMBLING
 // --------------------------------------------------------
 async function menuGambling() {
+  showInterior('casino');
   // Check if at gambling POI or nighttime
   const clk = await q1('SELECT hour FROM game_clock');
   const p = await q1('SELECT x, y FROM player');
