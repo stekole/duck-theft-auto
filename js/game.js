@@ -18,7 +18,8 @@ import {
   updateRemoteDuck, despawnRemoteDuck, getNearestRemoteDuck,
   getRemoteDucks, setNPCSeed, killNPCById,
   setPoliceAttackCallback, spawnPoliceNPCAt, killPoliceById,
-  screenShake, spawnFloatingText, spawnExplosion
+  screenShake, spawnFloatingText, spawnExplosion,
+  spawnPoliceHeli, removePoliceHeli
 } from './renderer.js';
 import {
   conn, exec, q, q1, qv, saveGame, logAction,
@@ -769,11 +770,15 @@ async function updatePolicePresence() {
       clearPoliceNPCs();
       if (isMultiplayer()) broadcastAction({ action: 'police_clear' });
       stopSiren();
+      removePoliceHeli();
       _policeActive = false;
       setStatus('Idle');
     }
     return;
   }
+  // Police helicopter at wanted 5
+  if (wanted >= 5) spawnPoliceHeli();
+  else removePoliceHeli();
 
   // District heat adds bonus cops: +1 at heat 5, +2 at heat 10+
   const heat = (await qv(`SELECT heat FROM district_heat WHERE district='${p.district.replace(/'/g,"''")}' AND city='${p.city.replace(/'/g,"''")}'`)) || 0;

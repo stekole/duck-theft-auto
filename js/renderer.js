@@ -1757,6 +1757,111 @@ export function spawnNPCs() {
       _legL: legL, _legR: legR, _armL: armL, _armR: armR, _body: torso, _head: head
     });
   }
+  spawnFlyingHelis();
+}
+
+// --------------------------------------------------------
+//  FLYING HELICOPTERS (ambient + police)
+// --------------------------------------------------------
+let flyingHelis = [];
+
+function _buildHeliMesh(color, isPolice) {
+  const g = new THREE.Group();
+  // Body
+  const bodyGeo = new THREE.BoxGeometry(0.4, 0.25, 0.8);
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.4 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.castShadow = true;
+  g.add(body);
+  // Tail boom
+  const tailGeo = new THREE.BoxGeometry(0.1, 0.1, 0.5);
+  const tail = new THREE.Mesh(tailGeo, bodyMat);
+  tail.position.set(0, 0.05, -0.6);
+  g.add(tail);
+  // Tail rotor
+  const trGeo = new THREE.BoxGeometry(0.3, 0.02, 0.03);
+  const trMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+  const tr = new THREE.Mesh(trGeo, trMat);
+  tr.position.set(0, 0.1, -0.85);
+  tr.name = 'tailRotor';
+  g.add(tr);
+  // Main rotor
+  const rotorGeo = new THREE.BoxGeometry(1.4, 0.02, 0.06);
+  const rotorMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+  const rotor = new THREE.Mesh(rotorGeo, rotorMat);
+  rotor.position.y = 0.16;
+  rotor.name = 'mainRotor';
+  g.add(rotor);
+  // Skids
+  const skidGeo = new THREE.BoxGeometry(0.04, 0.03, 0.6);
+  const skidMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+  for (const sx of [-0.15, 0.15]) {
+    const skid = new THREE.Mesh(skidGeo, skidMat);
+    skid.position.set(sx, -0.14, 0);
+    g.add(skid);
+  }
+  if (isPolice) {
+    // Red/blue lights
+    const sR = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.5 }));
+    sR.position.set(-0.12, 0.14, 0.3);
+    sR.name = 'sirenR';
+    g.add(sR);
+    const sB = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshStandardMaterial({ color: 0x0044ff, emissive: 0x0044ff, emissiveIntensity: 1.5 }));
+    sB.position.set(0.12, 0.14, 0.3);
+    sB.name = 'sirenB';
+    g.add(sB);
+    // Searchlight
+    const sl = new THREE.SpotLight(0xffffcc, 3, 30, 0.4, 0.5);
+    sl.position.set(0, -0.1, 0.2);
+    sl.target.position.set(0, -10, 2);
+    g.add(sl);
+    g.add(sl.target);
+  }
+  return g;
+}
+
+export function spawnFlyingHelis() {
+  // Remove old helis
+  for (const h of flyingHelis) { scene.remove(h.group); }
+  flyingHelis = [];
+  if (!currentMapGrid) return;
+  const rng = _renderSeededRNG(_npcSeed + 9999);
+  const count = 2 + Math.floor(rng() * 2); // 2-3 ambient helis
+  const colors = [0x884422, 0xcc2222, 0x2244cc, 0xeeeeee, 0x222222];
+  for (let i = 0; i < count; i++) {
+    const color = colors[Math.floor(rng() * colors.length)];
+    const g = _buildHeliMesh(color, false);
+    const alt = 8 + rng() * 6;
+    const cx = MAP_SIZE * 0.2 + rng() * MAP_SIZE * 0.6;
+    const cz = MAP_SIZE * 0.2 + rng() * MAP_SIZE * 0.6;
+    g.position.set(cx, alt, cz);
+    scene.add(g);
+    flyingHelis.push({
+      group: g, altitude: alt, isPolice: false,
+      orbitCx: cx, orbitCz: cz,
+      orbitR: 15 + rng() * 20, orbitSpeed: 0.1 + rng() * 0.15,
+      phase: rng() * Math.PI * 2
+    });
+  }
+}
+
+// Police helicopter — spawns at wanted 5
+let _policeHeli = null;
+export function spawnPoliceHeli() {
+  if (_policeHeli) return;
+  const g = _buildHeliMesh(0x111111, true);
+  g.position.set(duckGroup ? duckGroup.position.x + 20 : MAP_SIZE / 2, 12, duckGroup ? duckGroup.position.z + 20 : MAP_SIZE / 2);
+  scene.add(g);
+  _policeHeli = { group: g, altitude: 12, isPolice: true, phase: 0 };
+  flyingHelis.push(_policeHeli);
+}
+
+export function removePoliceHeli() {
+  if (!_policeHeli) return;
+  scene.remove(_policeHeli.group);
+  const idx = flyingHelis.indexOf(_policeHeli);
+  if (idx >= 0) flyingHelis.splice(idx, 1);
+  _policeHeli = null;
 }
 
 // --------------------------------------------------------
@@ -3184,6 +3289,36 @@ export function gameLoop() {
     // Animate helicopter rotor
     const rotor = playerVehicleMesh.getObjectByName('rotor');
     if (rotor) rotor.rotation.y += 0.3;
+  }
+
+  // Flying helicopters — orbit and rotor animation
+  for (const h of flyingHelis) {
+    h.phase += h.orbitSpeed * dt;
+    const mainRotor = h.group.getObjectByName('mainRotor');
+    const tailRotor = h.group.getObjectByName('tailRotor');
+    if (mainRotor) mainRotor.rotation.y += 0.5;
+    if (tailRotor) tailRotor.rotation.x += 0.8;
+
+    if (h.isPolice && duckGroup) {
+      // Police heli circles the player
+      const tx = duckGroup.position.x + Math.cos(h.phase) * 12;
+      const tz = duckGroup.position.z + Math.sin(h.phase) * 12;
+      h.group.position.x += (tx - h.group.position.x) * 0.02;
+      h.group.position.z += (tz - h.group.position.z) * 0.02;
+      h.group.position.y = h.altitude + Math.sin(elapsed * 0.5) * 0.3;
+      h.group.rotation.y = Math.atan2(duckGroup.position.x - h.group.position.x, duckGroup.position.z - h.group.position.z);
+      // Siren flash
+      const sR = h.group.getObjectByName('sirenR');
+      const sB = h.group.getObjectByName('sirenB');
+      if (sR) sR.material.emissiveIntensity = Math.sin(elapsed * 10) > 0 ? 2 : 0.2;
+      if (sB) sB.material.emissiveIntensity = Math.sin(elapsed * 10) > 0 ? 0.2 : 2;
+    } else {
+      // Ambient helis orbit a fixed point
+      h.group.position.x = h.orbitCx + Math.cos(h.phase) * h.orbitR;
+      h.group.position.z = h.orbitCz + Math.sin(h.phase) * h.orbitR;
+      h.group.position.y = h.altitude + Math.sin(elapsed * 0.3 + h.phase) * 0.5;
+      h.group.rotation.y = h.phase + Math.PI / 2;
+    }
   }
 
   // Water animation — rolling waves with color shift
